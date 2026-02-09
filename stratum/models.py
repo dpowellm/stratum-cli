@@ -53,6 +53,7 @@ class Capability:
     has_error_handling: bool = False
     has_timeout: bool = False
     has_input_validation: bool = False
+    call_text: str = ""  # Actual source line text for remediation diffs. NOT in telemetry.
 
 
 @dataclass
@@ -98,6 +99,7 @@ class Finding:
     effort: str = "low"
     references: list[str] = field(default_factory=list)
     owasp_id: str = ""
+    quick_fix_type: str = ""  # Key into remediation TEMPLATES dict
 
 
 @dataclass

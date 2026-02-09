@@ -1,0 +1,16 @@
+# .github/workflows/stratum.yml
+name: Agent Risk Scan
+on:
+  pull_request:
+    paths: ['**.py', '**.json']
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install stratum-cli
+      - run: stratum scan . --ci --fail-above 80

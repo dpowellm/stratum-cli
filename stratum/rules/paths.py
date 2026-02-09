@@ -153,13 +153,14 @@ def _check_data_exfil(
                 severity=severity,
                 confidence=confidence,
                 category=RiskCategory.SECURITY,
-                title="Data Exfiltration Path",
+                title="Unguarded data-to-external path",
                 path=(f"{dc.function_name} ({dc.library}, line {dc.line_number}) "
                       f"-> no output filter -> "
                       f"{oc.function_name} ({oc.library}, line {oc.line_number})"),
                 description=(
-                    "A prompt injection makes the agent include DB results in the "
-                    "next outbound message. The EchoLeak attack class (CVE-2025-32711)."
+                    f"A prompt injection could cause: query {dc.function_name} "
+                    f"-> exfiltrate via {oc.function_name}. No output filter "
+                    f"checks what data leaves."
                 ),
                 evidence=[
                     f"{dc.source_file}:{dc.line_number}",
@@ -177,6 +178,7 @@ def _check_data_exfil(
                     "https://embracethered.com/blog/posts/2024/m365-copilot-echo-leak/",
                 ],
                 owasp_id="ASI01",
+                quick_fix_type="add_hitl",
             ))
 
     return findings[:1]  # One data exfil finding (the most dangerous pair)
@@ -214,13 +216,12 @@ def _check_destructive(
             severity=severity,
             confidence=confidence,
             category=RiskCategory.SECURITY,
-            title="Destructive Action, No Human Gate",
+            title="Destructive action, no human gate",
             path=(f"user input -> agent reasoning -> {dc.function_name} "
                   f"({dc.evidence}, line {dc.line_number}) -> data loss, no undo"),
             description=(
-                "The agent can execute destructive database operations without "
-                "human approval. A misinterpreted instruction or prompt injection "
-                "could cause irreversible data loss."
+                f"A misinterpreted instruction could trigger {dc.function_name} "
+                f"on production data -- with no approval step and no undo."
             ),
             evidence=[f"{dc.source_file}:{dc.line_number}"],
             scenario=(
@@ -232,6 +233,7 @@ def _check_destructive(
             ),
             effort="low",
             owasp_id="ASI02",
+            quick_fix_type="add_hitl",
         ))
 
     return findings
@@ -257,12 +259,15 @@ def _check_code_exec(capabilities: list[Capability]) -> list[Finding]:
             severity=Severity.HIGH,
             confidence=confidence,
             category=RiskCategory.SECURITY,
-            title="Code Execution via Agent Tool",
+            title="Arbitrary code execution",
             path=(f"user input -> {cc.function_name} ({cc.library}, "
                   f"{cc.evidence}, line {cc.line_number}) -> host OS"),
             description=(
-                "The agent can execute arbitrary commands on the host system. "
-                "A prompt injection could lead to full host compromise."
+                f"{cc.function_name} passes user-influenced input to {cc.library} "
+                f"with shell=True -- arbitrary system commands become possible."
+                if "shell=True" in cc.evidence else
+                f"{cc.function_name} uses {cc.library} to execute commands on the "
+                f"host. A crafted input could run arbitrary system commands."
             ),
             evidence=[f"{cc.source_file}:{cc.line_number}"],
             scenario=(
@@ -306,14 +311,13 @@ def _check_mcp_cve(mcp_servers: list[MCPServer]) -> list[Finding]:
                 severity=Severity.CRITICAL,
                 confidence=Confidence.CONFIRMED,
                 category=RiskCategory.SECURITY,
-                title=f"Known Vulnerable MCP: {pkg}",
+                title=f"Known CVE in MCP server",
                 path=(f"{server.source_file} -> {pkg} "
                       f"({'unpinned' if not server.package_version else server.package_version}) "
                       f"-> {cve_info['cve']} (CVSS {cve_info['cvss']}): {cve_info['summary']}"),
                 description=(
-                    f"The MCP server {pkg} has a known vulnerability: "
-                    f"{cve_info['cve']} ({cve_info['summary']}). "
-                    f"CVSS: {cve_info['cvss']}."
+                    f"{server.name} uses {pkg} with {cve_info['cve']} -- tool calls "
+                    f"could be intercepted or responses injected."
                 ),
                 evidence=[f"{server.source_file}:{server.name}"],
                 scenario=(
@@ -357,13 +361,13 @@ def _check_mcp_credentials(mcp_servers: list[MCPServer]) -> list[Finding]:
             severity=Severity.HIGH,
             confidence=Confidence.CONFIRMED,
             category=RiskCategory.SECURITY,
-            title="Production Credentials to Third-Party MCP",
+            title="Credentials sent to third party",
             path=(f"{server.source_file} -> {server.name} (third-party) <- "
                   f"{', '.join(sensitive_vars)}"),
             description=(
-                f"Production secrets ({', '.join(sensitive_vars)}) are passed directly "
-                f"to the third-party MCP server '{server.name}'. The server process "
-                f"has full access to these credentials."
+                f"{server.name} passes {', '.join(sensitive_vars)} to a third-party "
+                f"server. That maintainer -- or anyone who compromises it -- "
+                f"gets your credentials."
             ),
             evidence=[f"{server.source_file}:{server.name}"],
             scenario=(
@@ -373,6 +377,7 @@ def _check_mcp_credentials(mcp_servers: list[MCPServer]) -> list[Finding]:
             remediation="Use scoped read-only credentials for MCP servers",
             effort="med",
             owasp_id="ASI04",
+            quick_fix_type="mcp_remove_credentials",
         ))
 
     return findings
@@ -415,6 +420,7 @@ def _check_mcp_supply_chain(mcp_servers: list[MCPServer]) -> list[Finding]:
                 ),
                 effort="low",
                 owasp_id="ASI04",
+                quick_fix_type="pin_mcp_version",
             ))
 
         # Remote server with no auth
@@ -511,6 +517,7 @@ def _check_unvalidated_financial(
             ),
             effort="low",
             owasp_id="ASI02",
+            quick_fix_type="add_financial_validation",
         ))
 
     return findings
@@ -559,6 +566,7 @@ def _check_no_error_handling(capabilities: list[Capability]) -> list[Finding]:
         ),
         effort="med",
         owasp_id="ASI08",
+        quick_fix_type="add_error_handling",
     )]
 
 
@@ -589,9 +597,9 @@ def _check_no_timeout(capabilities: list[Capability]) -> list[Finding]:
         path=(f"{len(no_timeout)} HTTP calls without timeout= -> "
               "agent hangs indefinitely"),
         description=(
-            f"{len(no_timeout)} HTTP calls using requests/httpx/aiohttp have no "
-            f"timeout parameter. A slow or unresponsive server causes the agent "
-            f"to hang indefinitely."
+            f"{len(no_timeout)} HTTP calls have no timeout. If any external "
+            f"API hangs, your agent freezes forever. In production, this "
+            f"becomes an outage."
         ),
         evidence=evidence,
         scenario=(
@@ -603,6 +611,7 @@ def _check_no_timeout(capabilities: list[Capability]) -> list[Finding]:
         ),
         effort="low",
         owasp_id="ASI08",
+        quick_fix_type="no_timeout",
     )]
 
 

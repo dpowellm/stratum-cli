@@ -50,6 +50,7 @@ def scan_env(directory: str, py_file_paths: list[str]) -> tuple[list[str], list[
                 remediation='echo ".env" >> .gitignore',
                 effort="low",
                 owasp_id="ASI04",
+                quick_fix_type="env_gitignore",
             ))
 
     # Scan .py files for hardcoded secrets

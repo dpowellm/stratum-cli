@@ -39,7 +39,7 @@ def scan_python_file(file_path: str, content: str) -> tuple[list[Capability], li
     capabilities: list[Capability] = []
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            caps = _scan_function(node, file_path, file_imports, file_alias_map)
+            caps = _scan_function(node, file_path, file_imports, file_alias_map, content)
             capabilities.extend(caps)
 
     # Step 4: Detect guardrail signals
@@ -353,11 +353,20 @@ def _extract_string_value(node: ast.expr) -> str:
     return ""
 
 
+def _get_source_line(content: str, lineno: int) -> str:
+    """Extract a single source line by line number. Returns empty string on failure."""
+    lines = content.split("\n")
+    if 1 <= lineno <= len(lines):
+        return lines[lineno - 1]
+    return ""
+
+
 def _scan_function(
     func_node: ast.FunctionDef | ast.AsyncFunctionDef,
     file_path: str,
     file_imports: set[str],
     file_alias_map: dict[str, str],
+    content: str = "",
 ) -> list[Capability]:
     """Scan a single function for dangerous capabilities."""
     capabilities: list[Capability] = []
@@ -405,6 +414,7 @@ def _scan_function(
             has_error_handling=err_handling,
             has_timeout=timeout,
             has_input_validation=input_val,
+            call_text=_get_source_line(content, line) if content else "",
         ))
 
     # Walk all call nodes

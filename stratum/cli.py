@@ -30,8 +30,10 @@ def cli() -> None:
 @click.option("--no-telemetry", is_flag=True, help="Skip telemetry profile save")
 @click.option("--share-telemetry", is_flag=True,
               help="Submit anonymized telemetry profile to Stratum")
+@click.option("--fail-above", type=int, default=None,
+              help="Exit 1 if risk score exceeds this threshold (for CI gates)")
 def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
-             no_telemetry: bool, share_telemetry: bool) -> None:
+             no_telemetry: bool, share_telemetry: bool, fail_above: int | None) -> None:
     """Scan a project directory for agent risk paths."""
     # Conflict check
     if share_telemetry and no_telemetry:
@@ -113,6 +115,10 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
                     sys.exit(2)
     else:
         render(result, verbose=verbose, shared=share_telemetry)
+
+    # --fail-above threshold check (works with all output modes)
+    if fail_above is not None and result.risk_score > fail_above:
+        sys.exit(1)
 
 
 @cli.group()

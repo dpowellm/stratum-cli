@@ -7,9 +7,10 @@ import os
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
-from rich.table import Table
 
 from stratum.models import Finding, RiskCategory, ScanResult, Severity
+from stratum.output.remediation import select_quick_wins, compute_estimated_score, QuickWin
+from stratum.output.badge import generate_badge_markdown
 
 console = Console(force_terminal=True)
 
@@ -36,60 +37,88 @@ BENCHMARK_TEASER = (
 
 def render(result: ScanResult, verbose: bool = False, shared: bool = False) -> None:
     """Render the scan result to the terminal using Rich."""
+    all_findings = result.top_paths + result.signals
+    quick_wins = select_quick_wins(all_findings, result)
+
     _render_header(result)
-    _render_summary(result)
+    _render_agent_profile(result, quick_wins)
+    if result.diff:
+        _render_progress(result)
     _render_top_paths(result)
-    _render_signals(result, verbose)
+    _render_quick_wins(result, quick_wins)
+    _render_signals(result, verbose, quick_wins)
+    _render_whats_next(result, quick_wins)
     _render_footer(result)
     _render_nudges(result, shared=shared)
 
+
+# ── Agent Profile ─────────────────────────────────────────────────────────────
 
 def _render_header(result: ScanResult) -> None:
     """Render the header banner."""
     header = Text()
     header.append("  STRATUM ", style="bold white")
-    header.append("\u00b7 Agent Risk Profiler", style="dim")
-    header.append("                        v0.1.0", style="dim")
+    header.append("v0.1 -- Agent Risk Scanner", style="dim")
     console.print(Panel(header, style="bold blue"))
 
 
-def _render_summary(result: ScanResult) -> None:
-    """Render the summary section."""
-    # Capability counts
-    cap_parts = []
+def _render_agent_profile(result: ScanResult, quick_wins: list[QuickWin]) -> None:
+    """Render the Agent Profile section."""
+    # Count unique functions with capabilities
+    func_names = set()
+    for cap in result.capabilities:
+        func_names.add(cap.function_name)
+    func_count = len(func_names)
+
+    console.print(" [bold]Agent Profile[/bold]")
+    console.print(" " + "\u2500" * 13)
+
+    # Capabilities
+    console.print(f" Capabilities    {result.total_capabilities} across {func_count} functions")
+
+    # Architecture breakdown
+    arch_parts = []
     if result.outbound_count:
-        cap_parts.append(f"{result.outbound_count} outbound")
+        arch_parts.append(f"{result.outbound_count} outbound")
     if result.data_access_count:
-        cap_parts.append(f"{result.data_access_count} data access")
+        arch_parts.append(f"{result.data_access_count} data access")
     if result.code_exec_count:
-        cap_parts.append(f"{result.code_exec_count} code exec")
+        arch_parts.append(f"{result.code_exec_count} code exec")
     if result.destructive_count:
-        cap_parts.append(f"{result.destructive_count} destructive")
+        arch_parts.append(f"{result.destructive_count} destructive")
     if result.financial_count:
-        cap_parts.append(f"{result.financial_count} financial")
+        arch_parts.append(f"{result.financial_count} financial")
+    console.print(f" Architecture    {' \u00b7 '.join(arch_parts)}")
 
-    cap_str = ", ".join(cap_parts)
-    console.print(f"  {result.total_capabilities} capabilities ({cap_str})")
-    console.print(
-        f"  {result.mcp_server_count} MCP servers \u00b7 "
-        f"{result.guardrail_count} guardrails"
+    # MCP Servers
+    mcp_needing_attention = sum(
+        1 for s in result.mcp_servers
+        if not s.is_known_safe and (
+            (s.npm_package and not s.package_version)
+            or (s.is_remote and not s.has_auth)
+            or s.env_vars_passed
+        )
     )
+    mcp_str = f"{result.mcp_server_count} configured"
+    if mcp_needing_attention:
+        mcp_str += f" ({mcp_needing_attention} need{'s' if mcp_needing_attention == 1 else ''} attention)"
+    console.print(f" MCP Servers     {mcp_str}")
 
-    # Category breakdown
-    all_findings = result.top_paths + result.signals
-    security = sum(1 for f in all_findings if f.category == RiskCategory.SECURITY)
-    business = sum(1 for f in all_findings if f.category == RiskCategory.BUSINESS)
-    operational = sum(1 for f in all_findings if f.category == RiskCategory.OPERATIONAL)
+    # Guardrails
+    if result.has_any_guardrails:
+        console.print(f" Guardrails      {result.guardrail_count} detected")
+    else:
+        console.print(" Guardrails      none detected")
 
-    parts = []
-    if security:
-        parts.append(f"{security} security")
-    if business:
-        parts.append(f"{business} business")
-    if operational:
-        parts.append(f"{operational} operational")
+    # State
+    state_labels = {
+        "durable": "durable (PostgresSaver or equivalent)",
+        "memory_only": "in-memory only (MemorySaver)",
+        "none": "no checkpointing detected",
+    }
+    console.print(f" State           {state_labels.get(result.checkpoint_type, result.checkpoint_type)}")
 
-    console.print(f"\n  \u25b8 {' \u00b7 '.join(parts)}")
+    console.print()
 
     # Risk score
     score = result.risk_score
@@ -98,29 +127,37 @@ def _render_summary(result: ScanResult) -> None:
     bar = "\u2588" * bar_filled + "\u2591" * bar_empty
 
     if score >= 80:
-        level = "[bold red]CRITICAL[/bold red]"
+        level = "[bold red]high[/bold red]"
     elif score >= 60:
-        level = "[bold yellow]HIGH[/bold yellow]"
+        level = "[bold yellow]elevated[/bold yellow]"
     elif score >= 40:
-        level = "[yellow]MEDIUM[/yellow]"
+        level = "[yellow]medium[/yellow]"
     else:
-        level = "[green]LOW[/green]"
+        level = "[green]low[/green]"
 
-    console.print(f"\n  RISK SCORE  {score}/100  {bar}  {level}")
+    console.print(f" Risk Score      {score}/100    {bar}  {level}")
 
+    # Quick wins hint or diff info
     if result.diff:
         delta = result.diff.risk_score_delta
-        arrow = "\u25b2" if delta > 0 else ("\u25bc" if delta < 0 else "\u25cf")
+        arrow = "\u25bc" if delta < 0 else ("\u25b2" if delta > 0 else "\u25cf")
         sign = "+" if delta > 0 else ""
-        new_count = len(result.diff.new_finding_ids)
-        resolved_count = len(result.diff.resolved_finding_ids)
+        remaining = len(quick_wins)
         console.print(
-            f"  {arrow} {sign}{delta} since last scan \u00b7 "
-            f"{new_count} new \u00b7 {resolved_count} resolved"
+            f"                 {arrow} {sign}{delta} from last scan"
+            + (f" \u00b7 {remaining} quick win{'s' if remaining != 1 else ''} available" if remaining else "")
+        )
+    elif quick_wins:
+        estimated = compute_estimated_score(result, quick_wins)
+        console.print(
+            f"                 {len(quick_wins)} quick win{'s' if len(quick_wins) != 1 else ''} "
+            f"available -> estimated {estimated} after fixes"
         )
 
     console.print()
 
+
+# ── Top Risk Paths ────────────────────────────────────────────────────────────
 
 def _render_top_paths(result: ScanResult) -> None:
     """Render the top risk paths section."""
@@ -131,8 +168,140 @@ def _render_top_paths(result: ScanResult) -> None:
     console.print()
 
     for finding in result.top_paths:
-        _render_finding_full(finding)
-        console.print("\u2500" * 60)
+        _render_finding_compact(finding)
+        console.print()
+
+
+def _render_finding_compact(finding: Finding) -> None:
+    """Render a finding in compact attack-scenario format."""
+    sev_label = {
+        Severity.CRITICAL: "[bold red]CRITICAL[/bold red]",
+        Severity.HIGH: "[bold yellow]HIGH    [/bold yellow]",
+        Severity.MEDIUM: "[yellow]MEDIUM  [/yellow]",
+        Severity.LOW: "[dim]LOW     [/dim]",
+    }.get(finding.severity, "")
+
+    console.print(f"  {sev_label}  {finding.id}  [bold]{finding.title}[/bold]")
+    if finding.description:
+        # Wrap description text
+        desc = finding.description
+        console.print(f"  {desc}")
+    if finding.evidence:
+        evidence_str = " \u00b7 ".join(finding.evidence)
+        conf = finding.confidence.value.upper()
+        console.print(f"  [dim]Evidence: {evidence_str}[/dim] [dim]\\[{conf}][/dim]")
+
+
+# ── Quick Wins ────────────────────────────────────────────────────────────────
+
+def _render_quick_wins(result: ScanResult, quick_wins: list[QuickWin]) -> None:
+    """Render the Quick Wins section with diffs."""
+    if not quick_wins:
+        return
+
+    total_impact = sum(qw.score_impact for qw in quick_wins)
+    total_effort = _sum_effort(quick_wins)
+
+    console.rule(
+        f"[bold]QUICK WINS[/bold]                              "
+        f"{total_effort} total \u00b7 {total_impact:+d} points",
+        style="bold",
+    )
+    console.print()
+
+    for qw in quick_wins:
+        console.print(
+            f" {qw.rank}. [bold]{qw.title}[/bold]"
+            f"{'':>30}{qw.effort_label} \u00b7 {qw.score_impact:+d} pts"
+        )
+        console.print(f"    {qw.description}")
+
+        if qw.command:
+            console.print(f"    [cyan]$ {qw.command}[/cyan]")
+            console.print()
+            continue
+
+        # Render diffs from remediations
+        for rem in qw.remediations:
+            console.print()
+            if rem.line_number:
+                console.print(f"    [dim]{rem.file_path}:{rem.line_number}[/dim]")
+            elif rem.file_path and rem.file_path != "(multiple files)" and rem.file_path != "(financial tool file)" and rem.file_path != "MCP config":
+                console.print(f"    [dim]{rem.file_path}[/dim]")
+
+            for line in rem.diff_lines:
+                if line.startswith("- "):
+                    console.print(f"    [red]{line}[/red]")
+                elif line.startswith("+ "):
+                    console.print(f"    [green]{line}[/green]")
+                else:
+                    console.print(f"    [dim]{line}[/dim]")
+
+        console.print()
+
+
+def _sum_effort(quick_wins: list[QuickWin]) -> str:
+    """Sum effort labels into a human-readable total."""
+    from stratum.output.remediation import EFFORT_SECONDS, DESCRIPTIONS
+    total_seconds = 0
+    for qw in quick_wins:
+        # Find matching fix type
+        for fix_type, desc in DESCRIPTIONS.items():
+            if desc == qw.title:
+                total_seconds += EFFORT_SECONDS.get(fix_type, 60)
+                break
+        else:
+            total_seconds += 60
+
+    if total_seconds < 60:
+        return f"~{total_seconds} sec"
+    minutes = total_seconds // 60
+    return f"~{minutes} min"
+
+
+# ── Signals ───────────────────────────────────────────────────────────────────
+
+def _render_signals(result: ScanResult, verbose: bool, quick_wins: list[QuickWin]) -> None:
+    """Render the OTHER SIGNALS section."""
+    if not result.signals:
+        return
+
+    # Find which finding IDs are covered by quick wins
+    qw_ids = set()
+    for qw in quick_wins:
+        for rem in qw.remediations:
+            qw_ids.add(rem.finding_id)
+
+    console.rule(f"[bold]OTHER SIGNALS[/bold]", style="bold")
+    console.print()
+
+    if verbose:
+        for finding in result.signals:
+            _render_finding_full(finding)
+            console.print("\u2500" * 60)
+            console.print()
+    else:
+        for finding in result.signals:
+            sev_short = {
+                Severity.CRITICAL: "[bold red]CRIT[/bold red]",
+                Severity.HIGH: "[bold yellow]HIGH[/bold yellow]",
+                Severity.MEDIUM: "[yellow]MED [/yellow]",
+                Severity.LOW: "[dim]LOW [/dim]",
+            }.get(finding.severity, "")
+
+            qw_note = ""
+            if finding.id in qw_ids:
+                qw_note = " [dim](see quick wins)[/dim]"
+
+            console.print(
+                f"  {sev_short}      {finding.id}  {finding.title}"
+                f"   {finding.category.value} \u00b7 {finding.confidence.value}"
+                f"{qw_note}"
+            )
+
+    console.print()
+    if not verbose:
+        console.print(" [dim]--verbose for details[/dim]")
         console.print()
 
 
@@ -156,57 +325,74 @@ def _render_finding_full(finding: Finding) -> None:
 
     if finding.evidence:
         evidence_str = " \u00b7 ".join(finding.evidence)
-        console.print(f" [dim]\U0001f4cd {evidence_str}[/dim]")
+        console.print(f" [dim]Evidence: {evidence_str}[/dim]")
 
     if finding.remediation:
-        console.print(f" [green]\U0001f527 {finding.remediation}[/green]")
+        console.print(f" [green]Fix: {finding.remediation}[/green]")
 
     refs = []
     if finding.owasp_id:
         refs.append(finding.owasp_id)
     for url in finding.references:
-        # Shorten URLs for display
         short = url.replace("https://", "").replace("http://", "")
         refs.append(short)
     if refs:
-        console.print(f" [dim]\U0001f4da {' \u00b7 '.join(refs)}[/dim]")
+        console.print(f" [dim]Refs: {' \u00b7 '.join(refs)}[/dim]")
 
     console.print()
 
 
-def _render_signals(result: ScanResult, verbose: bool) -> None:
-    """Render the signals section."""
-    if not result.signals:
+# ── Progress (re-scans) ──────────────────────────────────────────────────────
+
+def _render_progress(result: ScanResult) -> None:
+    """Render the PROGRESS section on re-scans."""
+    if not result.diff:
         return
 
-    console.rule(f"[bold]SIGNALS ({len(result.signals)} more)[/bold]", style="bold")
+    resolved = result.diff.resolved_finding_ids
+    if not resolved:
+        return
+
+    console.rule("[bold]PROGRESS[/bold]", style="bold")
     console.print()
 
-    if verbose:
-        for finding in result.signals:
-            _render_finding_full(finding)
-            console.print("\u2500" * 60)
-            console.print()
-    else:
-        for finding in result.signals:
-            sev = SEVERITY_DOTS.get(finding.severity, "")
-            sev_short = {
-                Severity.CRITICAL: "[bold red]CRIT[/bold red]",
-                Severity.HIGH: "[bold yellow]HIGH[/bold yellow]",
-                Severity.MEDIUM: "[yellow]MED [/yellow]",
-                Severity.LOW: "[dim]LOW [/dim]",
-            }.get(finding.severity, "")
+    for fid in resolved:
+        console.print(f"  [green]\u2713[/green] {fid}  [green]Fixed[/green]")
 
-            console.print(
-                f" {sev} {sev_short}  {finding.id}  {finding.title}   "
-                f"{finding.category.value} \u00b7 {finding.confidence.value}"
-            )
-
+    n = len(resolved)
     console.print()
-    if not verbose:
-        console.print(" --verbose for details")
+    console.print(f"  Nice work. {n} issue{'s' if n != 1 else ''} resolved in one pass.")
+    console.print()
+
+
+# ── What's Next ───────────────────────────────────────────────────────────────
+
+def _render_whats_next(result: ScanResult, quick_wins: list[QuickWin]) -> None:
+    """Render WHAT'S NEXT section with badge and CI suggestion."""
+    console.rule("[bold]WHAT'S NEXT[/bold]", style="bold")
+    console.print()
+
+    if quick_wins:
+        console.print(
+            f"  Apply the {len(quick_wins)} quick win{'s' if len(quick_wins) != 1 else ''} "
+            f"above, then re-scan:"
+        )
+        console.print("  [cyan]$ stratum scan .[/cyan]")
         console.print()
 
+    # Badge
+    badge_md = generate_badge_markdown(result.risk_score)
+    console.print("  Badge for your README:")
+    console.print(f"  [dim]{badge_md}[/dim]")
+    console.print()
+
+    # CI
+    console.print("  Add to CI:")
+    console.print("  [cyan]$ cp docs/github-action.yml .github/workflows/stratum.yml[/cyan]")
+    console.print()
+
+
+# ── Footer ────────────────────────────────────────────────────────────────────
 
 def _render_footer(result: ScanResult) -> None:
     """Render the footer."""
@@ -255,7 +441,6 @@ def _render_nudges(result: ScanResult, shared: bool = False) -> None:
     scan_count = _get_scan_count(result)
 
     # Share prompt: shown on scans 1, 10, 20, 30...
-    # NOT shown if --share-telemetry was used, or if suppressed
     show_share = (
         not shared
         and not cfg.get("suppress_share_prompt", False)
@@ -269,16 +454,12 @@ def _render_nudges(result: ScanResult, shared: bool = False) -> None:
         console.rule(style="dim")
         console.print(
             f" [bold]Help build agent safety benchmarks[/bold]\n"
-            f"    This scan found {cap_count} capabilities and {path_count} risk paths.\n"
-            f"    Share anonymously to improve ecosystem intelligence.\n"
             f"    No source code. No identifiers. Counts and ratios only.\n"
-            f"\n"
             f"    [cyan]stratum scan . --share-telemetry[/cyan]\n"
             f"    [dim]stratum config suppress-share-prompt    (to hide this)[/dim]"
         )
 
     # Benchmark teaser: shown on scans 1, 5, 10, 15, 20...
-    # NOT shown if suppressed
     show_teaser = (
         not cfg.get("suppress_benchmark_teaser", False)
         and (scan_count == 1 or (scan_count >= 5 and scan_count % 5 == 0))
