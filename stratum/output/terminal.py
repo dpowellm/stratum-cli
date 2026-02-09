@@ -149,10 +149,16 @@ def _render_agent_profile(result: ScanResult, quick_wins: list[QuickWin]) -> Non
         )
     elif quick_wins:
         estimated = compute_estimated_score(result, quick_wins)
-        console.print(
-            f"                 {len(quick_wins)} quick win{'s' if len(quick_wins) != 1 else ''} "
-            f"available -> estimated {estimated} after fixes"
-        )
+        if estimated < result.risk_score:
+            console.print(
+                f"                 {len(quick_wins)} quick win{'s' if len(quick_wins) != 1 else ''} "
+                f"available -> estimated {estimated} after fixes"
+            )
+        else:
+            console.print(
+                f"                 {len(quick_wins)} quick win{'s' if len(quick_wins) != 1 else ''} "
+                f"available -- fix critical issues first to lower score"
+            )
 
     console.print()
 
@@ -202,17 +208,19 @@ def _render_quick_wins(result: ScanResult, quick_wins: list[QuickWin]) -> None:
     total_impact = sum(qw.score_impact for qw in quick_wins)
     total_effort = _sum_effort(quick_wins)
 
+    impact_str = f" \u00b7 {total_impact:+d} points" if total_impact != 0 else ""
     console.rule(
         f"[bold]QUICK WINS[/bold]                              "
-        f"{total_effort} total \u00b7 {total_impact:+d} points",
+        f"{total_effort} total{impact_str}",
         style="bold",
     )
     console.print()
 
     for qw in quick_wins:
+        pts_str = f" \u00b7 {qw.score_impact:+d} pts" if qw.score_impact != 0 else ""
         console.print(
             f" {qw.rank}. [bold]{qw.title}[/bold]"
-            f"{'':>30}{qw.effort_label} \u00b7 {qw.score_impact:+d} pts"
+            f"{'':>30}{qw.effort_label}{pts_str}"
         )
         console.print(f"    {qw.description}")
 

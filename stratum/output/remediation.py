@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from stratum.models import Capability, Confidence, Finding, ScanResult
+from stratum.models import Capability, Confidence, Finding, ScanResult, Severity
 from stratum.knowledge.db import HTTP_LIBRARIES, KNOWN_CVES
 
 
@@ -330,7 +330,7 @@ def select_quick_wins(
             command=cmd,
         ))
 
-    # Sort by impact-per-second (highest first)
+    # Sort by impact-per-second using theoretical impacts (highest first)
     quick_wins.sort(
         key=lambda qw: abs(qw.score_impact) / EFFORT_SECONDS.get(
             _type_from_id(qw), 60
@@ -338,11 +338,36 @@ def select_quick_wins(
         reverse=True,
     )
 
-    # Assign ranks and take top N
-    for i, qw in enumerate(quick_wins[:max_wins]):
+    selected = quick_wins[:max_wins]
+
+    # Recalibrate score_impact values using actual simulation
+    # so their sum matches the real estimated delta (accounts for cap + bonuses)
+    fixed_ids: set[str] = set()
+    for qw in selected:
+        for rem in qw.remediations:
+            fixed_ids.add(rem.finding_id)
+    simulated = _simulate_risk_score(result, fixed_ids)
+    actual_delta = simulated - result.risk_score  # e.g. 0 if still capped
+
+    # Distribute actual_delta proportionally across selected quick wins
+    theoretical_sum = sum(abs(qw.score_impact) for qw in selected)
+    if theoretical_sum > 0 and actual_delta != 0:
+        for qw in selected:
+            weight = abs(qw.score_impact) / theoretical_sum
+            qw.score_impact = round(actual_delta * weight)
+        # Fix rounding so sum is exact
+        rounding_err = actual_delta - sum(qw.score_impact for qw in selected)
+        if selected and rounding_err != 0:
+            selected[0].score_impact += rounding_err
+    elif actual_delta == 0:
+        for qw in selected:
+            qw.score_impact = 0
+
+    # Assign ranks
+    for i, qw in enumerate(selected):
         qw.rank = i + 1
 
-    return quick_wins[:max_wins]
+    return selected
 
 
 def _type_from_id(qw: QuickWin) -> str:
@@ -391,7 +416,74 @@ def _quick_win_description(fix_type: str, remediations: list[Remediation]) -> st
     return ""
 
 
+def _simulate_risk_score(result: ScanResult, exclude_ids: set[str]) -> int:
+    """Re-calculate the risk score with certain findings removed.
+
+    Mirrors scanner._calculate_risk_score exactly, but excludes findings
+    whose IDs are in exclude_ids. This accounts for the cap at 100 and
+    all bonus adjustments.
+    """
+    all_findings = result.top_paths + result.signals
+    remaining = [f for f in all_findings if f.id not in exclude_ids]
+
+    score = 0
+    for f in remaining:
+        if f.severity == Severity.CRITICAL:
+            score += 25
+        elif f.severity == Severity.HIGH:
+            score += 15
+        elif f.severity == Severity.MEDIUM:
+            score += 8
+        elif f.severity == Severity.LOW:
+            score += 3
+
+    # Bonus: zero guardrails with >= 3 capabilities
+    if not result.has_any_guardrails and len(result.capabilities) >= 3:
+        score += 15
+
+    # Bonus: Known CVE MCP (only if STRATUM-004 survives)
+    if any(f.id == "STRATUM-004" for f in remaining):
+        score += 20
+
+    # Bonus: financial tools + no HITL + no validation
+    # If STRATUM-007 is being fixed (add_financial_validation), skip this bonus
+    financial_caps = [c for c in result.capabilities if c.kind == "financial"]
+    if financial_caps and not any(c.has_input_validation for c in financial_caps):
+        financial_names = {c.function_name for c in financial_caps}
+        has_financial_hitl = any(
+            g.kind == "hitl" and (
+                not g.covers_tools or bool(set(g.covers_tools) & financial_names)
+            )
+            for g in result.guardrails
+        )
+        if not has_financial_hitl:
+            if "STRATUM-007" not in exclude_ids:
+                score += 10
+
+    # Bonus: zero error handling across >= 3 external calls
+    # If STRATUM-008 is being fixed, this bonus goes away
+    if "STRATUM-008" not in exclude_ids:
+        external_caps = [
+            c for c in result.capabilities
+            if c.kind in ("outbound", "data_access", "financial")
+            and c.confidence != Confidence.HEURISTIC
+        ]
+        if len(external_caps) >= 3 and not any(c.has_error_handling for c in external_caps):
+            score += 5
+
+    return min(score, 100)
+
+
 def compute_estimated_score(result: ScanResult, quick_wins: list[QuickWin]) -> int:
-    """Estimate the score after applying all quick wins."""
-    total_impact = sum(qw.score_impact for qw in quick_wins)
-    return max(0, result.risk_score + total_impact)
+    """Estimate the score after applying all quick wins.
+
+    Uses the real scoring algorithm (with cap and bonuses) to simulate
+    what the score would be if the quick-win findings were resolved.
+    """
+    # Collect finding IDs addressed by quick wins
+    fixed_ids: set[str] = set()
+    for qw in quick_wins:
+        for rem in qw.remediations:
+            fixed_ids.add(rem.finding_id)
+
+    return _simulate_risk_score(result, fixed_ids)
