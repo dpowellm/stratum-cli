@@ -28,9 +28,16 @@ def cli() -> None:
               help="JSON to stdout instead of Rich")
 @click.option("--ci", is_flag=True, help="CI mode: JSON output + exit codes")
 @click.option("--no-telemetry", is_flag=True, help="Skip telemetry profile save")
+@click.option("--share-telemetry", is_flag=True,
+              help="Submit anonymized telemetry profile to Stratum")
 def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
-             no_telemetry: bool) -> None:
+             no_telemetry: bool, share_telemetry: bool) -> None:
     """Scan a project directory for agent risk paths."""
+    # Conflict check
+    if share_telemetry and no_telemetry:
+        click.echo("Error: --share-telemetry and --no-telemetry are mutually exclusive.", err=True)
+        sys.exit(1)
+
     log_level = logging.DEBUG if verbose else logging.WARNING
     logging.basicConfig(
         level=log_level,
@@ -50,6 +57,7 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
     save_history(result, stratum_dir)
 
     # Telemetry
+    profile = None
     if not no_telemetry:
         profile = build_profile(result)
         profile_path = os.path.join(stratum_dir, "last-scan.json")
@@ -59,6 +67,13 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
                 json.dump(dataclasses.asdict(profile), f, indent=2)
         except OSError:
             pass
+
+    # Share telemetry
+    if share_telemetry and profile is not None:
+        import dataclasses
+        from stratum.telemetry.share import submit_profile
+        profile_dict = dataclasses.asdict(profile)
+        submit_profile(profile_dict)
 
     # Output
     if ci or json_output:
@@ -97,7 +112,61 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
                 if has_high:
                     sys.exit(2)
     else:
-        render(result, verbose=verbose)
+        render(result, verbose=verbose, shared=share_telemetry)
+
+
+@cli.group()
+def config() -> None:
+    """Manage Stratum configuration."""
+    pass
+
+
+def _get_config_path(path: str = ".") -> str:
+    """Get the path to the Stratum config file."""
+    import os
+    return os.path.join(os.path.abspath(path), ".stratum", "config.json")
+
+
+def _load_config(config_path: str) -> dict:
+    """Load config from file, returning empty dict if not found."""
+    import os
+    if not os.path.exists(config_path):
+        return {}
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _save_config(config_path: str, cfg: dict) -> None:
+    """Save config to file."""
+    import os
+    os.makedirs(os.path.dirname(config_path), exist_ok=True)
+    with open(config_path, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2)
+
+
+@config.command("suppress-share-prompt")
+@click.argument("path", default=".", type=click.Path(exists=True))
+def suppress_share_prompt(path: str) -> None:
+    """Suppress the share-telemetry nudge message."""
+    config_path = _get_config_path(path)
+    cfg = _load_config(config_path)
+    cfg["suppress_share_prompt"] = True
+    _save_config(config_path, cfg)
+    click.echo("Share prompt suppressed. Run in project directory to affect that project.")
+
+
+@config.command("suppress-benchmark-teaser")
+@click.argument("path", default=".", type=click.Path(exists=True))
+def suppress_benchmark_teaser(path: str) -> None:
+    """Suppress the benchmark teaser message."""
+    config_path = _get_config_path(path)
+    cfg = _load_config(config_path)
+    cfg["suppress_benchmark_teaser"] = True
+    _save_config(config_path, cfg)
+    click.echo("Benchmark teaser suppressed. Run in project directory to affect that project.")
 
 
 def main() -> None:

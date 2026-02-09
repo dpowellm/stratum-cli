@@ -16,4 +16,5 @@ dependencies = [
 stratum = "stratum.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["stratum*", "risk_map*"]
+include = ["stratum*"]
+exclude = ["risk_map*"]

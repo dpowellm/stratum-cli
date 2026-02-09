@@ -1,6 +1,9 @@
 """Rich terminal output for Stratum scan results."""
 from __future__ import annotations
 
+import json
+import os
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
@@ -24,14 +27,21 @@ SEVERITY_DOTS = {
     Severity.LOW: "[dim]\u25cf[/dim]",
 }
 
+BENCHMARK_TEASER = (
+    " [bold]Community risk benchmarks coming soon[/bold]\n"
+    "    How does your agent compare? Track progress at\n"
+    "    [cyan]stratum.dev/benchmarks[/cyan]"
+)
 
-def render(result: ScanResult, verbose: bool = False) -> None:
+
+def render(result: ScanResult, verbose: bool = False, shared: bool = False) -> None:
     """Render the scan result to the terminal using Rich."""
     _render_header(result)
     _render_summary(result)
     _render_top_paths(result)
     _render_signals(result, verbose)
     _render_footer(result)
+    _render_nudges(result, shared=shared)
 
 
 def _render_header(result: ScanResult) -> None:
@@ -201,7 +211,6 @@ def _render_signals(result: ScanResult, verbose: bool) -> None:
 def _render_footer(result: ScanResult) -> None:
     """Render the footer."""
     console.rule(style="dim")
-    import os
     stratum_dir = os.path.join(result.directory, ".stratum")
     history_file = os.path.join(stratum_dir, "history.jsonl")
     if os.path.exists(history_file):
@@ -213,3 +222,69 @@ def _render_footer(result: ScanResult) -> None:
             console.print(" .stratum/history.jsonl saved")
     else:
         console.print(" .stratum/history.jsonl saved")
+
+
+def _get_scan_count(result: ScanResult) -> int:
+    """Get the total scan count from history for nudge display logic."""
+    stratum_dir = os.path.join(result.directory, ".stratum")
+    history_file = os.path.join(stratum_dir, "history.jsonl")
+    try:
+        if os.path.exists(history_file):
+            with open(history_file, "r") as f:
+                return sum(1 for _ in f)
+    except OSError:
+        pass
+    return 1
+
+
+def _load_project_config(result: ScanResult) -> dict:
+    """Load .stratum/config.json for nudge suppression."""
+    config_path = os.path.join(result.directory, ".stratum", "config.json")
+    try:
+        if os.path.exists(config_path):
+            with open(config_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        pass
+    return {}
+
+
+def _render_nudges(result: ScanResult, shared: bool = False) -> None:
+    """Render share-telemetry nudge and benchmark teaser after scan output."""
+    cfg = _load_project_config(result)
+    scan_count = _get_scan_count(result)
+
+    # Share prompt: shown on scans 1, 10, 20, 30...
+    # NOT shown if --share-telemetry was used, or if suppressed
+    show_share = (
+        not shared
+        and not cfg.get("suppress_share_prompt", False)
+        and (scan_count == 1 or (scan_count >= 10 and scan_count % 10 == 0))
+    )
+
+    if show_share:
+        cap_count = result.total_capabilities
+        path_count = len(result.top_paths)
+        console.print()
+        console.rule(style="dim")
+        console.print(
+            f" [bold]Help build agent safety benchmarks[/bold]\n"
+            f"    This scan found {cap_count} capabilities and {path_count} risk paths.\n"
+            f"    Share anonymously to improve ecosystem intelligence.\n"
+            f"    No source code. No identifiers. Counts and ratios only.\n"
+            f"\n"
+            f"    [cyan]stratum scan . --share-telemetry[/cyan]\n"
+            f"    [dim]stratum config suppress-share-prompt    (to hide this)[/dim]"
+        )
+
+    # Benchmark teaser: shown on scans 1, 5, 10, 15, 20...
+    # NOT shown if suppressed
+    show_teaser = (
+        not cfg.get("suppress_benchmark_teaser", False)
+        and (scan_count == 1 or (scan_count >= 5 and scan_count % 5 == 0))
+    )
+
+    if show_teaser:
+        console.print()
+        console.rule(style="dim")
+        console.print(BENCHMARK_TEASER)

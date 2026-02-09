@@ -67,8 +67,26 @@ def derive_intelligence(
 def generate_contextual_insights(
     profile: TelemetryProfile,
     intel: RiskIntelligence,
+    stats: AggregateStats,
 ) -> list[str]:
-    """Generate insight strings for a specific scan vs ecosystem."""
+    """Generate insight strings for a specific scan vs ecosystem.
+
+    Uses archetype_class as the PRIMARY grouping key. Falls back to
+    ecosystem-wide baselines if the archetype has fewer than 10 scans.
+
+    Insight categories:
+    1. Archetype positioning: "N% of agents like yours have [control]. You don't."
+    2. Risk percentile: "Your risk score is higher than N% of similar agents."
+    3. Control effectiveness: "Agents like yours that add [control] see N-point improvement."
+    4. Structural outlier: "Your trust-crossing pattern is unusual for your archetype."
+
+    GROUPING RULES:
+    - Always group by archetype_class (structural), never by total_capabilities (scale).
+    - If archetype has <10 scans, use ecosystem-wide baselines instead.
+    - Never produce insights that reference GitHub, open-source, or community.
+      All language must be context-neutral: "agents like yours", "similar projects",
+      "ecosystem average".
+    """
     insights: list[str] = []
 
     # Compare risk score to combo averages

@@ -138,36 +138,76 @@ class ScanDiff:
 
 @dataclass
 class TelemetryProfile:
-    """Anonymized. No source code, secrets, paths, function names, env values."""
-    scan_id: str = ""
-    timestamp: str = ""
-    version: str = "0.1.0"
+    """Anonymized structural risk profile. No source code, secrets, paths, function names, env values.
 
-    total_capabilities: int = 0
-    capability_distribution: dict[str, int] = field(default_factory=dict)
-    trust_level_distribution: dict[str, int] = field(default_factory=dict)
+    SCHEMA RULES (non-negotiable):
+    Every field must pass the context-blindness test:
+    "Does this field have the same meaning and comparable values whether the source
+    is a 50-line hobby script or a 50,000-line enterprise platform?"
 
-    trust_crossings: dict[str, int] = field(default_factory=dict)
-    total_trust_crossings: int = 0
+    Fields are annotated [structural] or [scale]:
+    - [structural] fields transfer across contexts and are used for archetype
+      grouping, benchmarking, and enterprise intelligence.
+    - [scale] fields are useful for individual scan dashboards but must NOT be
+      used as grouping keys in the intelligence layer.
 
-    mcp_server_count: int = 0
-    mcp_remote_count: int = 0
-    mcp_auth_ratio: float = 0.0
-    mcp_pinned_ratio: float = 0.0
+    PROHIBITED FIELDS (must never be added):
+    - framework_name, framework_version (creates framework-specific clusters)
+    - language_distribution (Python-only for now; irrelevant to risk structure)
+    - file_count, line_count, repo_size (scale signals that separate GitHub from enterprise)
+    - project_age, commit_count, contributor_count (context signals)
+    - star_count, fork_count, popularity metrics (GitHub-specific)
+    - org_name, team_name, environment (enterprise context — belongs in EnterpriseContext overlay)
+    - any field derived from README content, docstrings, or comments
+    - any field that requires network access to compute
+    """
+    scan_id: str = ""                                    # [scale]
+    timestamp: str = ""                                  # [scale]
+    version: str = "0.1.0"                               # [scale]
 
-    guardrail_count: int = 0
-    has_any_guardrails: bool = False
-    guardrail_types: list[str] = field(default_factory=list)
+    # === Capability structure ===
+    total_capabilities: int = 0                          # [scale]
+    capability_distribution: dict[str, int] = field(default_factory=dict)  # [scale]
+    trust_level_distribution: dict[str, int] = field(default_factory=dict)  # [scale]
 
-    risk_score: int = 0
-    finding_severities: dict[str, int] = field(default_factory=dict)
-    finding_confidences: dict[str, int] = field(default_factory=dict)
+    # === Trust crossings ===
+    trust_crossings: dict[str, int] = field(default_factory=dict)  # [scale]
+    total_trust_crossings: int = 0                       # [scale]
 
-    env_var_count: int = 0
-    has_env_in_gitignore: bool = False
+    # === Topology (telemetry primitives) ===
+    topology_signature_hash: str = ""                    # [structural]
+    trust_crossing_adjacency: dict[str, int] = field(default_factory=dict)  # [structural]
 
-    error_handling_rate: float = 0.0
-    timeout_rate: float = 0.0
-    checkpoint_type: str = "none"
-    has_financial_tools: bool = False
-    financial_validation_rate: float = 0.0
+    # === Archetype ===
+    archetype_class: str = ""                            # [structural]
+
+    # === MCP ===
+    mcp_server_count: int = 0                            # [scale]
+    mcp_remote_count: int = 0                            # [scale]
+    mcp_auth_ratio: float = 0.0                          # [structural]
+    mcp_pinned_ratio: float = 0.0                        # [structural]
+
+    # === Guardrails ===
+    guardrail_count: int = 0                             # [scale]
+    has_any_guardrails: bool = False                     # [structural]
+    guardrail_types: list[str] = field(default_factory=list)  # [structural]
+
+    # === Risk ===
+    risk_score: int = 0                                  # [scale]
+    finding_severities: dict[str, int] = field(default_factory=dict)  # [scale]
+    finding_confidences: dict[str, int] = field(default_factory=dict)  # [scale]
+    finding_rules: list[str] = field(default_factory=list)  # [structural]
+
+    # === Environment ===
+    env_var_count: int = 0                               # [scale]
+    has_env_in_gitignore: bool = False                   # [structural]
+
+    # === Operational signals ===
+    error_handling_rate: float = 0.0                     # [structural]
+    timeout_rate: float = 0.0                            # [structural]
+    checkpoint_type: str = "none"                        # [structural]
+    has_financial_tools: bool = False                    # [structural]
+    financial_validation_rate: float = 0.0               # [structural]
+
+    # === Mitigation coverage (telemetry primitives) ===
+    mitigation_coverage: dict[str, float] = field(default_factory=dict)  # [structural]
