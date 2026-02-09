@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Stratum
+.stratum/
+
+# Secrets
+.env
+.env.*
+!test_project/.env
+
+# Claude Code
+.claude/
+
+# Spec patches (not part of project)
+PATCH-*.md
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/

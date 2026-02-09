@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stratum-cli"
+version = "0.1.0"
+description = "Agent Risk Profiler - scan AI agent projects for risk paths"
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.0",
+    "rich>=13.0",
+]
+
+[project.scripts]
+stratum = "stratum.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["stratum*", "risk_map*"]
