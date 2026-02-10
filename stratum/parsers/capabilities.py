@@ -18,6 +18,9 @@ from stratum.knowledge.db import (
     DESTRUCTIVE_SQL_KEYWORDS, DESTRUCTIVE_METHODS,
     FINANCIAL_IMPORTS, HTTP_LIBRARIES,
 )
+from stratum.framework_tools import (
+    KNOWN_TOOLS, AGENT_FRAMEWORK_IMPORTS, CODE_EXEC_CONSTRUCTORS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +47,14 @@ def scan_python_file(file_path: str, content: str) -> tuple[list[Capability], li
 
     # Step 4: Detect guardrail signals
     guardrails = _detect_guardrails(tree, file_path, content)
+
+    # Step 5: Framework tool detection (Layer 1 + Layer 3)
+    framework_caps = detect_framework_tools(file_imports, file_alias_map, tree, file_path)
+    capabilities.extend(framework_caps)
+
+    # Step 6: Framework guardrail detection
+    framework_guardrails = detect_framework_guardrails(file_imports, file_alias_map, tree, file_path)
+    guardrails.extend(framework_guardrails)
 
     return capabilities, guardrails
 
@@ -728,3 +739,227 @@ def _extract_list_strings(node: ast.expr) -> list[str]:
                 result.append(elt.value)
         return result
     return []
+
+
+# ── Framework Detection (Layer 1 + Layer 3) ─────────────────────────────────
+
+def detect_framework_tools(
+    file_imports: set[str],
+    alias_map: dict[str, str],
+    tree: ast.Module,
+    file_path: str,
+) -> list[Capability]:
+    """Detect capabilities from known framework tool imports and constructor assignments.
+
+    Layer 1: Direct imports of known tools (e.g. from crewai_tools import SerperDevTool).
+    Layer 3: Agent(tools=[...]) constructor arguments referencing known tools.
+    """
+    capabilities: list[Capability] = []
+    seen: set[tuple[str, str]] = set()
+
+    # Layer 1: Check alias_map for known tool imports
+    for class_name, source_module in alias_map.items():
+        if class_name not in KNOWN_TOOLS:
+            continue
+        profile = KNOWN_TOOLS[class_name]
+        # Verify source module matches to prevent false matches on generic names
+        source_root = source_module.split(".")[0]
+        profile_roots = {m.split(".")[0] for m in profile.source_modules}
+        if source_root not in profile_roots:
+            continue
+        for kind in profile.kinds:
+            key = (class_name, kind)
+            if key not in seen:
+                seen.add(key)
+                capabilities.append(Capability(
+                    function_name=f"[{class_name}]",
+                    kind=kind,
+                    library=source_module,
+                    confidence=Confidence.CONFIRMED,
+                    source_file=file_path,
+                    line_number=0,
+                    evidence=f"{class_name} (framework tool)",
+                    trust_level=TrustLevel.EXTERNAL,
+                    has_error_handling=False,
+                    has_timeout=False,
+                    call_text=f"{class_name} (framework tool)",
+                ))
+
+    # Layer 3: Agent constructor tools=[...] analysis
+    agent_constructors = {"Agent", "AssistantAgent", "UserProxyAgent", "ReActAgent"}
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+
+        constructor_name = ""
+        if isinstance(node.func, ast.Name):
+            constructor_name = node.func.id
+        elif isinstance(node.func, ast.Attribute):
+            constructor_name = node.func.attr
+
+        if constructor_name not in agent_constructors:
+            continue
+
+        for keyword in node.keywords:
+            if keyword.arg == "tools" and isinstance(keyword.value, ast.List):
+                for elt in keyword.value.elts:
+                    tool_class_name = _extract_tool_class_name(elt)
+                    if tool_class_name and tool_class_name in KNOWN_TOOLS:
+                        profile = KNOWN_TOOLS[tool_class_name]
+                        for kind in profile.kinds:
+                            key = (tool_class_name, kind)
+                            if key not in seen:
+                                seen.add(key)
+                                capabilities.append(Capability(
+                                    function_name=f"[{constructor_name}.tools -> {tool_class_name}]",
+                                    kind=kind,
+                                    library=profile.source_modules[0] if profile.source_modules else "unknown",
+                                    confidence=Confidence.CONFIRMED,
+                                    source_file=file_path,
+                                    line_number=node.lineno,
+                                    evidence=f"{tool_class_name} assigned to {constructor_name}",
+                                    trust_level=TrustLevel.EXTERNAL,
+                                    has_error_handling=False,
+                                    has_timeout=False,
+                                    call_text=f"{tool_class_name} assigned to {constructor_name}",
+                                ))
+
+            # AutoGen: code_execution_config={...} -> code_exec
+            if keyword.arg == "code_execution_config":
+                if isinstance(keyword.value, ast.Dict):
+                    key = ("code_execution_config", "code_exec")
+                    if key not in seen:
+                        seen.add(key)
+                        capabilities.append(Capability(
+                            function_name=f"[{constructor_name}.code_execution_config]",
+                            kind="code_exec",
+                            library="autogen",
+                            confidence=Confidence.CONFIRMED,
+                            source_file=file_path,
+                            line_number=node.lineno,
+                            evidence=f"code_execution_config on {constructor_name}",
+                            trust_level=TrustLevel.PRIVILEGED,
+                            has_error_handling=False,
+                            has_timeout=False,
+                            call_text=f"code_execution_config on {constructor_name}",
+                        ))
+
+    return capabilities
+
+
+def _extract_tool_class_name(node: ast.expr) -> str:
+    """Extract tool class name from a list element (Call or Name)."""
+    if isinstance(node, ast.Call):
+        if isinstance(node.func, ast.Name):
+            return node.func.id
+        elif isinstance(node.func, ast.Attribute):
+            return node.func.attr
+    elif isinstance(node, ast.Name):
+        return node.id
+    return ""
+
+
+def detect_framework_guardrails(
+    file_imports: set[str],
+    alias_map: dict[str, str],
+    tree: ast.Module,
+    file_path: str,
+) -> list[GuardrailSignal]:
+    """Detect guardrails expressed through framework patterns."""
+    guardrails: list[GuardrailSignal] = []
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+
+        for keyword in node.keywords:
+            # CrewAI: Task(human_input=True) -> HITL
+            if keyword.arg == "human_input":
+                if isinstance(keyword.value, ast.Constant) and keyword.value.value is True:
+                    guardrails.append(GuardrailSignal(
+                        kind="hitl",
+                        source_file=file_path,
+                        line_number=getattr(node, "lineno", 0),
+                        detail="CrewAI Task with human_input=True",
+                        has_usage=True,
+                    ))
+
+            # AutoGen: human_input_mode="ALWAYS" or "TERMINATE" -> HITL
+            if keyword.arg == "human_input_mode":
+                if isinstance(keyword.value, ast.Constant) and keyword.value.value in ("ALWAYS", "TERMINATE"):
+                    guardrails.append(GuardrailSignal(
+                        kind="hitl",
+                        source_file=file_path,
+                        line_number=getattr(node, "lineno", 0),
+                        detail=f"AutoGen human_input_mode={keyword.value.value}",
+                        has_usage=True,
+                    ))
+
+            # Rate limiting: max_rpm, rate_limit
+            if keyword.arg in ("max_rpm", "rate_limit", "max_requests_per_minute"):
+                guardrails.append(GuardrailSignal(
+                    kind="rate_limit",
+                    source_file=file_path,
+                    line_number=getattr(node, "lineno", 0),
+                    detail=f"{keyword.arg} configured",
+                    has_usage=True,
+                ))
+
+            # Structured output validation
+            if keyword.arg in ("result_type", "response_format", "output_pydantic"):
+                guardrails.append(GuardrailSignal(
+                    kind="validation",
+                    source_file=file_path,
+                    line_number=getattr(node, "lineno", 0),
+                    detail=f"Structured output validation via {keyword.arg}",
+                    has_usage=True,
+                ))
+
+    # Decorator-based guardrails
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for decorator in node.decorator_list:
+                if isinstance(decorator, ast.Attribute):
+                    if decorator.attr in ("result_validator", "output_validator"):
+                        guardrails.append(GuardrailSignal(
+                            kind="output_filter",
+                            source_file=file_path,
+                            line_number=getattr(node, "lineno", 0),
+                            detail=f"@{decorator.attr} decorator",
+                            has_usage=True,
+                        ))
+
+    # Import-based framework guardrails
+    framework_guard_classes = {
+        "HumanApprovalCallbackHandler": ("hitl", "LangChain HumanApprovalCallbackHandler"),
+        "HumanInputRun": ("hitl", "LangChain HumanInputRun"),
+    }
+    for class_name, (kind, detail) in framework_guard_classes.items():
+        if class_name in alias_map:
+            guardrails.append(GuardrailSignal(
+                kind=kind,
+                source_file=file_path,
+                line_number=0,
+                detail=detail,
+                has_usage=True,
+            ))
+
+    return guardrails
+
+
+def detect_framework(file_imports: set[str], alias_map: dict[str, str]) -> set[str]:
+    """Detect which agent frameworks the file uses.
+
+    Returns set of framework names (may be empty).
+    """
+    found: set[str] = set()
+    for module, framework_name in AGENT_FRAMEWORK_IMPORTS.items():
+        if module in file_imports:
+            found.add(framework_name)
+            continue
+        for alias_source in alias_map.values():
+            if alias_source.startswith(module):
+                found.add(framework_name)
+                break
+    return found

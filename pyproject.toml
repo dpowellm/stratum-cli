@@ -12,6 +12,9 @@ dependencies = [
     "rich>=13.0",
 ]
 
+[project.optional-dependencies]
+yaml = ["pyyaml>=6.0"]
+
 [project.scripts]
 stratum = "stratum.cli:main"
 

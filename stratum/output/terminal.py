@@ -203,6 +203,11 @@ def _render_agent_profile(result: ScanResult, quick_wins: list[QuickWin]) -> Non
     console.print(" [bold]Agent Profile[/bold]")
     console.print(" " + "\u2500" * 13)
 
+    # Framework
+    if result.detected_frameworks:
+        fw_str = ", ".join(result.detected_frameworks)
+        console.print(f" Framework       {fw_str}")
+
     # Capabilities
     console.print(f" Capabilities    {result.total_capabilities} across {func_count} functions")
 

@@ -1,17 +1,19 @@
 """Orchestrator: walks directory, runs parsers, evaluates rules, computes score."""
 from __future__ import annotations
 
+import ast
 import fnmatch
 import logging
 import os
 
 from stratum.models import (
     Capability, Confidence, GuardrailSignal, MCPServer,
-    ScanResult, Severity,
+    ScanResult, Severity, TrustLevel,
 )
 from stratum.parsers import capabilities as cap_parser
 from stratum.parsers import mcp as mcp_parser
 from stratum.parsers import env as env_parser
+from stratum.parsers.capabilities import detect_framework
 from stratum.rules.engine import Engine
 
 logger = logging.getLogger(__name__)
@@ -64,15 +66,58 @@ def scan(path: str) -> ScanResult:
             elif ext == ".json":
                 json_files.append(full)
 
+    # Collect YAML files
+    yaml_files: list[tuple[str, str]] = []
+    for root, dirs, files in os.walk(abs_path):
+        dirs[:] = [
+            d for d in dirs
+            if d not in SKIP_DIRS
+            and not _matches_gitignore(
+                os.path.relpath(os.path.join(root, d), abs_path) + "/",
+                gitignore_patterns,
+            )
+        ]
+        for fname in files:
+            _, ext = os.path.splitext(fname)
+            if ext in (".yaml", ".yml"):
+                full = os.path.join(root, fname)
+                rel = os.path.relpath(full, abs_path)
+                if _matches_gitignore(rel, gitignore_patterns):
+                    continue
+                try:
+                    with open(full, "r", encoding="utf-8", errors="ignore") as f:
+                        yaml_files.append((rel, f.read()))
+                except OSError:
+                    pass
+
     # Parse capabilities and guardrails
     all_capabilities: list[Capability] = []
     all_guardrails: list[GuardrailSignal] = []
+    all_frameworks: set[str] = set()
 
     for file_path, content in py_files:
         rel = os.path.relpath(file_path, abs_path)
         caps, guards = cap_parser.scan_python_file(rel, content)
         all_capabilities.extend(caps)
         all_guardrails.extend(guards)
+
+        # Framework detection
+        try:
+            tree = ast.parse(content)
+            file_imports: set[str] = set()
+            file_alias_map: dict[str, str] = {}
+            cap_parser._collect_imports(tree.body, file_imports, file_alias_map)
+            fws = detect_framework(file_imports, file_alias_map)
+            all_frameworks.update(fws)
+        except SyntaxError:
+            pass
+
+    # YAML config scanning (for framework tool references)
+    yaml_caps = _scan_yaml_configs(yaml_files)
+    all_capabilities.extend(yaml_caps)
+
+    # Deduplicate capabilities
+    all_capabilities = _deduplicate_capabilities(all_capabilities)
 
     # Parse MCP configs
     all_mcp_servers: list[MCPServer] = mcp_parser.parse_mcp_configs(abs_path)
@@ -152,6 +197,7 @@ def scan(path: str) -> ScanResult:
         guardrail_count=len(all_guardrails),
         has_any_guardrails=has_any_guardrails,
         checkpoint_type=checkpoint_type,
+        detected_frameworks=sorted(all_frameworks),
         # Learning & Governance
         learning_type=learning_ctx.get("learning_type"),
         has_learning_loop=learning_ctx.get("has_learning_loop", False),
@@ -301,3 +347,91 @@ def _matches_gitignore(rel_path: str, patterns: list[str]) -> bool:
         if fnmatch.fnmatch(basename, pattern):
             return True
     return False
+
+
+def _deduplicate_capabilities(caps: list[Capability]) -> list[Capability]:
+    """Remove duplicate capabilities, keeping highest confidence.
+
+    Dedup key: (source_file, kind, library_root). When framework detection
+    finds the same tool via import and via Agent(tools=[...]), keep one.
+    """
+    seen: dict[tuple[str, str, str], Capability] = {}
+    confidence_order = {Confidence.CONFIRMED: 2, Confidence.PROBABLE: 1, Confidence.HEURISTIC: 0}
+    for cap in caps:
+        lib_root = cap.library.split(".")[0] if cap.library else ""
+        key = (cap.source_file, cap.kind, lib_root)
+        if key not in seen:
+            seen[key] = cap
+        else:
+            existing = seen[key]
+            if confidence_order.get(cap.confidence, 0) > confidence_order.get(existing.confidence, 0):
+                seen[key] = cap
+    return list(seen.values())
+
+
+def _scan_yaml_configs(yaml_files: list[tuple[str, str]]) -> list[Capability]:
+    """Scan YAML config files for framework tool references.
+
+    Looks for tools: [...] keys containing known tool class names.
+    Requires PyYAML; silently returns empty if not installed.
+    """
+    try:
+        import yaml
+    except ImportError:
+        return []
+
+    from stratum.framework_tools import KNOWN_TOOLS
+
+    capabilities: list[Capability] = []
+    seen: set[tuple[str, str, str]] = set()
+
+    for file_path, content in yaml_files:
+        try:
+            docs = list(yaml.safe_load_all(content))
+        except Exception:
+            continue
+
+        for doc in docs:
+            if isinstance(doc, dict):
+                _extract_tools_from_yaml(doc, file_path, capabilities, seen, KNOWN_TOOLS)
+
+    return capabilities
+
+
+def _extract_tools_from_yaml(
+    obj: dict | list,
+    file_path: str,
+    capabilities: list[Capability],
+    seen: set[tuple[str, str, str]],
+    known_tools: dict,
+) -> None:
+    """Recursively find tools: [...] in YAML structures."""
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if key == "tools" and isinstance(value, list):
+                for tool_name in value:
+                    if isinstance(tool_name, str) and tool_name in known_tools:
+                        profile = known_tools[tool_name]
+                        for kind in profile.kinds:
+                            k = (tool_name, kind, file_path)
+                            if k not in seen:
+                                seen.add(k)
+                                capabilities.append(Capability(
+                                    function_name=f"[YAML: {tool_name}]",
+                                    kind=kind,
+                                    library=profile.source_modules[0] if profile.source_modules else "yaml_config",
+                                    confidence=Confidence.CONFIRMED,
+                                    source_file=file_path,
+                                    line_number=0,
+                                    evidence=f"{tool_name} in YAML config",
+                                    trust_level=TrustLevel.EXTERNAL,
+                                    has_error_handling=False,
+                                    has_timeout=False,
+                                    call_text=f"{tool_name} in YAML config",
+                                ))
+            else:
+                _extract_tools_from_yaml(value, file_path, capabilities, seen, known_tools)
+    elif isinstance(obj, list):
+        for item in obj:
+            if isinstance(item, (dict, list)):
+                _extract_tools_from_yaml(item, file_path, capabilities, seen, known_tools)

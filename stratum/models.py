@@ -160,6 +160,7 @@ class ScanResult:
     guardrail_count: int = 0
     has_any_guardrails: bool = False
     checkpoint_type: str = "none"
+    detected_frameworks: list[str] = field(default_factory=list)
 
     diff: ScanDiff | None = None
 
