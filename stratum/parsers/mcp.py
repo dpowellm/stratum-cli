@@ -11,6 +11,7 @@ import re
 
 from stratum.models import MCPServer
 from stratum.knowledge.db import KNOWN_SAFE_PUBLISHERS
+from stratum.research.mcp_incidents import check_mcp_config
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,8 @@ def _parse_mcp_file(file_path: str, relative_path: str) -> list[MCPServer]:
         if not isinstance(config, dict):
             continue
         server = _parse_server_entry(name, config, relative_path)
+        # Cross-reference against known incidents
+        server.known_incidents = check_mcp_config(name, server.args)
         servers.append(server)
 
     return servers

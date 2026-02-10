@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime, timezone
 
 from rich.console import Console
 from rich.panel import Panel
@@ -11,6 +12,9 @@ from rich.text import Text
 from stratum.models import Finding, RiskCategory, ScanResult, Severity
 from stratum.output.remediation import select_quick_wins, compute_estimated_score, QuickWin
 from stratum.output.badge import generate_badge_markdown
+from stratum.research.citations import get_citation
+from stratum.research.mcp_risk import risk_label
+from stratum.research.links import select_research_links
 
 console = Console(force_terminal=True)
 
@@ -34,19 +38,41 @@ BENCHMARK_TEASER = (
     "    [cyan]stratum.dev/benchmarks[/cyan]"
 )
 
+# Finding class ordering for --dev mode (reliability-first)
+FINDING_CLASS_ORDER = {"reliability": 0, "operational": 1, "security": 2}
+FINDING_CLASS_LABELS = {
+    "reliability": "RELIABILITY",
+    "operational": "OPERATIONAL",
+    "security": "SECURITY",
+}
 
-def render(result: ScanResult, verbose: bool = False, shared: bool = False) -> None:
+SEVERITY_SORT = {
+    Severity.CRITICAL: 0,
+    Severity.HIGH: 1,
+    Severity.MEDIUM: 2,
+    Severity.LOW: 3,
+}
+
+
+def render(result: ScanResult, verbose: bool = False, shared: bool = False,
+           security_mode: bool = False) -> None:
     """Render the scan result to the terminal using Rich."""
     all_findings = result.top_paths + result.signals
     quick_wins = select_quick_wins(all_findings, result)
 
     _render_header(result)
     _render_agent_profile(result, quick_wins)
+    _render_known_incidents(result)
     if result.diff:
         _render_progress(result)
-    _render_top_paths(result)
-    _render_quick_wins(result, quick_wins)
-    _render_signals(result, verbose, quick_wins)
+    if security_mode:
+        _render_top_paths_security(result)
+        _render_quick_wins(result, quick_wins)
+        _render_signals(result, verbose, quick_wins)
+    else:
+        _render_top_paths_dev(result)
+        _render_quick_wins(result, quick_wins)
+    _render_learn_more(result)
     _render_whats_next(result, quick_wins)
     _render_footer(result)
     _render_nudges(result, shared=shared)
@@ -103,6 +129,14 @@ def _render_agent_profile(result: ScanResult, quick_wins: list[QuickWin]) -> Non
     if mcp_needing_attention:
         mcp_str += f" ({mcp_needing_attention} need{'s' if mcp_needing_attention == 1 else ''} attention)"
     console.print(f" MCP Servers     {mcp_str}")
+
+    # MCP composite risk (when >=2 servers)
+    if result.mcp_server_count >= 2:
+        rl = risk_label(result.mcp_server_count)
+        if rl:
+            console.print(f"                 {rl}  [dim]\\[Pynt, 2025][/dim]")
+            if result.mcp_server_count >= 5:
+                console.print("                 [dim]Most agent projects we see have 2-3 servers.[/dim]")
 
     # Guardrails
     if result.has_any_guardrails:
@@ -163,23 +197,86 @@ def _render_agent_profile(result: ScanResult, quick_wins: list[QuickWin]) -> Non
     console.print()
 
 
+# ── Known Incidents ──────────────────────────────────────────────────────────
+
+def _render_known_incidents(result: ScanResult) -> None:
+    """Render known incident warnings for MCP servers."""
+    for server in result.mcp_servers:
+        if not server.known_incidents:
+            continue
+        for incident in server.known_incidents:
+            cve_str = f" {incident.cve}" if incident.cve else ""
+            cvss_str = ""
+            if "CVSS" in incident.description:
+                # Extract CVSS from description
+                import re
+                m = re.search(r"CVSS (\d+\.?\d*)", incident.description)
+                if m:
+                    cvss_str = f" (CVSS {m.group(1)})"
+            elif incident.cve:
+                cvss_str = ""
+
+            console.print(
+                f" [bold red]!!  KNOWN INCIDENT[/bold red]  "
+                f"{server.name} has{cve_str}{cvss_str}"
+            )
+            console.print(f"    {incident.description}")
+            if incident.fixed_version and incident.fixed_version not in ("removed from npm", "patched"):
+                console.print(
+                    f"    [green]Fix: pin to {incident.package}@{incident.fixed_version} or later.[/green]"
+                )
+            elif incident.fixed_version == "removed from npm":
+                console.print(f"    [red]Package removed from npm. Remove from your config.[/red]")
+            console.print()
+
+
 # ── Top Risk Paths ────────────────────────────────────────────────────────────
 
-def _render_top_paths(result: ScanResult) -> None:
-    """Render the top risk paths section."""
+def _render_top_paths_security(result: ScanResult) -> None:
+    """Render the top risk paths in security mode (severity-first)."""
     if not result.top_paths:
         return
 
     console.rule("[bold]TOP RISK PATHS[/bold]", style="bold")
     console.print()
-
     for finding in result.top_paths:
         _render_finding_compact(finding)
         console.print()
 
 
+def _render_top_paths_dev(result: ScanResult) -> None:
+    """Render all findings in dev mode (reliability-first with class grouping)."""
+    all_findings = result.top_paths + result.signals
+    if not all_findings:
+        return
+
+    console.rule("[bold]WHAT WILL BREAK FIRST[/bold]", style="bold")
+    console.print()
+
+    # Sort findings by class then severity
+    sorted_findings = sorted(
+        all_findings,
+        key=lambda f: (
+            FINDING_CLASS_ORDER.get(f.finding_class, 2),
+            SEVERITY_SORT.get(f.severity, 3),
+        ),
+    )
+
+    current_class = None
+    for finding in sorted_findings:
+        fc = finding.finding_class
+        if fc != current_class:
+            current_class = fc
+            label = FINDING_CLASS_LABELS.get(fc, fc.upper())
+            console.print(f" [bold dim]{label}[/bold dim]")
+            console.print()
+
+        _render_finding_compact(finding)
+        console.print()
+
+
 def _render_finding_compact(finding: Finding) -> None:
-    """Render a finding in compact attack-scenario format."""
+    """Render a finding in compact attack-scenario format with ASI ID and citation."""
     sev_label = {
         Severity.CRITICAL: "[bold red]CRITICAL[/bold red]",
         Severity.HIGH: "[bold yellow]HIGH    [/bold yellow]",
@@ -187,11 +284,19 @@ def _render_finding_compact(finding: Finding) -> None:
         Severity.LOW: "[dim]LOW     [/dim]",
     }.get(finding.severity, "")
 
-    console.print(f"  {sev_label}  {finding.id}  [bold]{finding.title}[/bold]")
+    # Include ASI ID after STRATUM ID
+    asi_str = f" \u00b7 {finding.owasp_id}" if finding.owasp_id else ""
+    console.print(f"  {sev_label}  {finding.id}{asi_str}  [bold]{finding.title}[/bold]")
+
     if finding.description:
-        # Wrap description text
         desc = finding.description
         console.print(f"  {desc}")
+
+    # Citation line (dimmed)
+    citation = get_citation(finding.id)
+    if citation:
+        console.print(f"  [dim]\u25b8 {citation.stat} -- {citation.source}[/dim]")
+
     if finding.evidence:
         evidence_str = " \u00b7 ".join(finding.evidence)
         conf = finding.confidence.value.upper()
@@ -301,8 +406,9 @@ def _render_signals(result: ScanResult, verbose: bool, quick_wins: list[QuickWin
             if finding.id in qw_ids:
                 qw_note = " [dim](see quick wins)[/dim]"
 
+            asi_str = f" \u00b7 {finding.owasp_id}" if finding.owasp_id else ""
             console.print(
-                f"  {sev_short}      {finding.id}  {finding.title}"
+                f"  {sev_short}      {finding.id}{asi_str}  {finding.title}"
                 f"   {finding.category.value} \u00b7 {finding.confidence.value}"
                 f"{qw_note}"
             )
@@ -318,9 +424,10 @@ def _render_finding_full(finding: Finding) -> None:
     sev = SEVERITY_DOTS.get(finding.severity, "")
     sev_label = SEVERITY_ICONS.get(finding.severity, "")
 
+    asi_str = f" \u00b7 {finding.owasp_id}" if finding.owasp_id else ""
     console.print(
         f" {sev} {sev_label} \u00b7 {finding.confidence.value} \u00b7 "
-        f"{finding.category.value}              {finding.id}"
+        f"{finding.category.value}              {finding.id}{asi_str}"
     )
     console.print(f" [bold]{finding.title}[/bold]")
     console.print()
@@ -329,6 +436,12 @@ def _render_finding_full(finding: Finding) -> None:
 
     if finding.description:
         console.print(f" {finding.description}")
+        console.print()
+
+    # Citation
+    citation = get_citation(finding.id)
+    if citation:
+        console.print(f" [dim]\u25b8 {citation.stat} -- {citation.source}[/dim]")
         console.print()
 
     if finding.evidence:
@@ -348,6 +461,35 @@ def _render_finding_full(finding: Finding) -> None:
         console.print(f" [dim]Refs: {' \u00b7 '.join(refs)}[/dim]")
 
     console.print()
+
+
+# ── Learn More ───────────────────────────────────────────────────────────────
+
+def _render_learn_more(result: ScanResult) -> None:
+    """Render the LEARN MORE section with contextual research links."""
+    all_findings = result.top_paths + result.signals
+    if not all_findings:
+        return
+
+    links = select_research_links(all_findings)
+    if not links:
+        return
+
+    console.rule("[bold]LEARN MORE[/bold]", style="bold")
+    console.print()
+    console.print("  These findings map to published research, not Stratum's opinion:")
+    console.print()
+
+    for link in links:
+        console.print(f"  [bold]{link.title}[/bold]")
+        # Extract domain from URL for display
+        short_url = link.url.replace("https://", "").replace("http://", "")
+        if "/" in short_url:
+            domain = short_url.split("/")[0]
+        else:
+            domain = short_url
+        console.print(f"  [dim]{domain} -> {link.relevance}[/dim]")
+        console.print()
 
 
 # ── Progress (re-scans) ──────────────────────────────────────────────────────
@@ -456,16 +598,26 @@ def _render_nudges(result: ScanResult, shared: bool = False) -> None:
     )
 
     if show_share:
-        cap_count = result.total_capabilities
-        path_count = len(result.top_paths)
         console.print()
         console.rule(style="dim")
-        console.print(
-            f" [bold]Help build agent safety benchmarks[/bold]\n"
-            f"    No source code. No identifiers. Counts and ratios only.\n"
-            f"    [cyan]stratum scan . --share-telemetry[/cyan]\n"
-            f"    [dim]stratum config suppress-share-prompt    (to hide this)[/dim]"
-        )
+
+        # NIST nudge: time-limited before March 10, 2026
+        nist_deadline = datetime(2026, 3, 10, tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        if now < nist_deadline:
+            console.print(
+                " [bold]Help shape AI agent security standards[/bold] -- anonymized scan data may\n"
+                "    inform NIST's upcoming guidelines. Run with [cyan]--share-telemetry[/cyan] to\n"
+                "    contribute. See docs/telemetry.md for exactly what is shared.\n"
+                "    [dim]stratum config suppress-share-prompt    (to hide this)[/dim]"
+            )
+        else:
+            console.print(
+                f" [bold]Help build agent safety benchmarks[/bold]\n"
+                f"    No source code. No identifiers. Counts and ratios only.\n"
+                f"    [cyan]stratum scan . --share-telemetry[/cyan]\n"
+                f"    [dim]stratum config suppress-share-prompt    (to hide this)[/dim]"
+            )
 
     # Benchmark teaser: shown on scans 1, 5, 10, 15, 20...
     show_teaser = (

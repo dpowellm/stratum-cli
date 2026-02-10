@@ -32,13 +32,20 @@ def cli() -> None:
               help="Submit anonymized telemetry profile to Stratum")
 @click.option("--fail-above", type=int, default=None,
               help="Exit 1 if risk score exceeds this threshold (for CI gates)")
+@click.option("--security", "security_mode", is_flag=True,
+              help="Security-first ordering (severity-based, default for --ci)")
 def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
-             no_telemetry: bool, share_telemetry: bool, fail_above: int | None) -> None:
+             no_telemetry: bool, share_telemetry: bool, fail_above: int | None,
+             security_mode: bool) -> None:
     """Scan a project directory for agent risk paths."""
     # Conflict check
     if share_telemetry and no_telemetry:
         click.echo("Error: --share-telemetry and --no-telemetry are mutually exclusive.", err=True)
         sys.exit(1)
+
+    # --ci implies --security ordering
+    if ci:
+        security_mode = True
 
     log_level = logging.DEBUG if verbose else logging.WARNING
     logging.basicConfig(
@@ -77,6 +84,13 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
         profile_dict = dataclasses.asdict(profile)
         submit_profile(profile_dict)
 
+    # Populate citation field on findings for JSON output
+    from stratum.research.citations import get_citation
+    for finding in result.top_paths + result.signals:
+        cit = get_citation(finding.id)
+        if cit:
+            finding.citation = {"stat": cit.stat, "source": cit.source, "url": cit.url}
+
     # Output
     if ci or json_output:
         import dataclasses
@@ -114,7 +128,7 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
                 if has_high:
                     sys.exit(2)
     else:
-        render(result, verbose=verbose, shared=share_telemetry)
+        render(result, verbose=verbose, shared=share_telemetry, security_mode=security_mode)
 
     # --fail-above threshold check (works with all output modes)
     if fail_above is not None and result.risk_score > fail_above:

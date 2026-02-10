@@ -70,6 +70,7 @@ class MCPServer:
     npm_package: str = ""
     package_version: str = ""
     is_known_safe: bool = False
+    known_incidents: list = field(default_factory=list)  # list[MCPIncident] from research
 
 
 @dataclass
@@ -99,6 +100,9 @@ class Finding:
     effort: str = "low"
     references: list[str] = field(default_factory=list)
     owasp_id: str = ""
+    owasp_name: str = ""        # e.g. "Agent Goal Hijacking"
+    finding_class: str = "security"  # "reliability" | "operational" | "security"
+    citation: dict | None = None  # For JSON output: {stat, source, url}
     quick_fix_type: str = ""  # Key into remediation TEMPLATES dict
 
 

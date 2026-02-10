@@ -14,6 +14,7 @@ from stratum.models import (
 from stratum.knowledge.db import (
     KNOWN_CVES, FINANCIAL_IMPORTS, HTTP_LIBRARIES,
 )
+from stratum.research.owasp import get_owasp
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +149,7 @@ def _check_data_exfil(
             confidence = _derive_finding_confidence(dc, oc)
             severity = Severity.CRITICAL if guard_status == "none" else Severity.HIGH
 
+            owasp_id, owasp_name = get_owasp("STRATUM-001")
             findings.append(Finding(
                 id="STRATUM-001",
                 severity=severity,
@@ -177,7 +179,9 @@ def _check_data_exfil(
                 references=[
                     "https://embracethered.com/blog/posts/2024/m365-copilot-echo-leak/",
                 ],
-                owasp_id="ASI01",
+                owasp_id=owasp_id,
+                owasp_name=owasp_name,
+                finding_class="security",
                 quick_fix_type="add_hitl",
             ))
 
@@ -211,6 +215,7 @@ def _check_destructive(
         confidence = _derive_finding_confidence(dc)
         severity = Severity.CRITICAL if guard_status == "none" else Severity.HIGH
 
+        owasp_id, owasp_name = get_owasp("STRATUM-002")
         findings.append(Finding(
             id="STRATUM-002",
             severity=severity,
@@ -232,7 +237,9 @@ def _check_destructive(
                 f'graph.compile(interrupt_before=["{dc.function_name}"])'
             ),
             effort="low",
-            owasp_id="ASI02",
+            owasp_id=owasp_id,
+            owasp_name=owasp_name,
+            finding_class="operational",
             quick_fix_type="add_hitl",
         ))
 
@@ -254,6 +261,7 @@ def _check_code_exec(capabilities: list[Capability]) -> list[Finding]:
     for cc in code_caps:
         confidence = _derive_finding_confidence(cc)
 
+        owasp_id, owasp_name = get_owasp("STRATUM-003")
         findings.append(Finding(
             id="STRATUM-003",
             severity=Severity.HIGH,
@@ -278,7 +286,9 @@ def _check_code_exec(capabilities: list[Capability]) -> list[Finding]:
                 "Sandbox the execution environment or add interrupt_before"
             ),
             effort="med",
-            owasp_id="ASI05",
+            owasp_id=owasp_id,
+            owasp_name=owasp_name,
+            finding_class="security",
         ))
 
     return findings
@@ -306,6 +316,7 @@ def _check_mcp_cve(mcp_servers: list[MCPServer]) -> list[Finding]:
                 if _version_gte(server.package_version, fixed):
                     continue  # Patched
 
+            owasp_id, owasp_name = get_owasp("STRATUM-004")
             findings.append(Finding(
                 id="STRATUM-004",
                 severity=Severity.CRITICAL,
@@ -327,7 +338,9 @@ def _check_mcp_cve(mcp_servers: list[MCPServer]) -> list[Finding]:
                 remediation=f"Pin: npx {pkg}@{fixed}" if fixed else f"Remove or replace {pkg}",
                 effort="low",
                 references=cve_info.get("urls", []),
-                owasp_id="ASI04",
+                owasp_id=owasp_id,
+                owasp_name=owasp_name,
+                finding_class="security",
             ))
 
     return findings
@@ -356,6 +369,7 @@ def _check_mcp_credentials(mcp_servers: list[MCPServer]) -> list[Finding]:
         if not sensitive_vars:
             continue
 
+        owasp_id, owasp_name = get_owasp("STRATUM-005")
         findings.append(Finding(
             id="STRATUM-005",
             severity=Severity.HIGH,
@@ -376,7 +390,9 @@ def _check_mcp_credentials(mcp_servers: list[MCPServer]) -> list[Finding]:
             ),
             remediation="Use scoped read-only credentials for MCP servers",
             effort="med",
-            owasp_id="ASI04",
+            owasp_id=owasp_id,
+            owasp_name=owasp_name,
+            finding_class="security",
             quick_fix_type="mcp_remove_credentials",
         ))
 
@@ -396,6 +412,7 @@ def _check_mcp_supply_chain(mcp_servers: list[MCPServer]) -> list[Finding]:
 
         # Unpinned NPM package from unknown publisher
         if server.npm_package and not server.package_version and not server.is_known_safe:
+            owasp_id, owasp_name = get_owasp("STRATUM-006")
             findings.append(Finding(
                 id="STRATUM-006",
                 severity=Severity.HIGH,
@@ -419,12 +436,15 @@ def _check_mcp_supply_chain(mcp_servers: list[MCPServer]) -> list[Finding]:
                     f"Pin version: npx {server.npm_package}@<version>"
                 ),
                 effort="low",
-                owasp_id="ASI04",
+                owasp_id=owasp_id,
+                owasp_name=owasp_name,
+                finding_class="security",
                 quick_fix_type="pin_mcp_version",
             ))
 
         # Remote server with no auth
         if server.is_remote and not server.has_auth:
+            owasp_id, owasp_name = get_owasp("STRATUM-006")
             findings.append(Finding(
                 id="STRATUM-006",
                 severity=Severity.HIGH,
@@ -445,7 +465,9 @@ def _check_mcp_supply_chain(mcp_servers: list[MCPServer]) -> list[Finding]:
                 ),
                 remediation="Add authentication (API key, OAuth) to the MCP connection",
                 effort="med",
-                owasp_id="ASI04",
+                owasp_id=owasp_id,
+                owasp_name=owasp_name,
+                finding_class="security",
             ))
 
     return findings
@@ -488,6 +510,7 @@ def _check_unvalidated_financial(
     severity = Severity.HIGH if guard_status == "none" else Severity.MEDIUM
     confidence = _derive_finding_confidence(*financial_caps)
 
+    owasp_id, owasp_name = get_owasp("STRATUM-007")
     findings: list[Finding] = []
     for fc in financial_caps:
         findings.append(Finding(
@@ -516,7 +539,9 @@ def _check_unvalidated_financial(
                 f'graph.compile(interrupt_before=["{fc.function_name}"])'
             ),
             effort="low",
-            owasp_id="ASI02",
+            owasp_id=owasp_id,
+            owasp_name=owasp_name,
+            finding_class="operational",
             quick_fix_type="add_financial_validation",
         ))
 
@@ -540,6 +565,7 @@ def _check_no_error_handling(capabilities: list[Capability]) -> list[Finding]:
 
     evidence = [f"{c.source_file}:{c.line_number}" for c in unhandled[:5]]
 
+    owasp_id, owasp_name = get_owasp("STRATUM-008")
     return [Finding(
         id="STRATUM-008",
         severity=Severity.MEDIUM,
@@ -565,7 +591,9 @@ def _check_no_error_handling(capabilities: list[Capability]) -> list[Finding]:
             '    return f"Service unavailable: {e}"'
         ),
         effort="med",
-        owasp_id="ASI08",
+        owasp_id=owasp_id,
+        owasp_name=owasp_name,
+        finding_class="reliability",
         quick_fix_type="add_error_handling",
     )]
 
@@ -588,6 +616,7 @@ def _check_no_timeout(capabilities: list[Capability]) -> list[Finding]:
 
     evidence = [f"{c.source_file}:{c.line_number}" for c in no_timeout[:5]]
 
+    owasp_id, owasp_name = get_owasp("STRATUM-009")
     return [Finding(
         id="STRATUM-009",
         severity=Severity.MEDIUM,
@@ -610,7 +639,9 @@ def _check_no_timeout(capabilities: list[Capability]) -> list[Finding]:
             "requests.get(url, timeout=30)"
         ),
         effort="low",
-        owasp_id="ASI08",
+        owasp_id=owasp_id,
+        owasp_name=owasp_name,
+        finding_class="reliability",
         quick_fix_type="no_timeout",
     )]
 
@@ -656,6 +687,7 @@ def _check_volatile_state(
             "# Better: use PostgresSaver for durability"
         )
 
+    owasp_id, owasp_name = get_owasp("STRATUM-010")
     return [Finding(
         id="STRATUM-010",
         severity=Severity.MEDIUM,
@@ -671,5 +703,7 @@ def _check_volatile_state(
         ),
         remediation=remediation,
         effort="med",
-        owasp_id="ASI08",
+        owasp_id=owasp_id,
+        owasp_name=owasp_name,
+        finding_class="security",
     )]

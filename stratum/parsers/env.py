@@ -7,6 +7,7 @@ import re
 
 from stratum.models import Confidence, Finding, RiskCategory, Severity
 from stratum.knowledge.db import SENSITIVE_ENV_PATTERNS
+from stratum.research.owasp import get_owasp
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ def scan_env(directory: str, py_file_paths: list[str]) -> tuple[list[str], list[
         gitignore_path = os.path.join(directory, ".gitignore")
         env_in_gitignore = _is_env_in_gitignore(gitignore_path)
         if not env_in_gitignore:
+            owasp_id, owasp_name = get_owasp("ENV-001")
             findings.append(Finding(
                 id="ENV-001",
                 severity=Severity.MEDIUM,
@@ -49,7 +51,9 @@ def scan_env(directory: str, py_file_paths: list[str]) -> tuple[list[str], list[
                          "sees production database credentials and API keys.",
                 remediation='echo ".env" >> .gitignore',
                 effort="low",
-                owasp_id="ASI04",
+                owasp_id=owasp_id,
+                owasp_name=owasp_name,
+                finding_class="reliability",
                 quick_fix_type="env_gitignore",
             ))
 
