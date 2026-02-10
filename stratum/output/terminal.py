@@ -61,6 +61,20 @@ SEVERITY_SORT = {
     Severity.LOW: 3,
 }
 
+# Audit summary checklist for low-finding scans (<=2 findings)
+RULE_CHECKLIST = [
+    ("STRATUM-001", "No data exfiltration paths"),
+    ("STRATUM-002", "No unguarded destructive tools"),
+    ("STRATUM-003", "No code execution via tools"),
+    ("STRATUM-004", "No known MCP vulnerabilities"),
+    ("STRATUM-005", "No credential exposure"),
+    ("STRATUM-006", "No supply chain risk"),
+    ("STRATUM-007", "No unvalidated financial ops"),
+    ("STRATUM-008", "All external calls have error handling"),
+    ("STRATUM-009", "All HTTP calls have timeouts"),
+    ("STRATUM-010", "Agent state is persisted"),
+]
+
 
 def render(result: ScanResult, verbose: bool = False, shared: bool = False,
            security_mode: bool = False) -> None:
@@ -74,7 +88,10 @@ def render(result: ScanResult, verbose: bool = False, shared: bool = False,
     _render_known_incidents(result)
     if result.diff:
         _render_progress(result)
-    if security_mode:
+    if len(all_findings) <= 2:
+        _render_audit_summary(result, all_findings)
+        _render_quick_wins(result, quick_wins)
+    elif security_mode:
         _render_top_paths_security(result)
         _render_learning_governance_sections(result)
         _render_quick_wins(result, quick_wins)
@@ -115,6 +132,72 @@ def _render_summary_line(result: ScanResult) -> None:
     guard_str = f"{result.guardrail_count} guardrails" if result.guardrail_count else "0 guardrails"
     line = f"{finding_str}    Risk: {result.risk_score}/100    {guard_str}"
     console.print(f" [bold]{line.strip()}[/bold]")
+    console.print()
+
+
+def _render_audit_summary(result: ScanResult, findings: list[Finding]) -> None:
+    """Render checklist-style audit summary for low-finding scans.
+
+    Called when len(findings) <= 2. Shows what was checked and what passed,
+    so the user sees the tool did real work even when few risks were found.
+    """
+    finding_ids = {f.id for f in findings}
+    finding_by_id: dict[str, Finding] = {}
+    for f in findings:
+        if f.id not in finding_by_id:
+            finding_by_id[f.id] = f
+
+    console.rule("[bold]AUDIT SUMMARY[/bold]", style="bold")
+    console.print()
+
+    checklist_ids = {rule_id for rule_id, _ in RULE_CHECKLIST}
+    for rule_id, pass_text in RULE_CHECKLIST:
+        if rule_id in finding_ids:
+            f = finding_by_id[rule_id]
+            # Extract file:line from evidence if available
+            loc = ""
+            if f.evidence:
+                loc = f" \u2192 {f.evidence[0]}"
+            console.print(f"  [yellow]\u26a0[/yellow]  {f.title}{loc}")
+        else:
+            console.print(f"  [green]\u2713[/green]  {pass_text}")
+
+    # Show any non-core findings (governance, learning, etc.)
+    other_findings = [f for f in findings if f.id not in checklist_ids]
+    for f in other_findings:
+        loc = ""
+        if f.evidence:
+            loc = f" \u2192 {f.evidence[0]}"
+        console.print(f"  [yellow]\u26a0[/yellow]  {f.title}{loc}")
+
+    console.print()
+
+    # Scan scope line
+    n_py = result.files_scanned
+    n_mcp = result.mcp_configs_scanned
+    n_env = result.env_files_scanned
+    py_label = f"{n_py} Python file{'s' if n_py != 1 else ''}"
+    mcp_label = f"{n_mcp} MCP config{'s' if n_mcp != 1 else ''}"
+    env_label = f"{n_env} .env file{'s' if n_env != 1 else ''}"
+    console.print(f"  Scanned {py_label}, {mcp_label}, {env_label}.")
+
+    # Zero-finding verdict
+    if len(findings) == 0:
+        console.print("  No findings across 10 risk rules. Clean scan.")
+
+    # Low-capability nudge
+    if result.total_capabilities <= 2 and result.mcp_server_count == 0:
+        console.print()
+        console.print(
+            "  [dim]Your project has a small capability surface. Stratum's value[/dim]"
+        )
+        console.print(
+            "  [dim]increases with agent complexity \u2014 try scanning a project with[/dim]"
+        )
+        console.print(
+            "  [dim]MCP servers, multiple tools, or shared state.[/dim]"
+        )
+
     console.print()
 
 

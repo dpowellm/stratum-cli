@@ -122,6 +122,14 @@ def scan(path: str) -> ScanResult:
     eval_ctx = governance_context.get("eval", {})
     identity_ctx = governance_context.get("identity", {})
 
+    # Count files scanned
+    n_py = len(py_files)
+    n_mcp_configs = len({s.source_file for s in all_mcp_servers})
+    n_env = len([
+        f for f in os.listdir(abs_path)
+        if f == ".env" or f.startswith(".env.")
+    ]) if os.path.isdir(abs_path) else 0
+
     return ScanResult(
         directory=abs_path,
         capabilities=all_capabilities,
@@ -131,6 +139,9 @@ def scan(path: str) -> ScanResult:
         top_paths=top_paths,
         signals=signals,
         risk_score=score,
+        files_scanned=n_py,
+        mcp_configs_scanned=n_mcp_configs,
+        env_files_scanned=n_env,
         total_capabilities=len(all_capabilities),
         outbound_count=outbound,
         data_access_count=data_access,

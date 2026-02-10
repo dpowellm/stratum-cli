@@ -163,6 +163,11 @@ class ScanResult:
 
     diff: ScanDiff | None = None
 
+    # File counts (for audit summary display)
+    files_scanned: int = 0
+    mcp_configs_scanned: int = 0
+    env_files_scanned: int = 0
+
     # Learning & Governance
     agent_profiles: list[AgentProfile] = field(default_factory=list)
     learning_type: str | None = None
