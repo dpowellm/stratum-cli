@@ -16,6 +16,25 @@ OWASP_MAP: dict[str, tuple[str, str]] = {
     "STRATUM-009": ("ASI08", "Cascading Failures"),
     "STRATUM-010": ("ASI05", "Insufficient Sandboxing / Control"),
     "ENV-001":     ("ASI04", "Supply Chain & Environment Risks"),
+    # Learning & Governance
+    "LEARNING-001": ("ASI10", "Rogue Agents"),
+    "LEARNING-002": ("ASI10", "Rogue Agents"),
+    "LEARNING-003": ("ASI07", "Insecure Inter-Agent Communication"),
+    "LEARNING-004": ("ASI10", "Rogue Agents"),
+    "CONTEXT-001":  ("ASI10", "Rogue Agents"),
+    "CONTEXT-002":  ("ASI10", "Rogue Agents"),
+    "CONTEXT-003":  ("ASI07", "Insecure Inter-Agent Communication"),
+    "TELEMETRY-001": ("ASI04", "Supply Chain & Environment Risks"),
+    "TELEMETRY-002": ("ASI04", "Supply Chain & Environment Risks"),
+    "TELEMETRY-003": ("ASI05", "Insufficient Sandboxing / Control"),
+    "EVAL-001":     ("ASI09", "Human-Agent Trust Exploitation"),
+    "EVAL-002":     ("ASI05", "Insufficient Sandboxing / Control"),
+    "IDENTITY-001": ("ASI03", "Identity & Privilege Abuse"),
+    "IDENTITY-002": ("ASI03", "Identity & Privilege Abuse"),
+    "IDENTITY-003": ("ASI03", "Identity & Privilege Abuse"),
+    "PORTABILITY-001": ("", ""),
+    "PORTABILITY-002": ("ASI05", "Insufficient Sandboxing / Control"),
+    "PORTABILITY-003": ("", ""),
 }
 
 

@@ -106,6 +106,14 @@ def build_profile(result: ScanResult) -> TelemetryProfile:
     # Mitigation coverage
     coverage = _compute_mitigation_coverage(result.capabilities, result.guardrails)
 
+    # Learning & governance signals
+    has_memory = any(c.has_memory for c in result.capabilities)
+    memory_types = list({c.memory_type for c in result.capabilities if c.memory_type})
+    has_context_provenance = not any(f.id == "CONTEXT-001" for f in all_findings)
+    has_context_rollback = not any(f.id == "CONTEXT-002" for f in all_findings)
+    has_shared_creds = any(f.id == "IDENTITY-001" for f in all_findings)
+    has_agent_identity = not any(f.id == "IDENTITY-002" for f in all_findings)
+
     profile = TelemetryProfile(
         scan_id=result.scan_id,
         timestamp=result.timestamp,
@@ -137,6 +145,20 @@ def build_profile(result: ScanResult) -> TelemetryProfile:
         has_financial_tools=any(c.kind == "financial" for c in result.capabilities),
         financial_validation_rate=round(fin_val_rate, 2),
         mitigation_coverage=coverage,
+        # Learning & Governance
+        has_memory_store=has_memory or result.has_learning_loop,
+        memory_store_types=memory_types,
+        has_learning_loop=result.has_learning_loop,
+        learning_type=result.learning_type,
+        has_context_provenance=has_context_provenance,
+        has_context_rollback=has_context_rollback,
+        has_shared_context=result.has_shared_context,
+        telemetry_destination_count=len(result.telemetry_destinations),
+        has_eval_framework=any(f.id in ("EVAL-001",) for f in all_findings) or not any(f.id == "EVAL-002" for f in all_findings),
+        has_eval_conflict=result.has_eval_conflict,
+        agent_count=len(result.agent_profiles),
+        has_shared_credentials=has_shared_creds,
+        has_agent_identity=has_agent_identity,
     )
 
     return _validate_profile(profile)

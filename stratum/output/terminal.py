@@ -39,10 +39,18 @@ BENCHMARK_TEASER = (
 )
 
 # Finding class ordering for --dev mode (reliability-first)
-FINDING_CLASS_ORDER = {"reliability": 0, "operational": 1, "security": 2}
+FINDING_CLASS_ORDER = {
+    "reliability": 0,
+    "operational": 1,
+    "learning": 2,
+    "governance": 3,
+    "security": 4,
+}
 FINDING_CLASS_LABELS = {
     "reliability": "RELIABILITY",
     "operational": "OPERATIONAL",
+    "learning": "LEARNING & DRIFT RISK",
+    "governance": "GOVERNANCE ARCHITECTURE",
     "security": "SECURITY",
 }
 
@@ -67,6 +75,7 @@ def render(result: ScanResult, verbose: bool = False, shared: bool = False,
         _render_progress(result)
     if security_mode:
         _render_top_paths_security(result)
+        _render_learning_governance_sections(result)
         _render_quick_wins(result, quick_wins)
         _render_signals(result, verbose, quick_wins)
     else:
@@ -273,6 +282,28 @@ def _render_top_paths_dev(result: ScanResult) -> None:
 
         _render_finding_compact(finding)
         console.print()
+
+
+def _render_learning_governance_sections(result: ScanResult) -> None:
+    """Render LEARNING & DRIFT RISK and GOVERNANCE ARCHITECTURE sections (security mode)."""
+    all_findings = result.top_paths + result.signals
+
+    learning_findings = [f for f in all_findings if f.finding_class == "learning"]
+    governance_findings = [f for f in all_findings if f.finding_class == "governance"]
+
+    if learning_findings:
+        console.rule("[bold]LEARNING & DRIFT RISK[/bold]", style="bold")
+        console.print()
+        for finding in learning_findings:
+            _render_finding_compact(finding)
+            console.print()
+
+    if governance_findings:
+        console.rule("[bold]GOVERNANCE ARCHITECTURE[/bold]", style="bold")
+        console.print()
+        for finding in governance_findings:
+            _render_finding_compact(finding)
+            console.print()
 
 
 def _render_finding_compact(finding: Finding) -> None:

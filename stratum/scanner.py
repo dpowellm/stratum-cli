@@ -90,17 +90,22 @@ def scan(path: str) -> ScanResult:
             elif "MemorySaver" in content and checkpoint_type != "durable":
                 checkpoint_type = "memory_only"
 
+    # Build relative-path py_files for governance rules
+    rel_py_files = [(os.path.relpath(fp, abs_path), content) for fp, content in py_files]
+
     # Run engine
     engine = Engine()
-    top_paths, signals = engine.evaluate(
+    top_paths, signals, governance_context = engine.evaluate(
         all_capabilities, all_mcp_servers, all_guardrails,
         env_var_names, env_findings, checkpoint_type,
+        py_files=rel_py_files,
     )
 
     # Calculate risk score
     all_findings = top_paths + signals
     score = _calculate_risk_score(
         all_findings, all_capabilities, all_guardrails, all_mcp_servers,
+        governance_context,
     )
 
     # Count capabilities
@@ -110,6 +115,12 @@ def scan(path: str) -> ScanResult:
     code_exec = sum(1 for c in all_capabilities if c.kind == "code_exec")
     destructive = sum(1 for c in all_capabilities if c.kind == "destructive")
     financial = sum(1 for c in all_capabilities if c.kind == "financial")
+
+    # Extract governance metadata
+    learning_ctx = governance_context.get("learning", {})
+    telemetry_ctx = governance_context.get("telemetry", {})
+    eval_ctx = governance_context.get("eval", {})
+    identity_ctx = governance_context.get("identity", {})
 
     return ScanResult(
         directory=abs_path,
@@ -130,6 +141,12 @@ def scan(path: str) -> ScanResult:
         guardrail_count=len(all_guardrails),
         has_any_guardrails=has_any_guardrails,
         checkpoint_type=checkpoint_type,
+        # Learning & Governance
+        learning_type=learning_ctx.get("learning_type"),
+        has_learning_loop=learning_ctx.get("has_learning_loop", False),
+        has_shared_context=learning_ctx.get("has_shared_context", False),
+        telemetry_destinations=telemetry_ctx.get("telemetry_destinations", []),
+        has_eval_conflict=eval_ctx.get("has_eval_conflict", False),
     )
 
 
@@ -138,6 +155,7 @@ def _calculate_risk_score(
     capabilities: list[Capability],
     guardrails: list[GuardrailSignal],
     mcp_servers: list[MCPServer],
+    governance_context: dict | None = None,
 ) -> int:
     """Calculate the risk score from findings and context."""
     score = 0
@@ -183,6 +201,57 @@ def _calculate_risk_score(
     ]
     if len(external_caps) >= 3 and not any(c.has_error_handling for c in external_caps):
         score += 5
+
+    # Learning & governance bonuses
+    if governance_context:
+        learning_ctx = governance_context.get("learning", {})
+        telemetry_ctx = governance_context.get("telemetry", {})
+        eval_ctx = governance_context.get("eval", {})
+        identity_ctx = governance_context.get("identity", {})
+
+        has_learning_loop = learning_ctx.get("has_learning_loop", False)
+        has_provenance = any(
+            w.get("has_provenance") for w in learning_ctx.get("write_ops", [])
+        )
+        has_rollback = any(
+            f.id == "CONTEXT-002" for f in all_findings
+        ) is False  # No CONTEXT-002 means rollback exists
+        # Actually: if CONTEXT-002 is NOT in findings, rollback exists
+        has_rollback = not any(f.id == "CONTEXT-002" for f in all_findings)
+
+        # Learning loop with no integrity controls
+        if has_learning_loop and not has_provenance and not has_rollback:
+            score += 12
+
+        # Shared context with no write scoping
+        has_shared = learning_ctx.get("has_shared_context", False)
+        has_scoped_writes = any(
+            w.get("has_provenance") for w in learning_ctx.get("write_ops", [])
+        )
+        if has_shared and not has_scoped_writes:
+            score += 15
+
+        # Trajectory RL from production data
+        if learning_ctx.get("learning_type") == "trajectory_rl":
+            score += 20
+
+        # Trace data flowing to model provider
+        if telemetry_ctx.get("has_trace_to_model_provider", False):
+            score += 8
+
+        # Eval provider conflict
+        if eval_ctx.get("has_eval_conflict", False):
+            score += 5
+
+        # Shared agent credentials
+        if identity_ctx.get("has_shared_credentials", False):
+            score += 10
+
+        # No agent identity across >1 agent
+        agent_count = identity_ctx.get("agent_count", 0)
+        all_have_identity = identity_ctx.get("all_have_identity", True)
+        if agent_count > 1 and not all_have_identity:
+            score += 8
 
     return min(score, 100)
 

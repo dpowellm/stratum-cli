@@ -11,6 +11,12 @@ from stratum.models import (
     MCPServer, Severity,
 )
 from stratum.rules import paths
+from stratum.rules import learning_risk
+from stratum.rules import context_integrity
+from stratum.rules import telemetry_dest
+from stratum.rules import eval_integrity
+from stratum.rules import agent_identity
+from stratum.rules import portability_risk
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +60,12 @@ class Engine:
         env_vars: list[str],
         env_findings: list[Finding],
         checkpoint_type: str,
-    ) -> tuple[list[Finding], list[Finding]]:
-        """Run all rules, gate severity, deduplicate, split into top_paths + signals."""
+        py_files: list[tuple[str, str]] | None = None,
+    ) -> tuple[list[Finding], list[Finding], dict]:
+        """Run all rules, gate severity, deduplicate, split into top_paths + signals.
+
+        Returns (top_paths, signals, governance_context).
+        """
         all_findings: list[Finding] = []
 
         # Path rules (all 10)
@@ -65,6 +75,40 @@ class Engine:
 
         # Env findings
         all_findings.extend(env_findings)
+
+        # Learning & Governance rules (only when py_files provided)
+        governance_context: dict = {}
+        if py_files:
+            # Learning risk
+            learning_findings, learning_ctx = learning_risk.evaluate(py_files)
+            all_findings.extend(learning_findings)
+
+            # Context integrity (depends on learning context)
+            context_findings = context_integrity.evaluate(py_files, learning_ctx)
+            all_findings.extend(context_findings)
+
+            # Telemetry destination
+            telemetry_findings, telemetry_ctx = telemetry_dest.evaluate(py_files, env_vars)
+            all_findings.extend(telemetry_findings)
+
+            # Eval integrity
+            eval_findings, eval_ctx = eval_integrity.evaluate(py_files, telemetry_ctx)
+            all_findings.extend(eval_findings)
+
+            # Agent identity
+            identity_findings, identity_ctx = agent_identity.evaluate(py_files, telemetry_ctx)
+            all_findings.extend(identity_findings)
+
+            # Portability risk
+            portability_findings = portability_risk.evaluate(py_files, guardrails, telemetry_ctx)
+            all_findings.extend(portability_findings)
+
+            governance_context = {
+                "learning": learning_ctx,
+                "telemetry": telemetry_ctx,
+                "eval": eval_ctx,
+                "identity": identity_ctx,
+            }
 
         # ENFORCE acceptance criterion: gate every finding
         for i, f in enumerate(all_findings):
@@ -99,4 +143,4 @@ class Engine:
         top_keys = {_finding_key(f) for f in top}
         signals = [f for f in deduped if _finding_key(f) not in top_keys]
 
-        return top, signals
+        return top, signals, governance_context

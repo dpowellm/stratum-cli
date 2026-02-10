@@ -23,6 +23,8 @@ class RiskCategory(str, Enum):
     SECURITY = "security"
     OPERATIONAL = "operational"
     BUSINESS = "business"
+    COMPOUNDING = "compounding"
+    COMPLIANCE = "compliance"
 
 
 class TrustLevel(str, Enum):
@@ -54,6 +56,14 @@ class Capability:
     has_timeout: bool = False
     has_input_validation: bool = False
     call_text: str = ""  # Actual source line text for remediation diffs. NOT in telemetry.
+
+    # Learning-related (populated by learning_risk scanner)
+    has_memory: bool = False
+    memory_type: str | None = None      # "vector", "conversation", "file", "custom"
+    memory_store: str = ""              # e.g. "chromadb", "pinecone"
+    memory_is_shared: bool = False
+    writes_to_memory: bool = False
+    reads_from_memory: bool = False
 
 
 @dataclass
@@ -107,6 +117,26 @@ class Finding:
 
 
 @dataclass
+class AgentProfile:
+    """Metadata about an agent definition detected in the project."""
+    source_file: str
+    scope_name: str
+    model_provider: str = ""
+    has_unique_identity: bool = False
+    credential_env_var: str = ""
+
+    # Learning
+    learning_type: str | None = None
+    memory_stores: list[str] = field(default_factory=list)
+
+    # Telemetry
+    telemetry_destinations: list[str] = field(default_factory=list)
+
+    # Eval
+    eval_provider: str | None = None
+
+
+@dataclass
 class ScanResult:
     scan_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
@@ -132,6 +162,14 @@ class ScanResult:
     checkpoint_type: str = "none"
 
     diff: ScanDiff | None = None
+
+    # Learning & Governance
+    agent_profiles: list[AgentProfile] = field(default_factory=list)
+    learning_type: str | None = None
+    has_learning_loop: bool = False
+    has_shared_context: bool = False
+    telemetry_destinations: list[str] = field(default_factory=list)
+    has_eval_conflict: bool = False
 
 
 @dataclass
@@ -217,3 +255,18 @@ class TelemetryProfile:
 
     # === Mitigation coverage (telemetry primitives) ===
     mitigation_coverage: dict[str, float] = field(default_factory=dict)  # [structural]
+
+    # === Learning & Governance signals ===
+    has_memory_store: bool = False                                        # [structural]
+    memory_store_types: list[str] = field(default_factory=list)          # [structural]
+    has_learning_loop: bool = False                                       # [structural]
+    learning_type: str | None = None                                     # [structural]
+    has_context_provenance: bool = False                                  # [structural]
+    has_context_rollback: bool = False                                    # [structural]
+    has_shared_context: bool = False                                      # [structural]
+    telemetry_destination_count: int = 0                                  # [scale]
+    has_eval_framework: bool = False                                      # [structural]
+    has_eval_conflict: bool = False                                       # [structural]
+    agent_count: int = 0                                                  # [scale]
+    has_shared_credentials: bool = False                                  # [structural]
+    has_agent_identity: bool = False                                      # [structural]
