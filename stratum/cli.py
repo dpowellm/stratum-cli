@@ -3,13 +3,14 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 
 import click
 
 from stratum import __version__
 from stratum.scanner import scan
-from stratum.output.terminal import render
+from stratum.output.terminal import render, print_first_run_notice, print_comparison_url
 from stratum.telemetry.history import load_last, save_history, compute_diff
 from stratum.telemetry.profile import build_profile
 
@@ -27,22 +28,18 @@ def cli() -> None:
 @click.option("--json-output", "--json", "json_output", is_flag=True,
               help="JSON to stdout instead of Rich")
 @click.option("--ci", is_flag=True, help="CI mode: JSON output + exit codes")
-@click.option("--no-telemetry", is_flag=True, help="Skip telemetry profile save")
-@click.option("--share-telemetry", is_flag=True,
-              help="Submit anonymized telemetry profile to Stratum")
+@click.option("--no-telemetry", is_flag=True,
+              help="Don't send anonymized statistics this scan")
+@click.option("--offline", is_flag=True,
+              help="No network calls, no local telemetry file")
 @click.option("--fail-above", type=int, default=None,
               help="Exit 1 if risk score exceeds this threshold (for CI gates)")
 @click.option("--security", "security_mode", is_flag=True,
               help="Security-first ordering (severity-based, default for --ci)")
 def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
-             no_telemetry: bool, share_telemetry: bool, fail_above: int | None,
+             no_telemetry: bool, offline: bool, fail_above: int | None,
              security_mode: bool) -> None:
     """Run a security audit on an AI agent project."""
-    # Conflict check
-    if share_telemetry and no_telemetry:
-        click.echo("Error: --share-telemetry and --no-telemetry are mutually exclusive.", err=True)
-        sys.exit(1)
-
     # --ci implies --security ordering
     if ci:
         security_mode = True
@@ -53,21 +50,41 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
         format="%(name)s: %(message)s",
     )
 
+    abs_path = os.path.abspath(path)
+    stratum_dir = os.path.join(abs_path, ".stratum")
+
+    # Detect first run (no .stratum/ directory)
+    is_first_run = not os.path.exists(stratum_dir)
+
+    # First-run disclosure (before scan)
+    if is_first_run:
+        if json_output or ci:
+            print_first_run_notice(file=sys.stderr)
+        else:
+            print_first_run_notice()
+
+    # Determine if telemetry should be POSTed
+    config = _load_config(_get_config_path(path))
+    env_override = os.environ.get("STRATUM_TELEMETRY", "").lower()
+    telemetry_enabled = (
+        config.get("telemetry", True)      # default: on
+        and not no_telemetry               # not suppressed this scan
+        and not offline                    # not in offline mode
+        and env_override != "off"          # not suppressed by env var
+    )
+
+    # Run scan
     result = scan(path)
 
-    # History
-    import os
-    stratum_dir = os.path.join(os.path.abspath(path), ".stratum")
+    # History (always writes, even --offline)
     prev = load_last(stratum_dir)
-
     if prev:
         result.diff = compute_diff(result, prev)
-
     save_history(result, stratum_dir)
 
-    # Telemetry
+    # Telemetry profile (save locally unless --offline)
     profile = None
-    if not no_telemetry:
+    if not offline:
         profile = build_profile(result)
         profile_path = os.path.join(stratum_dir, "last-scan.json")
         try:
@@ -77,12 +94,13 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
         except OSError:
             pass
 
-    # Share telemetry
-    if share_telemetry and profile is not None:
+    # POST telemetry
+    submission_success = False
+    if telemetry_enabled and profile is not None:
         import dataclasses
         from stratum.telemetry.share import submit_profile
         profile_dict = dataclasses.asdict(profile)
-        submit_profile(profile_dict)
+        submission_success = submit_profile(profile_dict)
 
     # Populate citation field on findings for JSON output
     from stratum.research.citations import get_citation
@@ -128,7 +146,11 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
                 if has_high:
                     sys.exit(2)
     else:
-        render(result, verbose=verbose, shared=share_telemetry, security_mode=security_mode)
+        render(result, verbose=verbose, security_mode=security_mode)
+
+        # Comparison URL (only if submission succeeded, terminal mode only)
+        if submission_success:
+            print_comparison_url(result.scan_id)
 
     # --fail-above threshold check (works with all output modes)
     if fail_above is not None and result.risk_score > fail_above:
@@ -143,13 +165,11 @@ def config() -> None:
 
 def _get_config_path(path: str = ".") -> str:
     """Get the path to the Stratum config file."""
-    import os
     return os.path.join(os.path.abspath(path), ".stratum", "config.json")
 
 
 def _load_config(config_path: str) -> dict:
     """Load config from file, returning empty dict if not found."""
-    import os
     if not os.path.exists(config_path):
         return {}
     try:
@@ -161,32 +181,44 @@ def _load_config(config_path: str) -> dict:
 
 def _save_config(config_path: str, cfg: dict) -> None:
     """Save config to file."""
-    import os
     os.makedirs(os.path.dirname(config_path), exist_ok=True)
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2)
 
 
-@config.command("suppress-share-prompt")
+@config.command("set")
+@click.argument("key")
+@click.argument("value")
 @click.argument("path", default=".", type=click.Path(exists=True))
-def suppress_share_prompt(path: str) -> None:
-    """Suppress the share-telemetry nudge message."""
-    config_path = _get_config_path(path)
-    cfg = _load_config(config_path)
-    cfg["suppress_share_prompt"] = True
-    _save_config(config_path, cfg)
-    click.echo("Share prompt suppressed. Run in project directory to affect that project.")
+def config_set(key: str, value: str, path: str) -> None:
+    """Set a configuration value. Supports: telemetry (on/off)."""
+    if key == "telemetry":
+        if value not in ("on", "off"):
+            click.echo("Value must be 'on' or 'off'", err=True)
+            sys.exit(1)
+        config_path = _get_config_path(path)
+        cfg = _load_config(config_path)
+        cfg["telemetry"] = (value == "on")
+        _save_config(config_path, cfg)
+        click.echo(f"Telemetry {'enabled' if value == 'on' else 'disabled'}.")
+    else:
+        click.echo(f"Unknown config key: {key}", err=True)
+        sys.exit(1)
 
 
-@config.command("suppress-benchmark-teaser")
+@config.command("get")
+@click.argument("key")
 @click.argument("path", default=".", type=click.Path(exists=True))
-def suppress_benchmark_teaser(path: str) -> None:
-    """Suppress the benchmark teaser message."""
-    config_path = _get_config_path(path)
-    cfg = _load_config(config_path)
-    cfg["suppress_benchmark_teaser"] = True
-    _save_config(config_path, cfg)
-    click.echo("Benchmark teaser suppressed. Run in project directory to affect that project.")
+def config_get(key: str, path: str) -> None:
+    """Get a configuration value."""
+    if key == "telemetry":
+        config_path = _get_config_path(path)
+        cfg = _load_config(config_path)
+        status = "on" if cfg.get("telemetry", True) else "off"
+        click.echo(f"telemetry: {status}")
+    else:
+        click.echo(f"Unknown config key: {key}", err=True)
+        sys.exit(1)
 
 
 def main() -> None:

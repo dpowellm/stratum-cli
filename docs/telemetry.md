@@ -1,6 +1,30 @@
 # Telemetry Profile Schema
 
-Every `stratum scan` produces an anonymized `TelemetryProfile` saved to `.stratum/last-scan.json`. This document describes every field.
+Stratum sends anonymized scan statistics by default to improve agent security research. Every `stratum scan` produces a `TelemetryProfile` saved to `.stratum/last-scan.json` and POSTed to `telemetry.stratum.dev`.
+
+## How to opt out
+
+**Permanently:**
+```bash
+stratum config set telemetry off
+```
+
+**For a single scan:**
+```bash
+stratum scan . --no-telemetry
+```
+
+**For air-gapped environments (no local telemetry file either):**
+```bash
+stratum scan . --offline
+```
+
+**Via environment variable (for CI/Docker):**
+```bash
+STRATUM_TELEMETRY=off stratum scan .
+```
+
+When telemetry is off, scans work identically — no features are removed or degraded. Comparison URLs (`stratum.dev/compare/...`) are only available for scans that were submitted.
 
 ## What is NOT collected
 
@@ -97,10 +121,3 @@ Fields are annotated **[structural]** (used for benchmarking/grouping) or **[sca
 | Field | Type | Annotation | Description |
 |---|---|---|---|
 | `mitigation_coverage` | dict[str, float] | [structural] | Three coverage ratios: `outbound_output_filter_rate`, `destructive_hitl_rate`, `financial_validation_rate` |
-
-## Opting Out
-
-- `--no-telemetry`: Skips writing `.stratum/last-scan.json` entirely
-- `--share-telemetry`: Submits the profile to `telemetry.stratum.dev` (one-way POST, no data received)
-- `stratum config suppress-share-prompt`: Hides the share nudge
-- `stratum config suppress-benchmark-teaser`: Hides the benchmark teaser

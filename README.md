@@ -41,7 +41,16 @@ stratum scan . --json
 - **Not an MCP scanner.** Stratum audits the full agent: tools, memory, credentials, guardrails, telemetry, MCP configs. mcp-scan checks MCP servers. Stratum checks the agent that uses them.
 - **Reliability first.** Leads with what will crash your agent in production (timeouts, error handling) before what could exploit it (prompt injection, exfiltration). Fixes the urgent thing first.
 - **Research-backed.** Every finding cites the research behind it — MCPTox, Pynt, OWASP. Not opinions. Evidence.
-- **No account, no API key, no network calls.** Fully local. Your code never leaves your machine.
+- **No account, no API key.** Fully local analysis. Your code never leaves your machine.
+
+## Telemetry
+
+Stratum sends anonymized scan statistics (capability counts, risk scores,
+finding severities — never source code, file paths, or secrets) to improve
+agent security research. Full details: [docs/telemetry.md](docs/telemetry.md).
+
+Disable permanently: `stratum config set telemetry off`
+Disable for one scan: `stratum scan . --no-telemetry`
 
 ## Add to CI
 

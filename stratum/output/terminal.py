@@ -1,9 +1,7 @@
 """Rich terminal output for Stratum scan results."""
 from __future__ import annotations
 
-import json
 import os
-from datetime import datetime, timezone
 
 from rich.console import Console
 from rich.panel import Panel
@@ -31,12 +29,6 @@ SEVERITY_DOTS = {
     Severity.MEDIUM: "[yellow]\u25cf[/yellow]",
     Severity.LOW: "[dim]\u25cf[/dim]",
 }
-
-BENCHMARK_TEASER = (
-    " [bold]Community risk benchmarks coming soon[/bold]\n"
-    "    How does your agent compare? Track progress at\n"
-    "    [cyan]stratum.dev/benchmarks[/cyan]"
-)
 
 # Finding class ordering for --dev mode (reliability-first)
 FINDING_CLASS_ORDER = {
@@ -76,7 +68,7 @@ RULE_CHECKLIST = [
 ]
 
 
-def render(result: ScanResult, verbose: bool = False, shared: bool = False,
+def render(result: ScanResult, verbose: bool = False,
            security_mode: bool = False) -> None:
     """Render the scan result to the terminal using Rich."""
     all_findings = result.top_paths + result.signals
@@ -102,7 +94,6 @@ def render(result: ScanResult, verbose: bool = False, shared: bool = False,
     _render_learn_more(result)
     _render_whats_next(result, quick_wins)
     _render_footer(result)
-    _render_nudges(result, shared=shared)
 
 
 # ── Agent Profile ─────────────────────────────────────────────────────────────
@@ -702,72 +693,31 @@ def _render_footer(result: ScanResult) -> None:
     )
 
 
-def _get_scan_count(result: ScanResult) -> int:
-    """Get the total scan count from history for nudge display logic."""
-    stratum_dir = os.path.join(result.directory, ".stratum")
-    history_file = os.path.join(stratum_dir, "history.jsonl")
-    try:
-        if os.path.exists(history_file):
-            with open(history_file, "r") as f:
-                return sum(1 for _ in f)
-    except OSError:
-        pass
-    return 1
+def print_first_run_notice(file=None) -> None:
+    """Print telemetry disclosure on first run.
 
-
-def _load_project_config(result: ScanResult) -> dict:
-    """Load .stratum/config.json for nudge suppression."""
-    config_path = os.path.join(result.directory, ".stratum", "config.json")
-    try:
-        if os.path.exists(config_path):
-            with open(config_path, "r", encoding="utf-8") as f:
-                return json.load(f)
-    except (OSError, json.JSONDecodeError):
-        pass
-    return {}
-
-
-def _render_nudges(result: ScanResult, shared: bool = False) -> None:
-    """Render share-telemetry nudge and benchmark teaser after scan output."""
-    cfg = _load_project_config(result)
-    scan_count = _get_scan_count(result)
-
-    # Share prompt: shown on scans 1, 10, 20, 30...
-    show_share = (
-        not shared
-        and not cfg.get("suppress_share_prompt", False)
-        and (scan_count == 1 or (scan_count >= 10 and scan_count % 10 == 0))
+    Args:
+        file: Output stream. Default stdout, stderr for --json/--ci.
+    """
+    import sys
+    out = file or sys.stdout
+    c = Console(file=out, force_terminal=(file is None))
+    notice = (
+        "  \u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510\n"
+        "  \u2502  Stratum sends anonymized scan statistics to improve agent   \u2502\n"
+        "  \u2502  security research. No source code, file paths, or secrets   \u2502\n"
+        "  \u2502  are collected. See: docs/telemetry.md                       \u2502\n"
+        "  \u2502                                                              \u2502\n"
+        "  \u2502  Disable:  stratum config set telemetry off                  \u2502\n"
+        "  \u2502  One-time: stratum scan . --no-telemetry                     \u2502\n"
+        "  \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518"
     )
+    c.print(notice, style="dim")
 
-    if show_share:
-        console.print()
-        console.rule(style="dim")
 
-        # NIST nudge: time-limited before March 10, 2026
-        nist_deadline = datetime(2026, 3, 10, tzinfo=timezone.utc)
-        now = datetime.now(timezone.utc)
-        if now < nist_deadline:
-            console.print(
-                " [bold]Help shape AI agent security standards[/bold] -- anonymized scan data may\n"
-                "    inform NIST's upcoming guidelines. Run with [cyan]--share-telemetry[/cyan] to\n"
-                "    contribute. See docs/telemetry.md for exactly what is shared.\n"
-                "    [dim]stratum config suppress-share-prompt    (to hide this)[/dim]"
-            )
-        else:
-            console.print(
-                f" [bold]Help build agent safety benchmarks[/bold]\n"
-                f"    No source code. No identifiers. Counts and ratios only.\n"
-                f"    [cyan]stratum scan . --share-telemetry[/cyan]\n"
-                f"    [dim]stratum config suppress-share-prompt    (to hide this)[/dim]"
-            )
-
-    # Benchmark teaser: shown on scans 1, 5, 10, 15, 20...
-    show_teaser = (
-        not cfg.get("suppress_benchmark_teaser", False)
-        and (scan_count == 1 or (scan_count >= 5 and scan_count % 5 == 0))
+def print_comparison_url(scan_id: str) -> None:
+    """Print comparison URL after successful telemetry submission."""
+    console.print()
+    console.print(
+        f"  [dim blue]Compare your scan: https://stratum.dev/compare/{scan_id}[/dim blue]",
     )
-
-    if show_teaser:
-        console.print()
-        console.rule(style="dim")
-        console.print(BENCHMARK_TEASER)
