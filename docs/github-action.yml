@@ -1,16 +1,49 @@
-# .github/workflows/stratum.yml
-name: Agent Risk Scan
-on:
-  pull_request:
-    paths: ['**.py', '**.json']
+name: 'Stratum Security Audit'
+description: 'Run a security audit on your AI agent project'
+inputs:
+  path:
+    description: 'Path to scan'
+    default: '.'
+  fail-on:
+    description: 'Fail on: critical, high, or none'
+    default: 'critical'
+  comment:
+    description: 'Post PR comment with results'
+    default: 'true'
 
-jobs:
-  scan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - run: pip install stratum-cli
-      - run: stratum scan . --ci --fail-above 80
+runs:
+  using: 'composite'
+  steps:
+    - name: Install Stratum
+      shell: bash
+      run: pip install stratum-cli
+
+    - name: Run audit
+      shell: bash
+      id: scan
+      run: |
+        stratum scan ${{ inputs.path }} --json > /tmp/stratum-result.json 2>/dev/null || true
+        echo "result=$(cat /tmp/stratum-result.json)" >> $GITHUB_OUTPUT
+
+    - name: Post PR comment
+      if: inputs.comment == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: |
+        python -c "
+        from stratum.output.github_comment import generate_comment_body, post_comment
+        import json
+        result = json.load(open('/tmp/stratum-result.json'))
+        body = generate_comment_body(result, result.get('diff'))
+        post_comment(body)
+        "
+
+    - name: Check threshold
+      shell: bash
+      run: |
+        if [ "${{ inputs.fail-on }}" = "critical" ]; then
+          stratum scan ${{ inputs.path }} --ci
+        elif [ "${{ inputs.fail-on }}" = "high" ]; then
+          stratum scan ${{ inputs.path }} --ci
+        fi

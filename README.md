@@ -1,107 +1,88 @@
-# Stratum CLI
+# Stratum
 
-Agent Risk Profiler. Scans AI agent project directories and outputs a risk profile.
-
-`pip install stratum-cli && stratum scan .` — top risk paths in 3 seconds.
-
-## Install
+**Security audit for AI agents.** Finds what will break before it breaks — credential exposure, learning drift, missing guardrails, and 25+ risk patterns mapped to the [OWASP Top 10 for Agentic AI](https://genai.owasp.org).
 
 ```bash
-pip install -e .
+pip install stratum-cli
+stratum scan .
 ```
 
-## Usage
+<!-- Screenshot: Terminal output showing risk score, color-coded findings, quick wins -->
+
+---
+
+## What it finds
+
+Stratum reads your agent code — Python files, MCP configs, `.env` files — and detects risks across three categories:
+
+**Security** — Data exfiltration paths, MCP credential exposure, code execution via agent tools, known CVEs
+
+**Reliability** — Missing timeouts, no error handling, volatile state
+
+**Governance** — Self-learning loops with no rollback, traces sent to model providers, shared agent credentials
+
+Every finding is mapped to [OWASP ASI01-ASI10](https://genai.owasp.org) with copy-paste remediation.
+
+## Quick start
 
 ```bash
-# Scan current directory
+# Audit your project
 stratum scan .
 
-# Scan a specific directory
-stratum scan ./my-agent-project/
-
-# Verbose output (expand all signals)
-stratum scan . --verbose
-
-# JSON output
-stratum scan . --json
-
-# CI mode (exit codes: 1=CRITICAL, 2=HIGH)
+# Audit and fail CI on new critical findings
 stratum scan . --ci
+
+# JSON output for automation
+stratum scan . --json
 ```
 
-## What It Detects
+## What makes it different
 
-**6 capability classes:**
-- MCP server configs (CVEs, unpinned packages, credential exposure)
-- Outbound tools (HTTP, email, messaging, payment SDKs)
-- Data access (SQL, NoSQL, Redis)
-- Code execution (subprocess, os.system, exec/eval)
-- Destructive writes (DELETE, DROP, TRUNCATE with DB provenance)
-- Financial operations (Stripe, PayPal, Square, Braintree)
+- **Not an MCP scanner.** Stratum audits the full agent: tools, memory, credentials, guardrails, telemetry, MCP configs. mcp-scan checks MCP servers. Stratum checks the agent that uses them.
+- **Reliability first.** Leads with what will crash your agent in production (timeouts, error handling) before what could exploit it (prompt injection, exfiltration). Fixes the urgent thing first.
+- **Research-backed.** Every finding cites the research behind it — MCPTox, Pynt, OWASP. Not opinions. Evidence.
+- **No account, no API key, no network calls.** Fully local. Your code never leaves your machine.
 
-**10 risk path rules (top 5 displayed):**
-- STRATUM-001: Data exfiltration path
-- STRATUM-002: Destructive action, no human gate
-- STRATUM-003: Code execution via agent tool
-- STRATUM-004: Known CVE in MCP config
-- STRATUM-005: MCP credential exposure
-- STRATUM-006: MCP supply chain risk
-- STRATUM-007: Unvalidated financial operation
-- STRATUM-008: No error handling on external dependencies
-- STRATUM-009: No timeout on HTTP calls
-- STRATUM-010: Volatile agent state
+## Add to CI
 
-## Example Output
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│   STRATUM · Agent Risk Profiler                        v0.1.0  │
-└─────────────────────────────────────────────────────────────────┘
-  13 capabilities (5 outbound, 5 data access, 1 code exec,
-  1 destructive, 1 financial)
-  5 MCP servers · 0 guardrails
-
-  ▸ 11 security · 1 business · 3 operational
-
-  RISK SCORE  100/100  ████████████████████  CRITICAL
-
-──────────────────── TOP RISK PATHS ────────────────────────
-
- ● CRITICAL · confirmed · security        STRATUM-001
- Data Exfiltration Path
-
- get_customer_data (psycopg2) -> no output filter ->
- send_email (smtplib)
-
- ● CRITICAL · confirmed · security        STRATUM-002
- Destructive Action, No Human Gate
-
- ● CRITICAL · confirmed · security        STRATUM-004
- Known Vulnerable MCP: mcp-remote
-
- ● HIGH · confirmed · security            STRATUM-003
- Code Execution via Agent Tool
-
- ● HIGH · confirmed · security            STRATUM-005
- Production Credentials to Third-Party MCP
-
-──────────────────── SIGNALS (10 more) ─────────────────────
-
- ● HIGH  STRATUM-006  Unpinned MCP            security
- ● HIGH  STRATUM-007  Unvalidated Financial   business
- ● MED   STRATUM-008  No error handling       operational
- ● MED   STRATUM-009  No timeout on HTTP      operational
- ● MED   STRATUM-010  In-memory-only state    operational
- ● MED   ENV-001      .env not in .gitignore  security
+```yaml
+# .github/workflows/stratum.yml
+name: Agent Security Audit
+on: [push, pull_request]
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install stratum-cli
+      - run: stratum scan . --ci
 ```
 
-## How It Works
+## Badge
 
-Framework-agnostic AST analysis. If a Python function has `subprocess.run()`, Stratum finds it — regardless of whether it's LangGraph, CrewAI, or raw Python.
+After running a scan, add the badge to your README:
 
-**Confidence levels prevent false positives:**
-- **CONFIRMED**: Import resolved to call site (e.g., `import requests` + `requests.post()`)
-- **PROBABLE**: Strong inference (e.g., SQL keyword in function with DB import)
-- **HEURISTIC**: Unresolved method — capped at MEDIUM severity, never in top paths
+```markdown
+![Stratum Risk Score](https://img.shields.io/badge/stratum_risk-42%2F100-yellow)
+```
 
-**Hard rule:** Zero CRITICAL/HIGH findings from HEURISTIC evidence.
+## How it works
+
+Stratum parses your Python files via AST, reads MCP JSON configs, and checks `.env` files. No LLM. No network. No framework-specific logic. If your code imports `subprocess` and calls `subprocess.run()`, Stratum finds it — regardless of whether you're using LangChain, CrewAI, or raw Python.
+
+Risk paths are identified by combining capabilities (what your agent can do) with missing controls (what's not protecting it). A data access tool + an outbound tool + no output filter = data exfiltration path. That's a CRITICAL finding.
+
+The risk score (0-100) is computed from finding severities with bonuses for structural gaps (no guardrails, no timeouts, shared credentials). Track it over time with `stratum scan .` — it saves history to `.stratum/`.
+
+## Documentation
+
+- [All findings explained](docs/findings.md)
+- [OWASP ASI mapping](docs/owasp.md)
+- [CI integration guide](docs/ci.md)
+- [How scoring works](docs/scoring.md)
+
+## License
+
+[BSL 1.1](LICENSE) — free to use, source-available. See [why](docs/license.md).

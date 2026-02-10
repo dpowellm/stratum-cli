@@ -69,6 +69,7 @@ def render(result: ScanResult, verbose: bool = False, shared: bool = False,
     quick_wins = select_quick_wins(all_findings, result)
 
     _render_header(result)
+    _render_summary_line(result)
     _render_agent_profile(result, quick_wins)
     _render_known_incidents(result)
     if result.diff:
@@ -93,8 +94,28 @@ def _render_header(result: ScanResult) -> None:
     """Render the header banner."""
     header = Text()
     header.append("  STRATUM ", style="bold white")
-    header.append("v0.1 -- Agent Risk Scanner", style="dim")
+    header.append("v0.1 -- AI Agent Security Audit", style="dim")
     console.print(Panel(header, style="bold blue"))
+
+
+def _render_summary_line(result: ScanResult) -> None:
+    """Render a tweetable summary line (<=80 chars)."""
+    all_findings = result.top_paths + result.signals
+    sev_counts: dict[str, int] = {}
+    for f in all_findings:
+        sev_counts[f.severity.value] = sev_counts.get(f.severity.value, 0) + 1
+
+    parts = []
+    for sev in ("CRITICAL", "HIGH", "MEDIUM", "LOW"):
+        count = sev_counts.get(sev, 0)
+        if count:
+            parts.append(f"{count} {sev.lower()}")
+
+    finding_str = " \u00b7 ".join(parts) if parts else "0 findings"
+    guard_str = f"{result.guardrail_count} guardrails" if result.guardrail_count else "0 guardrails"
+    line = f"{finding_str}    Risk: {result.risk_score}/100    {guard_str}"
+    console.print(f" [bold]{line.strip()}[/bold]")
+    console.print()
 
 
 def _render_agent_profile(result: ScanResult, quick_wins: list[QuickWin]) -> None:
@@ -589,6 +610,13 @@ def _render_footer(result: ScanResult) -> None:
             console.print(" .stratum/history.jsonl saved")
     else:
         console.print(" .stratum/history.jsonl saved")
+
+    # Right-aligned repo URL
+    console.print()
+    console.print(
+        "[dim]                                     "
+        "stratum v0.1 \u00b7 github.com/stratum-systems/stratum-cli[/dim]"
+    )
 
 
 def _get_scan_count(result: ScanResult) -> int:

@@ -17,7 +17,7 @@ from stratum.telemetry.profile import build_profile
 @click.group()
 @click.version_option(version=__version__, prog_name="stratum")
 def cli() -> None:
-    """Stratum - Agent Risk Profiler."""
+    """Stratum - Security audit for AI agents."""
     pass
 
 
@@ -37,7 +37,7 @@ def cli() -> None:
 def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
              no_telemetry: bool, share_telemetry: bool, fail_above: int | None,
              security_mode: bool) -> None:
-    """Scan a project directory for agent risk paths."""
+    """Run a security audit on an AI agent project."""
     # Conflict check
     if share_telemetry and no_telemetry:
         click.echo("Error: --share-telemetry and --no-telemetry are mutually exclusive.", err=True)
