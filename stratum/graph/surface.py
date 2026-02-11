@@ -77,7 +77,7 @@ def _edge_needs_control(edge, graph: RiskGraph) -> bool:
         return True
 
     # Edges carrying sensitive data to any non-data-store destination
-    if edge.data_sensitivity in ("pii", "financial", "credentials"):
+    if edge.data_sensitivity in ("personal", "financial", "credentials"):
         if tgt.node_type != NodeType.DATA_STORE:
             return True
 

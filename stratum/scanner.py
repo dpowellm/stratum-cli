@@ -7,8 +7,8 @@ import logging
 import os
 
 from stratum.models import (
-    Capability, Confidence, GuardrailSignal, MCPServer,
-    ScanResult, Severity, TrustLevel,
+    Capability, Confidence, Finding, GuardrailSignal, MCPServer,
+    RiskCategory, ScanResult, Severity, TrustLevel,
 )
 from stratum.parsers import capabilities as cap_parser
 from stratum.parsers import mcp as mcp_parser
@@ -16,6 +16,8 @@ from stratum.parsers import env as env_parser
 from stratum.parsers.capabilities import detect_framework
 from stratum.rules.engine import Engine
 from stratum.graph.builder import build_graph
+from stratum.graph.models import NodeType, RiskPath
+from stratum.graph.remediation import framework_remediation
 
 logger = logging.getLogger(__name__)
 
@@ -209,6 +211,28 @@ def scan(path: str) -> ScanResult:
 
     # Build risk graph
     result.graph = build_graph(result)
+
+    # Replace pairwise STRATUM-001 findings with graph-derived findings
+    if result.graph and result.graph.uncontrolled_paths:
+        graph_findings = []
+        for risk_path in result.graph.uncontrolled_paths:
+            finding = _graph_finding_for_path(
+                risk_path, result.graph, result.detected_frameworks,
+            )
+            if finding:
+                graph_findings.append(finding)
+
+        # Remove old pairwise STRATUM-001 findings, replace with graph findings
+        result.top_paths = [
+            f for f in result.top_paths if f.id != "STRATUM-001"
+        ] + graph_findings
+        # Re-sort by severity
+        severity_order = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
+        result.top_paths.sort(
+            key=lambda f: severity_order.get(f.severity.value if hasattr(f.severity, 'value') else f.severity, 0),
+            reverse=True,
+        )
+        result.top_paths = result.top_paths[:5]
 
     return result
 
@@ -422,6 +446,14 @@ def _extract_tools_from_yaml(
                             k = (tool_name, kind, file_path)
                             if k not in seen:
                                 seen.add(k)
+                                _TRUST_BY_KIND = {
+                                    "data_access": "internal",
+                                    "outbound": "external",
+                                    "code_exec": "privileged",
+                                    "destructive": "internal",
+                                    "financial": "restricted",
+                                    "file_system": "internal",
+                                }
                                 capabilities.append(Capability(
                                     function_name=f"[YAML: {tool_name}]",
                                     kind=kind,
@@ -430,7 +462,7 @@ def _extract_tools_from_yaml(
                                     source_file=file_path,
                                     line_number=0,
                                     evidence=f"{tool_name} in YAML config",
-                                    trust_level=TrustLevel.EXTERNAL,
+                                    trust_level=TrustLevel(_TRUST_BY_KIND.get(kind, "external")),
                                     has_error_handling=False,
                                     has_timeout=False,
                                     call_text=f"{tool_name} in YAML config",
@@ -441,3 +473,66 @@ def _extract_tools_from_yaml(
         for item in obj:
             if isinstance(item, (dict, list)):
                 _extract_tools_from_yaml(item, file_path, capabilities, seen, known_tools)
+
+
+# ---------------------------------------------------------------------------
+# Graph-derived finding generation
+# ---------------------------------------------------------------------------
+
+def _graph_finding_for_path(
+    risk_path: RiskPath,
+    graph,
+    detected_frameworks: list[str],
+) -> Finding | None:
+    """Convert a RiskPath from the graph traversal into a Finding.
+
+    Replaces the old pairwise rule match for STRATUM-001.
+    """
+    nodes = [graph.nodes[nid] for nid in risk_path.nodes]
+
+    finding_id = "STRATUM-001"
+    title = "Unguarded data-to-external path"
+
+    # Path display: friendly labels joined by arrow
+    path_display = " \u2192 ".join(n.label for n in nodes)
+
+    # What happens: from the scenario generator
+    what_happens = risk_path.plain_description or risk_path.description
+
+    # Evidence: source files from capability nodes on the path
+    evidence = []
+    for node in nodes:
+        if node.source_file and node.source_file not in evidence:
+            file_ref = (
+                f"{node.source_file}:{node.line_number}"
+                if node.line_number > 0
+                else node.source_file
+            )
+            evidence.append(file_ref)
+
+    # Remediation: framework-specific
+    remediation_text = framework_remediation(
+        finding_id, detected_frameworks, risk_path.nodes, graph,
+    )
+
+    from stratum.research.owasp import get_owasp
+    owasp_id, owasp_name = get_owasp("STRATUM-001")
+
+    return Finding(
+        id=finding_id,
+        severity=Severity(risk_path.severity),
+        confidence=Confidence.CONFIRMED,
+        category=RiskCategory.SECURITY,
+        title=title,
+        path=path_display,
+        description=what_happens,
+        evidence=evidence,
+        scenario=what_happens,
+        remediation=remediation_text,
+        effort="low",
+        references=["https://embracethered.com/blog/posts/2024/m365-copilot-echo-leak/"],
+        owasp_id=owasp_id,
+        owasp_name=owasp_name,
+        finding_class="security",
+        quick_fix_type="add_hitl",
+    )

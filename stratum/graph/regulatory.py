@@ -10,7 +10,7 @@ REGULATORY_MAP: list[dict] = [
         "label": "GDPR Art. 35",
         "description": "Data Protection Impact Assessment required",
         "triggers": {
-            "data_sensitivity": ["pii"],
+            "data_sensitivity": ["personal"],
             "dest_trust": ["external"],
             "missing_controls": ["output_filter"],
         },
@@ -20,7 +20,7 @@ REGULATORY_MAP: list[dict] = [
         "label": "EU AI Act Art. 14",
         "description": "Human oversight requirement",
         "triggers": {
-            "data_sensitivity": ["pii", "financial"],
+            "data_sensitivity": ["personal", "financial"],
             "missing_controls": ["hitl"],
         },
     },
@@ -29,7 +29,7 @@ REGULATORY_MAP: list[dict] = [
         "label": "EU AI Act Art. 9",
         "description": "Risk management system required",
         "triggers": {
-            "data_sensitivity": ["pii", "financial", "credentials"],
+            "data_sensitivity": ["personal", "financial", "credentials"],
             "dest_trust": ["external"],
         },
     },
@@ -38,7 +38,7 @@ REGULATORY_MAP: list[dict] = [
         "label": "NIST AI RMF MAP 1.5",
         "description": "Intended data use documentation",
         "triggers": {
-            "data_sensitivity": ["pii", "financial"],
+            "data_sensitivity": ["personal", "financial"],
             "dest_trust": ["external"],
             "missing_controls": ["output_filter"],
         },
@@ -75,7 +75,7 @@ REGULATORY_MAP: list[dict] = [
         "label": "HIPAA Technical Safeguards",
         "description": "Access controls and audit trails for health data",
         "triggers": {
-            "data_sensitivity": ["pii"],
+            "data_sensitivity": ["personal"],
             "missing_controls": ["output_filter", "hitl"],
         },
     },

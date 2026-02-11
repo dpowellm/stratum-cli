@@ -74,6 +74,7 @@ class RiskPath:
     missing_controls: list[str]
     severity: str
     description: str = ""
+    plain_description: str = ""
     regulatory_flags: list[str] = field(default_factory=list)
 
 

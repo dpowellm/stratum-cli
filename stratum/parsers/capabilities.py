@@ -743,6 +743,16 @@ def _extract_list_strings(node: ast.expr) -> list[str]:
 
 # ── Framework Detection (Layer 1 + Layer 3) ─────────────────────────────────
 
+TRUST_BY_KIND = {
+    "data_access": "internal",
+    "outbound": "external",
+    "code_exec": "privileged",
+    "destructive": "internal",
+    "financial": "restricted",
+    "file_system": "internal",
+}
+
+
 def detect_framework_tools(
     file_imports: set[str],
     alias_map: dict[str, str],
@@ -779,7 +789,7 @@ def detect_framework_tools(
                     source_file=file_path,
                     line_number=0,
                     evidence=f"{class_name} (framework tool)",
-                    trust_level=TrustLevel.EXTERNAL,
+                    trust_level=TrustLevel(TRUST_BY_KIND.get(kind, "external")),
                     has_error_handling=False,
                     has_timeout=False,
                     call_text=f"{class_name} (framework tool)",
@@ -819,7 +829,7 @@ def detect_framework_tools(
                                     source_file=file_path,
                                     line_number=node.lineno,
                                     evidence=f"{tool_class_name} assigned to {constructor_name}",
-                                    trust_level=TrustLevel.EXTERNAL,
+                                    trust_level=TrustLevel(TRUST_BY_KIND.get(kind, "external")),
                                     has_error_handling=False,
                                     has_timeout=False,
                                     call_text=f"{tool_class_name} assigned to {constructor_name}",

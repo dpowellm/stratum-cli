@@ -402,7 +402,7 @@ def _edge_needs_control_marker(edge, source, target) -> bool:
     """Check if an edge should show a warning marker."""
     if target.node_type in (NodeType.EXTERNAL_SERVICE, NodeType.MCP_SERVER):
         return True
-    if edge.data_sensitivity in ("pii", "financial", "credentials"):
+    if edge.data_sensitivity in ("personal", "financial", "credentials"):
         return True
     return False
 

@@ -7,9 +7,58 @@ from stratum.models import Capability, MCPServer, GuardrailSignal, ScanResult, T
 from stratum.graph.models import (
     EdgeType, GraphEdge, GraphNode, NodeType, RiskGraph,
 )
-from stratum.graph.sensitivity import infer_sensitivity_from_library, propagate_sensitivity
+from stratum.graph.sensitivity import (
+    infer_sensitivity_for_cap, propagate_sensitivity, SENSITIVITY_MAP,
+)
 from stratum.graph.traversal import find_uncontrolled_paths
 from stratum.graph.surface import compute_risk_surface
+from stratum.graph.util import tool_class_name
+
+
+# ---------------------------------------------------------------------------
+# Friendly-name lookup tables (keyed on clean class name or library fragment)
+# ---------------------------------------------------------------------------
+
+FRIENDLY_NAMES: dict[str, tuple[str, str]] = {
+    # key -> (data_source_name, external_service_name)
+    "GmailGetThread": ("Gmail inbox", "Gmail outbound"),
+    "GmailGetMessage": ("Gmail inbox", "Gmail outbound"),
+    "GmailSearch": ("Gmail inbox", "Gmail outbound"),
+    "GmailCreateDraft": ("Gmail inbox", "Gmail outbound"),
+    "GmailSendMessage": ("Gmail inbox", "Gmail outbound"),
+    "GmailToolkit": ("Gmail inbox", "Gmail outbound"),
+    "Gmail": ("Gmail inbox", "Gmail outbound"),
+    "gmail": ("Gmail inbox", "Gmail outbound"),
+    "SerperDevTool": ("Serper results", "Serper API"),
+    "Serper": ("Serper results", "Serper API"),
+    "serper": ("Serper results", "Serper API"),
+    "TavilySearchResults": ("Tavily results", "Tavily API"),
+    "Tavily": ("Tavily results", "Tavily API"),
+    "tavily": ("Tavily results", "Tavily API"),
+    "DuckDuckGoSearchRun": ("DuckDuckGo results", "DuckDuckGo"),
+    "WikipediaQueryRun": ("Wikipedia", "Wikipedia"),
+    "O365Toolkit": ("Office 365 inbox", "Office 365"),
+    "o365": ("Office 365 inbox", "Office 365"),
+    "SlackToolkit": ("Slack messages", "Slack"),
+    "Slack": ("Slack messages", "Slack"),
+    "slack": ("Slack messages", "Slack"),
+    "psycopg2": ("PostgreSQL", "PostgreSQL"),
+    "sqlalchemy": ("SQL database", "SQL database"),
+    "pymongo": ("MongoDB", "MongoDB"),
+    "sqlite3": ("SQLite", "SQLite"),
+    "chromadb": ("ChromaDB", "ChromaDB"),
+    "pinecone": ("Pinecone", "Pinecone"),
+    "weaviate": ("Weaviate", "Weaviate"),
+    "redis": ("Redis", "Redis"),
+    "requests": ("HTTP endpoint", "HTTP endpoint"),
+    "httpx": ("HTTP endpoint", "HTTP endpoint"),
+    "urllib": ("HTTP endpoint", "HTTP endpoint"),
+    "smtplib": ("Email (SMTP)", "Email (SMTP)"),
+    "stripe": ("Stripe data", "Stripe API"),
+    "paypalrestsdk": ("PayPal data", "PayPal API"),
+    "square": ("Square data", "Square API"),
+    "braintree": ("Braintree data", "Braintree API"),
+}
 
 
 def build_graph(result: ScanResult) -> RiskGraph:
@@ -27,8 +76,18 @@ def build_graph(result: ScanResult) -> RiskGraph:
     """
     graph = RiskGraph(nodes={}, edges=[])
 
-    # Step 1: Create capability nodes and infer connected nodes
+    # Deduplicate capabilities: same tool + same kind = one node
+    seen_cap_keys: set[tuple[str, str]] = set()
+    unique_caps: list[Capability] = []
     for cap in result.capabilities:
+        cls = tool_class_name(cap)
+        key = (cls, cap.kind)
+        if key not in seen_cap_keys:
+            seen_cap_keys.add(key)
+            unique_caps.append(cap)
+
+    # Step 1: Create capability nodes and infer connected nodes
+    for cap in unique_caps:
         cap_node = _capability_to_node(cap)
         graph.nodes[cap_node.id] = cap_node
         _infer_connected_nodes(graph, cap, cap_node)
@@ -46,7 +105,10 @@ def build_graph(result: ScanResult) -> RiskGraph:
 
     # Step 4: Connect data-reading capabilities to outbound capabilities
     # (implicit: the agent can use any tool, so data flows from reads to sends)
-    _connect_agent_data_flows(graph, result.capabilities)
+    _connect_agent_data_flows(graph, unique_caps)
+
+    # Step 4b: Deduplicate edges
+    _deduplicate_edges(graph)
 
     # Step 5: Infer and propagate data sensitivity
     propagate_sensitivity(graph)
@@ -66,12 +128,13 @@ def build_graph(result: ScanResult) -> RiskGraph:
 
 def _capability_to_node(cap: Capability) -> GraphNode:
     """Convert a Capability to a GraphNode."""
+    cls = tool_class_name(cap)
     return GraphNode(
-        id=f"cap_{cap.function_name}_{cap.kind}",
+        id=f"cap_{cls}_{cap.kind}",
         node_type=NodeType.CAPABILITY,
-        label=cap.function_name,
-        trust_level=cap.trust_level,
-        data_sensitivity=infer_sensitivity_from_library(cap.library),
+        label=cls,
+        trust_level=TrustLevel(cap.trust_level),
+        data_sensitivity=infer_sensitivity_for_cap(cap),
         framework=cap.library.split(".")[0] if cap.library else "",
         source_file=cap.source_file,
         line_number=cap.line_number,
@@ -117,11 +180,11 @@ def _infer_connected_nodes(
     """Infer data stores, services, and edges from a capability."""
     if cap.kind == "data_access":
         source = GraphNode(
-            id=f"ds_{_lib_key(cap.library)}",
+            id=_source_node_id(cap),
             node_type=NodeType.DATA_STORE,
             label=_friendly_source_name(cap),
             trust_level=_infer_source_trust(cap),
-            data_sensitivity=infer_sensitivity_from_library(cap.library),
+            data_sensitivity=infer_sensitivity_for_cap(cap),
         )
         if source.id not in graph.nodes:
             graph.nodes[source.id] = source
@@ -136,7 +199,7 @@ def _infer_connected_nodes(
 
     elif cap.kind == "outbound":
         service = GraphNode(
-            id=f"ext_{_lib_key(cap.library)}",
+            id=_service_node_id(cap),
             node_type=NodeType.EXTERNAL_SERVICE,
             label=_friendly_service_name(cap),
             trust_level=TrustLevel.EXTERNAL,
@@ -153,7 +216,7 @@ def _infer_connected_nodes(
 
     elif cap.kind == "destructive":
         store = GraphNode(
-            id=f"ds_{_lib_key(cap.library)}_write",
+            id=f"ds_{tool_class_name(cap).lower()}_write",
             node_type=NodeType.DATA_STORE,
             label=_friendly_store_name(cap),
             trust_level=TrustLevel.INTERNAL,
@@ -187,7 +250,7 @@ def _infer_connected_nodes(
 
     elif cap.kind == "financial":
         fin_node = GraphNode(
-            id=f"fin_{_lib_key(cap.library)}",
+            id=f"fin_{tool_class_name(cap).lower()}",
             node_type=NodeType.EXTERNAL_SERVICE,
             label=_friendly_service_name(cap),
             trust_level=TrustLevel.RESTRICTED,
@@ -220,27 +283,39 @@ def _connect_agent_data_flows(graph: RiskGraph, capabilities: list[Capability]) 
     outbound_caps = [c for c in capabilities if c.kind in ("outbound", "financial")]
 
     for dc in data_caps:
-        dc_node_id = f"cap_{dc.function_name}_{dc.kind}"
+        dc_cls = tool_class_name(dc)
+        dc_node_id = f"cap_{dc_cls}_{dc.kind}"
         if dc_node_id not in graph.nodes:
             continue
 
         for oc in outbound_caps:
-            oc_node_id = f"cap_{oc.function_name}_{oc.kind}"
+            oc_cls = tool_class_name(oc)
+            oc_node_id = f"cap_{oc_cls}_{oc.kind}"
             if oc_node_id not in graph.nodes:
                 continue
 
-            # Avoid duplicate edges
-            already_connected = any(
-                e.source == dc_node_id and e.target == oc_node_id
-                for e in graph.edges
-            )
-            if not already_connected:
-                graph.edges.append(GraphEdge(
-                    source=dc_node_id,
-                    target=oc_node_id,
-                    edge_type=EdgeType.SHARES_WITH,
-                    has_control=False,
-                ))
+            graph.edges.append(GraphEdge(
+                source=dc_node_id,
+                target=oc_node_id,
+                edge_type=EdgeType.SHARES_WITH,
+                has_control=False,
+            ))
+
+
+# ---------------------------------------------------------------------------
+# Edge deduplication
+# ---------------------------------------------------------------------------
+
+def _deduplicate_edges(graph: RiskGraph) -> None:
+    """Remove duplicate edges (same source, target, type)."""
+    seen: set[tuple[str, str, str]] = set()
+    unique: list[GraphEdge] = []
+    for edge in graph.edges:
+        key = (edge.source, edge.target, edge.edge_type.value)
+        if key not in seen:
+            seen.add(key)
+            unique.append(edge)
+    graph.edges = unique
 
 
 # ---------------------------------------------------------------------------
@@ -303,91 +378,115 @@ def _guard_covers_edge(
 # Naming helpers
 # ---------------------------------------------------------------------------
 
-_FRIENDLY_SOURCES: dict[str, str] = {
-    "gmail": "Gmail inbox",
-    "psycopg2": "PostgreSQL",
-    "sqlalchemy": "SQL database",
-    "pymongo": "MongoDB",
-    "sqlite3": "SQLite",
-    "chromadb": "ChromaDB",
-    "pinecone": "Pinecone",
-    "weaviate": "Weaviate",
-    "redis": "Redis",
-    "o365": "Office 365",
-}
+def _friendly_source_name(cap) -> str:
+    """Resolve a capability to a human-friendly data source name.
 
-_FRIENDLY_SERVICES: dict[str, str] = {
-    "serper": "Serper API",
-    "serperdevtool": "Serper API",
-    "requests": "HTTP endpoint",
-    "httpx": "HTTP endpoint",
-    "urllib": "HTTP endpoint",
-    "smtplib": "Email (SMTP)",
-    "slack": "Slack",
-    "stripe": "Stripe API",
-    "paypalrestsdk": "PayPal API",
-    "square": "Square API",
-    "braintree": "Braintree API",
-    "duckduckgo": "DuckDuckGo",
-}
+    Lookup order:
+    1. Exact match on clean tool class name (e.g., "SerperDevTool")
+    2. Substring match on tool class name
+    3. Substring match on library path
+    4. Fallback: last segment of library, cleaned up
+    """
+    cls = tool_class_name(cap)
 
+    # 1. Exact match on class name
+    if cls in FRIENDLY_NAMES:
+        return FRIENDLY_NAMES[cls][0]
 
-def _lib_key(library: str) -> str:
-    """Normalize a library name into a stable node ID component."""
-    # Take the last meaningful segment
-    parts = library.replace(".", "_").split("_")
-    # Filter out very common prefixes
-    filtered = [p for p in parts if p.lower() not in ("langchain", "community", "tools", "crewai")]
-    key = "_".join(filtered) if filtered else library.replace(".", "_")
-    # Sanitize
-    return re.sub(r"[^a-zA-Z0-9_]", "", key).lower()
+    # 2. Substring match on class name (e.g., "Gmail" in "GmailGetThread")
+    for key, (source, _) in FRIENDLY_NAMES.items():
+        if key.lower() in cls.lower():
+            return source
 
+    # 3. Substring match on library path
+    for key, (source, _) in FRIENDLY_NAMES.items():
+        if key.lower() in cap.library.lower():
+            return source
 
-def _friendly_source_name(cap: Capability) -> str:
-    """Generate a human-readable data source name."""
-    lib_lower = cap.library.lower()
-    for key, name in _FRIENDLY_SOURCES.items():
-        if key in lib_lower:
-            return name
-    # Use function name as fallback
-    if cap.function_name and cap.function_name.startswith("[YAML:"):
+    # 4. Fallback: clean up the last library segment
+    if hasattr(cap, 'function_name') and cap.function_name and cap.function_name.startswith("[YAML:"):
         tool_name = cap.function_name.replace("[YAML: ", "").replace("]", "")
         return f"{tool_name} data source"
-    return f"{cap.library.split('.')[-1]} data source"
+    fallback = cap.library.rsplit(".", 1)[-1] if "." in cap.library else cap.library
+    return fallback.replace("_", " ").title()
 
 
-def _friendly_service_name(cap: Capability) -> str:
-    """Generate a human-readable external service name."""
-    lib_lower = cap.library.lower()
-    for key, name in _FRIENDLY_SERVICES.items():
-        if key in lib_lower:
-            return name
+def _friendly_service_name(cap) -> str:
+    """Resolve a capability to a human-friendly external service name.
+
+    Same lookup order as _friendly_source_name but returns service label.
+    """
+    cls = tool_class_name(cap)
+
+    if cls in FRIENDLY_NAMES:
+        return FRIENDLY_NAMES[cls][1]
+
+    for key, (_, service) in FRIENDLY_NAMES.items():
+        if key.lower() in cls.lower():
+            return service
+
+    for key, (_, service) in FRIENDLY_NAMES.items():
+        if key.lower() in cap.library.lower():
+            return service
+
     fn = cap.function_name
     if fn.startswith("[YAML:"):
         tool_name = fn.replace("[YAML: ", "").replace("]", "")
         return tool_name
-    return f"{cap.library.split('.')[-1]} service"
+    fallback = cap.library.rsplit(".", 1)[-1] if "." in cap.library else cap.library
+    return fallback.replace("_", " ").title()
 
 
-def _friendly_store_name(cap: Capability) -> str:
+def _friendly_store_name(cap) -> str:
     """Generate a human-readable data store name for destructive ops."""
-    lib_lower = cap.library.lower()
-    for key, name in _FRIENDLY_SOURCES.items():
-        if key in lib_lower:
-            return f"{name} (write)"
+    cls = tool_class_name(cap)
+
+    if cls in FRIENDLY_NAMES:
+        return f"{FRIENDLY_NAMES[cls][0]} (write)"
+
+    for key, (source, _) in FRIENDLY_NAMES.items():
+        if key.lower() in cls.lower():
+            return f"{source} (write)"
+
+    for key, (source, _) in FRIENDLY_NAMES.items():
+        if key.lower() in cap.library.lower():
+            return f"{source} (write)"
+
     return f"{cap.library.split('.')[-1]} store"
 
 
-def _infer_source_trust(cap: Capability) -> TrustLevel:
-    """Infer the trust level of an inferred data source."""
-    lib_lower = cap.library.lower()
-    # External services
-    if any(kw in lib_lower for kw in ("gmail", "o365", "slack")):
+def _source_node_id(cap) -> str:
+    """Stable ID for the inferred data source of a capability.
+
+    Multiple tools that read from the same source (GmailGetThread,
+    GmailToolkit) should share the same data_store node.
+    """
+    friendly = _friendly_source_name(cap)
+    # Normalize: "Gmail inbox" -> "ds_gmail_inbox"
+    return "ds_" + friendly.lower().replace(" ", "_").replace("(", "").replace(")", "")
+
+
+def _service_node_id(cap) -> str:
+    """Stable ID for the inferred external service a capability sends to."""
+    friendly = _friendly_service_name(cap)
+    return "ext_" + friendly.lower().replace(" ", "_").replace("(", "").replace(")", "")
+
+
+def _infer_source_trust(cap) -> TrustLevel:
+    """Infer trust level for a data source based on what kind of data it holds.
+
+    Gmail inbox = RESTRICTED (it's YOUR data, inside your org boundary).
+    PostgreSQL = INTERNAL.
+    ChromaDB = INTERNAL.
+    External API response = EXTERNAL.
+    """
+    sensitivity = infer_sensitivity_for_cap(cap)
+
+    if sensitivity in ("personal", "credentials"):
+        return TrustLevel.RESTRICTED
+    elif sensitivity == "financial":
+        return TrustLevel.RESTRICTED
+    elif sensitivity == "internal":
+        return TrustLevel.INTERNAL
+    else:
         return TrustLevel.EXTERNAL
-    # Internal databases
-    if any(kw in lib_lower for kw in ("psycopg2", "sqlalchemy", "pymongo", "sqlite3", "redis")):
-        return TrustLevel.INTERNAL
-    # Vector stores
-    if any(kw in lib_lower for kw in ("chromadb", "pinecone", "weaviate")):
-        return TrustLevel.INTERNAL
-    return cap.trust_level
