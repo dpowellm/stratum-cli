@@ -15,6 +15,7 @@ from stratum.parsers import mcp as mcp_parser
 from stratum.parsers import env as env_parser
 from stratum.parsers.capabilities import detect_framework
 from stratum.rules.engine import Engine
+from stratum.graph.builder import build_graph
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +176,7 @@ def scan(path: str) -> ScanResult:
         if f == ".env" or f.startswith(".env.")
     ]) if os.path.isdir(abs_path) else 0
 
-    return ScanResult(
+    result = ScanResult(
         directory=abs_path,
         capabilities=all_capabilities,
         mcp_servers=all_mcp_servers,
@@ -205,6 +206,11 @@ def scan(path: str) -> ScanResult:
         telemetry_destinations=telemetry_ctx.get("telemetry_destinations", []),
         has_eval_conflict=eval_ctx.get("has_eval_conflict", False),
     )
+
+    # Build risk graph
+    result.graph = build_graph(result)
+
+    return result
 
 
 def _calculate_risk_score(

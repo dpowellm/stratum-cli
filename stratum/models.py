@@ -162,6 +162,8 @@ class ScanResult:
     checkpoint_type: str = "none"
     detected_frameworks: list[str] = field(default_factory=list)
 
+    graph: object | None = None  # RiskGraph, typed as object to avoid circular import
+
     diff: ScanDiff | None = None
 
     # File counts (for audit summary display)
@@ -276,3 +278,15 @@ class TelemetryProfile:
     agent_count: int = 0                                                  # [scale]
     has_shared_credentials: bool = False                                  # [structural]
     has_agent_identity: bool = False                                      # [structural]
+
+    # === Graph telemetry ===
+    graph_node_count: int = 0                                             # [scale]
+    graph_edge_count: int = 0                                             # [scale]
+    graph_node_type_distribution: dict[str, int] = field(default_factory=dict)  # [scale]
+    graph_edge_type_distribution: dict[str, int] = field(default_factory=dict)  # [scale]
+    uncontrolled_path_count: int = 0                                      # [scale]
+    max_path_hops: int = 0                                                # [scale]
+    data_sensitivity_types: list[str] = field(default_factory=list)       # [structural]
+    control_coverage_pct: float = 0.0                                     # [structural]
+    regulatory_framework_count: int = 0                                   # [scale]
+    downward_trust_crossings: int = 0                                     # [scale]

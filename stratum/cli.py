@@ -112,7 +112,14 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
     # Output
     if ci or json_output:
         import dataclasses
+        # Temporarily remove graph (not a plain dataclass for asdict)
+        graph_obj = result.graph
+        result.graph = None
         out = dataclasses.asdict(result)
+        result.graph = graph_obj
+        # Add graph as structured JSON
+        if graph_obj is not None:
+            out["graph"] = graph_obj.to_dict()
         click.echo(json.dumps(out, indent=2))
 
         if ci:

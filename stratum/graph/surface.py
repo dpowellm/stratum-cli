@@ -1,0 +1,84 @@
+"""Aggregate risk surface computation from a RiskGraph."""
+from __future__ import annotations
+
+from stratum.graph.models import (
+    EdgeType, NodeType, RiskGraph, RiskSurface,
+)
+
+TRUST_RANK: dict[str, int] = {
+    "privileged": 4,
+    "restricted": 3,
+    "internal": 2,
+    "external": 1,
+    "public": 0,
+}
+
+
+def compute_risk_surface(graph: RiskGraph) -> RiskSurface:
+    """Compute aggregate risk surface from the graph."""
+    surface = RiskSurface(
+        total_nodes=len(graph.nodes),
+        total_edges=len(graph.edges),
+    )
+
+    # Path metrics
+    surface.uncontrolled_path_count = len(graph.uncontrolled_paths)
+    if graph.uncontrolled_paths:
+        surface.max_path_hops = max(p.hops for p in graph.uncontrolled_paths)
+
+    surface.sensitive_data_types = sorted(set(
+        p.source_sensitivity for p in graph.uncontrolled_paths
+        if p.source_sensitivity not in ("unknown", "public")
+    ))
+
+    surface.external_sink_count = len([
+        n for n in graph.nodes.values()
+        if n.node_type in (NodeType.EXTERNAL_SERVICE, NodeType.MCP_SERVER)
+    ])
+
+    # Control coverage
+    needs_control = [e for e in graph.edges if _edge_needs_control(e, graph)]
+    has_control = [e for e in needs_control if e.has_control]
+    surface.edges_needing_controls = len(needs_control)
+    surface.edges_with_controls = len(has_control)
+    surface.control_coverage_pct = (
+        len(has_control) / len(needs_control) * 100
+    ) if needs_control else 100.0
+
+    # Regulatory
+    all_flags: set[str] = set()
+    for path in graph.uncontrolled_paths:
+        all_flags.update(path.regulatory_flags)
+    surface.regulatory_frameworks = sorted(all_flags)
+
+    # Trust boundaries
+    for edge in graph.edges:
+        src = graph.nodes.get(edge.source)
+        tgt = graph.nodes.get(edge.target)
+        if src and tgt and src.trust_level != tgt.trust_level:
+            surface.trust_boundary_crossings += 1
+            src_rank = TRUST_RANK.get(src.trust_level.value, 0)
+            tgt_rank = TRUST_RANK.get(tgt.trust_level.value, 0)
+            if src_rank > tgt_rank:
+                surface.downward_crossings += 1
+
+    return surface
+
+
+def _edge_needs_control(edge, graph: RiskGraph) -> bool:
+    """Determine if an edge should have a control on it."""
+    src = graph.nodes.get(edge.source)
+    tgt = graph.nodes.get(edge.target)
+    if not src or not tgt:
+        return False
+
+    # Edges to external services or MCP servers need controls
+    if tgt.node_type in (NodeType.EXTERNAL_SERVICE, NodeType.MCP_SERVER):
+        return True
+
+    # Edges carrying sensitive data to any non-data-store destination
+    if edge.data_sensitivity in ("pii", "financial", "credentials"):
+        if tgt.node_type != NodeType.DATA_STORE:
+            return True
+
+    return False

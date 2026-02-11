@@ -114,6 +114,40 @@ def build_profile(result: ScanResult) -> TelemetryProfile:
     has_shared_creds = any(f.id == "IDENTITY-001" for f in all_findings)
     has_agent_identity = not any(f.id == "IDENTITY-002" for f in all_findings)
 
+    # Graph telemetry (anonymized shape only - no node labels, IDs, or library names)
+    graph_node_count = 0
+    graph_edge_count = 0
+    graph_node_type_dist: dict[str, int] = {}
+    graph_edge_type_dist: dict[str, int] = {}
+    graph_uncontrolled_path_count = 0
+    graph_max_path_hops = 0
+    graph_data_sensitivity_types: list[str] = []
+    graph_control_coverage_pct = 0.0
+    graph_regulatory_framework_count = 0
+    graph_downward_trust_crossings = 0
+
+    if result.graph is not None:
+        graph = result.graph
+        surface = graph.risk_surface
+        graph_node_count = surface.total_nodes
+        graph_edge_count = surface.total_edges
+        graph_uncontrolled_path_count = surface.uncontrolled_path_count
+        graph_max_path_hops = surface.max_path_hops
+        graph_data_sensitivity_types = surface.sensitive_data_types
+        graph_control_coverage_pct = round(surface.control_coverage_pct, 1)
+        graph_regulatory_framework_count = len(surface.regulatory_frameworks)
+        graph_downward_trust_crossings = surface.downward_crossings
+
+        # Node type distribution (counts only, no labels)
+        for node in graph.nodes.values():
+            nt = node.node_type.value
+            graph_node_type_dist[nt] = graph_node_type_dist.get(nt, 0) + 1
+
+        # Edge type distribution (counts only, no source/target)
+        for edge in graph.edges:
+            et = edge.edge_type.value
+            graph_edge_type_dist[et] = graph_edge_type_dist.get(et, 0) + 1
+
     profile = TelemetryProfile(
         scan_id=result.scan_id,
         timestamp=result.timestamp,
@@ -159,6 +193,17 @@ def build_profile(result: ScanResult) -> TelemetryProfile:
         agent_count=len(result.agent_profiles),
         has_shared_credentials=has_shared_creds,
         has_agent_identity=has_agent_identity,
+        # Graph telemetry
+        graph_node_count=graph_node_count,
+        graph_edge_count=graph_edge_count,
+        graph_node_type_distribution=graph_node_type_dist,
+        graph_edge_type_distribution=graph_edge_type_dist,
+        uncontrolled_path_count=graph_uncontrolled_path_count,
+        max_path_hops=graph_max_path_hops,
+        data_sensitivity_types=graph_data_sensitivity_types,
+        control_coverage_pct=graph_control_coverage_pct,
+        regulatory_framework_count=graph_regulatory_framework_count,
+        downward_trust_crossings=graph_downward_trust_crossings,
     )
 
     return _validate_profile(profile)

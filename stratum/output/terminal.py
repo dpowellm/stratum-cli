@@ -8,6 +8,7 @@ from rich.panel import Panel
 from rich.text import Text
 
 from stratum.models import Finding, RiskCategory, ScanResult, Severity
+from stratum.graph.models import EdgeType, NodeType, RiskGraph
 from stratum.output.remediation import select_quick_wins, compute_estimated_score, QuickWin
 from stratum.output.badge import generate_badge_markdown
 from stratum.research.citations import get_citation
@@ -77,6 +78,7 @@ def render(result: ScanResult, verbose: bool = False,
     _render_header(result)
     _render_summary_line(result)
     _render_agent_profile(result, quick_wins)
+    _render_flow_map(result)
     _render_known_incidents(result)
     if result.diff:
         _render_progress(result)
@@ -247,6 +249,24 @@ def _render_agent_profile(result: ScanResult, quick_wins: list[QuickWin]) -> Non
             if result.mcp_server_count >= 5:
                 console.print("                 [dim]Most agent projects we see have 2-3 servers.[/dim]")
 
+    # Data types (inferred from graph)
+    graph: RiskGraph | None = result.graph  # type: ignore[assignment]
+    if graph and graph.risk_surface.sensitive_data_types:
+        types = graph.risk_surface.sensitive_data_types
+        type_labels = []
+        for t in types:
+            # Find which library inferred this type
+            source_lib = ""
+            for node in graph.nodes.values():
+                if node.data_sensitivity == t and node.node_type == NodeType.DATA_STORE:
+                    source_lib = node.label
+                    break
+            if source_lib:
+                type_labels.append(f"{t.upper()} (inferred from {source_lib})")
+            else:
+                type_labels.append(t.upper())
+        console.print(f" Data types      {', '.join(type_labels)}")
+
     # Guardrails
     if result.has_any_guardrails:
         console.print(f" Guardrails      {result.guardrail_count} detected")
@@ -306,6 +326,95 @@ def _render_agent_profile(result: ScanResult, quick_wins: list[QuickWin]) -> Non
     console.print()
 
 
+# ── Data Flow Map ───────────────────────────────────────────────────────────
+
+def _render_flow_map(result: ScanResult) -> None:
+    """Render the DATA FLOW MAP section when graph has >= 3 nodes."""
+    graph: RiskGraph | None = result.graph  # type: ignore[assignment]
+    if graph is None:
+        return
+    if len(graph.nodes) < 3:
+        return
+    if not graph.uncontrolled_paths:
+        return
+
+    console.rule("[bold]\u2550 DATA FLOW MAP[/bold]", style="bold")
+    console.print()
+
+    # Render edges from top 5 uncontrolled paths (Option B: list-style flow)
+    rendered_edges: set[str] = set()
+    for path in graph.uncontrolled_paths[:5]:
+        for edge in path.edges:
+            edge_key = f"{edge.source}\u2192{edge.target}"
+            if edge_key in rendered_edges:
+                continue
+            rendered_edges.add(edge_key)
+
+            source = graph.nodes.get(edge.source)
+            target = graph.nodes.get(edge.target)
+            if not source or not target:
+                continue
+
+            control_marker = ""
+            if not edge.has_control and _edge_needs_control_marker(edge, source, target):
+                if edge.edge_type == EdgeType.SENDS_TO:
+                    control_marker = "  [yellow]\u26a0 no output filter[/yellow]"
+                else:
+                    control_marker = "  [yellow]\u26a0 uncontrolled[/yellow]"
+
+            sensitivity_tag = ""
+            if edge.data_sensitivity not in ("unknown", "public"):
+                sensitivity_tag = f" ({edge.data_sensitivity.upper()})"
+
+            console.print(
+                f"  {source.label}{sensitivity_tag} "
+                f"\u2500\u2500\u25b6 {target.label}{control_marker}"
+            )
+
+    console.print()
+
+    # Summary line
+    if graph.uncontrolled_paths:
+        top = graph.uncontrolled_paths[0]
+        sink_count = _count_sinks(graph)
+        sens = top.source_sensitivity.upper() if top.source_sensitivity != "unknown" else "Data"
+        missing = len(top.missing_controls)
+        console.print(
+            f"  {sens} reaches {sink_count} external service(s) "
+            f"with {missing} missing control(s)."
+        )
+
+    # Regulatory surface
+    all_reg_flags: set[str] = set()
+    for path in graph.uncontrolled_paths:
+        all_reg_flags.update(path.regulatory_flags)
+    if all_reg_flags:
+        console.print(f"  Regulatory: {' \u00b7 '.join(sorted(all_reg_flags))}")
+        console.print(
+            "  [dim]Regulatory surface: flags where this path may "
+            "intersect compliance requirements.[/dim]"
+        )
+
+    console.print()
+
+
+def _edge_needs_control_marker(edge, source, target) -> bool:
+    """Check if an edge should show a warning marker."""
+    if target.node_type in (NodeType.EXTERNAL_SERVICE, NodeType.MCP_SERVER):
+        return True
+    if edge.data_sensitivity in ("pii", "financial", "credentials"):
+        return True
+    return False
+
+
+def _count_sinks(graph: RiskGraph) -> int:
+    """Count the number of external sink nodes in the graph."""
+    return len([
+        n for n in graph.nodes.values()
+        if n.node_type in (NodeType.EXTERNAL_SERVICE, NodeType.MCP_SERVER)
+    ])
+
+
 # ── Known Incidents ──────────────────────────────────────────────────────────
 
 def _render_known_incidents(result: ScanResult) -> None:
@@ -348,8 +457,9 @@ def _render_top_paths_security(result: ScanResult) -> None:
 
     console.rule("[bold]TOP RISK PATHS[/bold]", style="bold")
     console.print()
+    graph = result.graph if hasattr(result, "graph") else None
     for finding in result.top_paths:
-        _render_finding_compact(finding)
+        _render_finding_compact(finding, graph)
         console.print()
 
 
@@ -371,6 +481,7 @@ def _render_top_paths_dev(result: ScanResult) -> None:
         ),
     )
 
+    graph = result.graph if hasattr(result, "graph") else None
     current_class = None
     for finding in sorted_findings:
         fc = finding.finding_class
@@ -380,7 +491,7 @@ def _render_top_paths_dev(result: ScanResult) -> None:
             console.print(f" [bold dim]{label}[/bold dim]")
             console.print()
 
-        _render_finding_compact(finding)
+        _render_finding_compact(finding, graph)
         console.print()
 
 
@@ -391,22 +502,23 @@ def _render_learning_governance_sections(result: ScanResult) -> None:
     learning_findings = [f for f in all_findings if f.finding_class == "learning"]
     governance_findings = [f for f in all_findings if f.finding_class == "governance"]
 
+    graph = result.graph if hasattr(result, "graph") else None
     if learning_findings:
         console.rule("[bold]LEARNING & DRIFT RISK[/bold]", style="bold")
         console.print()
         for finding in learning_findings:
-            _render_finding_compact(finding)
+            _render_finding_compact(finding, graph)
             console.print()
 
     if governance_findings:
         console.rule("[bold]GOVERNANCE ARCHITECTURE[/bold]", style="bold")
         console.print()
         for finding in governance_findings:
-            _render_finding_compact(finding)
+            _render_finding_compact(finding, graph)
             console.print()
 
 
-def _render_finding_compact(finding: Finding) -> None:
+def _render_finding_compact(finding: Finding, graph: RiskGraph | None = None) -> None:
     """Render a finding in compact attack-scenario format with ASI ID and citation."""
     sev_label = {
         Severity.CRITICAL: "[bold red]CRITICAL[/bold red]",
@@ -417,21 +529,116 @@ def _render_finding_compact(finding: Finding) -> None:
 
     # Include ASI ID after STRATUM ID
     asi_str = f" \u00b7 {finding.owasp_id}" if finding.owasp_id else ""
-    console.print(f"  {sev_label}  {finding.id}{asi_str}  [bold]{finding.title}[/bold]")
 
-    if finding.description:
-        desc = finding.description
-        console.print(f"  {desc}")
+    # Graph-enhanced annotation for path-based findings
+    graph_annotation = _get_graph_annotation(finding, graph)
+
+    console.print(f"  {sev_label}  {finding.id}{asi_str}  [bold]{finding.title}[/bold]{graph_annotation}")
+
+    # Graph-enhanced path display
+    graph_path = _get_graph_path(finding, graph)
+    if graph_path:
+        console.print(f"  {graph_path}")
+    elif finding.description:
+        console.print(f"  {finding.description}")
 
     # Citation line (dimmed)
     citation = get_citation(finding.id)
     if citation:
         console.print(f"  [dim]\u25b8 {citation.stat} -- {citation.source}[/dim]")
 
+    # Regulatory flags from graph
+    reg_flags = _get_regulatory_flags(finding, graph)
+    if reg_flags:
+        console.print(f"  [dim]Regulatory: {' \u00b7 '.join(reg_flags)}[/dim]")
+
     if finding.evidence:
         evidence_str = " \u00b7 ".join(finding.evidence)
         conf = finding.confidence.value.upper()
         console.print(f"  [dim]Evidence: {evidence_str}[/dim] [dim]\\[{conf}][/dim]")
+
+
+def _get_graph_annotation(finding: Finding, graph: RiskGraph | None) -> str:
+    """Get graph-enhanced annotation like '(2 hops, PII)' for path findings."""
+    if graph is None or not graph.uncontrolled_paths:
+        return ""
+    if finding.id not in ("STRATUM-001", "STRATUM-002", "STRATUM-007"):
+        return ""
+
+    for path in graph.uncontrolled_paths:
+        if _path_matches_finding(path, finding, graph):
+            sens = path.source_sensitivity.upper() if path.source_sensitivity != "unknown" else ""
+            parts = []
+            parts.append(f"{path.hops} hop{'s' if path.hops != 1 else ''}")
+            if sens:
+                parts.append(sens)
+            return f"  [dim]({', '.join(parts)})[/dim]"
+    return ""
+
+
+def _get_graph_path(finding: Finding, graph: RiskGraph | None) -> str:
+    """Get graph-enhanced path display with full node labels."""
+    if graph is None or not graph.uncontrolled_paths:
+        return ""
+    if finding.id not in ("STRATUM-001", "STRATUM-002", "STRATUM-007"):
+        return ""
+
+    for path in graph.uncontrolled_paths:
+        if _path_matches_finding(path, finding, graph):
+            labels = []
+            for nid in path.nodes:
+                node = graph.nodes.get(nid)
+                if node:
+                    labels.append(node.label)
+            # Insert control gap markers between nodes
+            parts: list[str] = []
+            for i, label in enumerate(labels):
+                if i > 0 and i - 1 < len(path.edges):
+                    edge = path.edges[i - 1]
+                    if not edge.has_control and edge.edge_type in (EdgeType.SENDS_TO, EdgeType.CALLS):
+                        parts.append("\\[no filter]")
+                parts.append(label)
+            return " \u2192 ".join(parts)
+    return ""
+
+
+def _get_regulatory_flags(finding: Finding, graph: RiskGraph | None) -> list[str]:
+    """Get regulatory flags for a finding from graph paths."""
+    if graph is None or not graph.uncontrolled_paths:
+        return []
+    if finding.id not in ("STRATUM-001", "STRATUM-002", "STRATUM-007"):
+        return []
+
+    for path in graph.uncontrolled_paths:
+        if _path_matches_finding(path, finding, graph):
+            return path.regulatory_flags
+    return []
+
+
+def _path_matches_finding(path, finding: Finding, graph: RiskGraph) -> bool:
+    """Check if a graph risk path corresponds to a specific finding."""
+    if finding.id == "STRATUM-001":
+        # Exfiltration: path from data_store to external_service
+        if path.nodes:
+            src = graph.nodes.get(path.nodes[0])
+            dst = graph.nodes.get(path.nodes[-1])
+            if (src and dst
+                    and src.node_type == NodeType.DATA_STORE
+                    and dst.node_type == NodeType.EXTERNAL_SERVICE):
+                return True
+    elif finding.id == "STRATUM-002":
+        # Destructive: path ending at a destructive write
+        for nid in path.nodes:
+            node = graph.nodes.get(nid)
+            if node and node.node_type == NodeType.CAPABILITY and "destructive" in node.id:
+                return True
+    elif finding.id == "STRATUM-007":
+        # Financial: path involving financial nodes
+        for nid in path.nodes:
+            node = graph.nodes.get(nid)
+            if node and node.data_sensitivity == "financial":
+                return True
+    return False
 
 
 # ── Quick Wins ────────────────────────────────────────────────────────────────
