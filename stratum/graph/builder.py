@@ -162,6 +162,9 @@ def build_graph(result: ScanResult) -> RiskGraph:
                     has_control=False,
                 ))
 
+    # Step 3.6: Agent relationship edges (FEEDS_INTO, DELEGATES_TO, SHARES_TOOL)
+    _add_agent_relationship_edges(graph, result)
+
     # Step 4: Connect data-reading capabilities to outbound capabilities
     # (implicit: the agent can use any tool, so data flows from reads to sends)
     _connect_agent_data_flows(graph, unique_caps)
@@ -171,6 +174,9 @@ def build_graph(result: ScanResult) -> RiskGraph:
 
     # Step 5: Infer and propagate data sensitivity
     propagate_sensitivity(graph)
+
+    # Step 5b: Mark trust boundary crossings on all edges
+    _mark_trust_crossings(graph)
 
     # Step 6: Find uncontrolled paths
     graph.uncontrolled_paths = find_uncontrolled_paths(graph)
@@ -361,6 +367,80 @@ def _connect_agent_data_flows(graph: RiskGraph, capabilities: list[Capability]) 
                 edge_type=EdgeType.SHARES_WITH,
                 has_control=False,
             ))
+
+
+# ---------------------------------------------------------------------------
+# Agent relationship edges
+# ---------------------------------------------------------------------------
+
+TRUST_RANK = {
+    TrustLevel.PRIVILEGED: 4,
+    TrustLevel.RESTRICTED: 3,
+    TrustLevel.INTERNAL: 2,
+    TrustLevel.EXTERNAL: 1,
+    TrustLevel.PUBLIC: 0,
+}
+
+
+def _add_agent_relationship_edges(graph: RiskGraph, result: ScanResult) -> None:
+    """Add FEEDS_INTO, DELEGATES_TO, SHARES_TOOL edges from crew/relationship data."""
+    # FEEDS_INTO edges from sequential crew definitions
+    for crew in getattr(result, 'crew_definitions', []):
+        if crew.process_type == "sequential" and len(crew.agent_names) > 1:
+            for i in range(len(crew.agent_names) - 1):
+                src = f"agent_{crew.agent_names[i].lower().replace(' ', '_')}"
+                tgt = f"agent_{crew.agent_names[i + 1].lower().replace(' ', '_')}"
+                if src in graph.nodes and tgt in graph.nodes:
+                    graph.edges.append(GraphEdge(
+                        source=src, target=tgt,
+                        edge_type=EdgeType.FEEDS_INTO, has_control=False,
+                    ))
+
+        # Hierarchical: manager delegates to all agents
+        if crew.process_type == "hierarchical" and crew.has_manager:
+            if crew.agent_names:
+                manager_id = f"agent_{crew.agent_names[0].lower().replace(' ', '_')}"
+                for agent_name in crew.agent_names[1:]:
+                    agent_id = f"agent_{agent_name.lower().replace(' ', '_')}"
+                    if manager_id in graph.nodes and agent_id in graph.nodes:
+                        graph.edges.append(GraphEdge(
+                            source=manager_id, target=agent_id,
+                            edge_type=EdgeType.DELEGATES_TO, has_control=False,
+                        ))
+
+    # Explicit relationships from agent parser
+    for rel in getattr(result, 'agent_relationships', []):
+        src = f"agent_{rel.source_agent.lower().replace(' ', '_')}"
+        tgt = f"agent_{rel.target_agent.lower().replace(' ', '_')}"
+        if src not in graph.nodes or tgt not in graph.nodes:
+            continue
+
+        if rel.relationship_type == "shares_tool":
+            graph.edges.append(GraphEdge(
+                source=src, target=tgt,
+                edge_type=EdgeType.SHARES_TOOL, has_control=False,
+            ))
+        elif rel.relationship_type in ("delegates_to", "feeds_into"):
+            edge_type = (EdgeType.DELEGATES_TO if rel.relationship_type == "delegates_to"
+                         else EdgeType.FEEDS_INTO)
+            graph.edges.append(GraphEdge(
+                source=src, target=tgt,
+                edge_type=edge_type, has_control=False,
+            ))
+
+
+def _mark_trust_crossings(graph: RiskGraph) -> None:
+    """Mark trust boundary crossings on all edges."""
+    for edge in graph.edges:
+        src_node = graph.nodes.get(edge.source)
+        tgt_node = graph.nodes.get(edge.target)
+        if not src_node or not tgt_node:
+            continue
+        src_level = TRUST_RANK.get(src_node.trust_level, 0)
+        tgt_level = TRUST_RANK.get(tgt_node.trust_level, 0)
+        if src_level != tgt_level:
+            edge.trust_crossing = True
+            edge.crossing_direction = "outward" if src_level > tgt_level else "inward"
 
 
 # ---------------------------------------------------------------------------

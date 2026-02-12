@@ -51,16 +51,15 @@ def compute_risk_surface(graph: RiskGraph) -> RiskSurface:
         all_flags.update(path.regulatory_flags)
     surface.regulatory_frameworks = sorted(all_flags)
 
-    # Trust boundaries
+    # Trust boundaries (use pre-computed trust_crossing from builder)
     for edge in graph.edges:
-        src = graph.nodes.get(edge.source)
-        tgt = graph.nodes.get(edge.target)
-        if src and tgt and src.trust_level != tgt.trust_level:
+        if edge.trust_crossing:
             surface.trust_boundary_crossings += 1
-            src_rank = TRUST_RANK.get(src.trust_level.value, 0)
-            tgt_rank = TRUST_RANK.get(tgt.trust_level.value, 0)
-            if src_rank > tgt_rank:
+            if edge.crossing_direction == "outward":
+                surface.outward_crossings += 1
                 surface.downward_crossings += 1
+            elif edge.crossing_direction == "inward":
+                surface.inward_crossings += 1
 
     return surface
 

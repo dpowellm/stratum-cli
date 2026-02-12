@@ -135,6 +135,20 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
                 "code_exec": result.code_exec_count,
                 "destructive": result.destructive_count,
             },
+            "agent_count": len(result.agent_definitions),
+            "crew_count": len(result.crew_definitions),
+            "shared_tool_pairs": sum(
+                1 for r in result.agent_relationships
+                if r.relationship_type == "shares_tool"
+            ),
+            "trust_boundary_crossings": (
+                result.graph.risk_surface.trust_boundary_crossings
+                if result.graph else 0
+            ),
+            "control_coverage_pct": (
+                result.graph.risk_surface.control_coverage_pct
+                if result.graph else 0.0
+            ),
         }
 
     # Output

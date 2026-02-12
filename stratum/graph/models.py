@@ -26,6 +26,8 @@ class EdgeType(str, Enum):
     GATED_BY = "gated_by"
     TOOL_OF = "tool_of"
     DELEGATES_TO = "delegates_to"
+    FEEDS_INTO = "feeds_into"
+    SHARES_TOOL = "shares_tool"
 
 
 @dataclass
@@ -61,6 +63,8 @@ class GraphEdge:
     has_control: bool
     control_type: str = ""
     data_sensitivity: str = "unknown"
+    trust_crossing: bool = False
+    crossing_direction: str = ""  # "inward" or "outward"
 
 
 @dataclass
@@ -101,6 +105,8 @@ class RiskSurface:
     # Trust boundary metrics
     trust_boundary_crossings: int = 0
     downward_crossings: int = 0
+    outward_crossings: int = 0
+    inward_crossings: int = 0
 
 
 @dataclass
@@ -130,6 +136,8 @@ class RiskGraph:
                     "type": e.edge_type.value,
                     "has_control": e.has_control,
                     "data_sensitivity": e.data_sensitivity,
+                    "trust_crossing": e.trust_crossing,
+                    "crossing_direction": e.crossing_direction,
                 }
                 for e in self.edges
             ],

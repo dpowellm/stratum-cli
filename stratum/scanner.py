@@ -144,6 +144,38 @@ def scan(path: str) -> ScanResult:
                     existing.tool_names.append(t)
     all_agent_defs = list(agent_dedup.values())
 
+    # Extract crew definitions and agent relationships
+    from stratum.parsers.agents import (
+        extract_crew_definitions, detect_shared_tools, detect_cross_crew_flows,
+    )
+    # Build (file_path, content, ast_tree) triples for crew extraction
+    py_files_with_ast: list[tuple[str, str, ast.Module]] = []
+    for file_path, content in py_files:
+        rel = os.path.relpath(file_path, abs_path)
+        try:
+            tree = ast.parse(content)
+            py_files_with_ast.append((rel, content, tree))
+        except SyntaxError:
+            pass
+
+    crew_definitions = extract_crew_definitions(py_files_with_ast)
+    shared_tool_rels = detect_shared_tools(all_agent_defs)
+    cross_crew_rels = detect_cross_crew_flows(
+        crew_definitions, [(os.path.relpath(fp, abs_path), c) for fp, c in py_files],
+    )
+    all_agent_relationships = shared_tool_rels + cross_crew_rels
+
+    # Resolve guardrail covers_tools
+    from stratum.parsers.capabilities import resolve_guardrail_coverage
+    ast_trees: dict[str, ast.Module] = {}
+    for rel, _content, tree in py_files_with_ast:
+        ast_trees[rel] = tree
+    for guard in all_guardrails:
+        if not guard.covers_tools:
+            guard.covers_tools = resolve_guardrail_coverage(
+                guard, ast_trees, all_capabilities,
+            )
+
     # Deduplicate capabilities
     all_capabilities = _deduplicate_capabilities(all_capabilities)
 
@@ -241,6 +273,8 @@ def scan(path: str) -> ScanResult:
         telemetry_destinations=telemetry_ctx.get("telemetry_destinations", []),
         has_eval_conflict=eval_ctx.get("has_eval_conflict", False),
         agent_definitions=all_agent_defs,
+        crew_definitions=crew_definitions,
+        agent_relationships=all_agent_relationships,
     )
 
     # Build risk graph
@@ -271,11 +305,71 @@ def scan(path: str) -> ScanResult:
         )
         result.top_paths = result.top_paths[:5]
 
+    # Run business risk rules
+    from stratum.rules.business_risk import evaluate_business_risks
+    business_findings = evaluate_business_risks(result)
+
+    # Run operational risk rules
+    from stratum.rules.operational_risk import evaluate_operational_risks
+    operational_findings = evaluate_operational_risks(result)
+
+    # Run compounding risk rules
+    from stratum.rules.compounding_risk import evaluate_compounding_risks
+    compounding_findings = evaluate_compounding_risks(result)
+
+    # Merge new findings — consolidate duplicates per rule ID
+    all_new_findings = business_findings + operational_findings + compounding_findings
+    # Apply severity gating
+    from stratum.rules.engine import _gate_severity
+    for f in all_new_findings:
+        f = _gate_severity(f)
+
+    # Consolidate: keep at most 1 finding per rule ID (merge evidence)
+    consolidated_new: list[Finding] = []
+    seen_rule_ids: dict[str, Finding] = {}
+    for f in all_new_findings:
+        if f.id not in seen_rule_ids:
+            seen_rule_ids[f.id] = f
+            consolidated_new.append(f)
+        else:
+            # Merge evidence into existing finding
+            existing = seen_rule_ids[f.id]
+            for ev in f.evidence:
+                if ev not in existing.evidence:
+                    existing.evidence.append(ev)
+
+    # Route into top_paths or signals
+    severity_rank = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
+    for f in consolidated_new:
+        sev_val = f.severity.value if hasattr(f.severity, 'value') else str(f.severity)
+        cat_val = f.category.value if hasattr(f.category, 'value') else str(f.category)
+        if severity_rank.get(sev_val, 0) >= 3 or cat_val in ("security", "compounding"):
+            result.top_paths.append(f)
+        else:
+            result.signals.append(f)
+
+    # Re-sort and trim top_paths
+    result.top_paths.sort(
+        key=lambda f: severity_rank.get(
+            f.severity.value if hasattr(f.severity, 'value') else str(f.severity), 0
+        ),
+        reverse=True,
+    )
+
+    # Recalculate risk score with compounding bonuses
+    all_findings_final = result.top_paths + result.signals
+    compounding_bonus = 0
+    if any(f.id == "STRATUM-CR01" for f in all_findings_final):
+        compounding_bonus += 10
+    if any(f.id == "STRATUM-CR02" for f in all_findings_final):
+        compounding_bonus += 5
+    if any(f.id == "STRATUM-CR03" for f in all_findings_final):
+        compounding_bonus += 10
+    result.risk_score = min(result.risk_score + compounding_bonus, 100)
+
     # Match against known real-world incidents
-    if result.graph:
-        from stratum.intelligence.incidents import match_incidents
-        graph_dict = result.graph.to_dict()
-        result.incident_matches = match_incidents(graph_dict)
+    from stratum.intelligence.incidents import match_incidents
+    result.incident_matches = match_incidents(result)
 
     return result
 

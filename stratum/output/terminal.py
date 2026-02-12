@@ -1,7 +1,9 @@
 """Rich terminal output for Stratum scan results."""
 from __future__ import annotations
 
+import io
 import os
+import sys
 
 from rich.console import Console
 from rich.panel import Panel
@@ -15,7 +17,13 @@ from stratum.research.citations import get_citation
 from stratum.research.mcp_risk import risk_label
 from stratum.research.links import select_research_links
 
-console = Console(force_terminal=True)
+# Force UTF-8 output on Windows to support Unicode box-drawing characters
+if sys.platform == "win32" and hasattr(sys.stdout, "buffer"):
+    _stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+else:
+    _stdout = sys.stdout
+
+console = Console(file=_stdout, force_terminal=True, legacy_windows=False)
 
 SEVERITY_ICONS = {
     Severity.CRITICAL: "[bold red]CRITICAL[/bold red]",
@@ -78,6 +86,7 @@ def render(result: ScanResult, verbose: bool = False,
     _render_header(result)
     _render_summary_line(result)
     _render_agent_profile(result, quick_wins)
+    _render_topology(result)
     _render_incident_matches(result)
     _render_flow_map(result)
     _render_known_incidents(result)
@@ -111,21 +120,33 @@ def _render_header(result: ScanResult) -> None:
 
 
 def _render_summary_line(result: ScanResult) -> None:
-    """Render a tweetable summary line (<=80 chars)."""
+    """Render a tweetable summary line with severity and category counts."""
     all_findings = result.top_paths + result.signals
     sev_counts: dict[str, int] = {}
+    cat_counts: dict[str, int] = {}
     for f in all_findings:
         sev_counts[f.severity.value] = sev_counts.get(f.severity.value, 0) + 1
+        cat = f.category.value if hasattr(f.category, 'value') else str(f.category)
+        cat_counts[cat] = cat_counts.get(cat, 0) + 1
 
-    parts = []
+    sev_parts = []
     for sev in ("CRITICAL", "HIGH", "MEDIUM", "LOW"):
         count = sev_counts.get(sev, 0)
         if count:
-            parts.append(f"{count} {sev.lower()}")
+            sev_parts.append(f"{count} {sev.lower()}")
 
-    finding_str = " \u00b7 ".join(parts) if parts else "0 findings"
-    guard_str = f"{result.guardrail_count} guardrails" if result.guardrail_count else "0 guardrails"
-    line = f"{finding_str}    Risk: {result.risk_score}/100    {guard_str}"
+    finding_str = " \u00b7 ".join(sev_parts) if sev_parts else "0 findings"
+
+    cat_parts = []
+    for cat in ("security", "business", "operational", "compounding"):
+        count = cat_counts.get(cat, 0)
+        if count:
+            cat_parts.append(f"{cat}: {count}")
+
+    line = f"> {finding_str}"
+    if cat_parts:
+        line += f" | {' / '.join(cat_parts)}"
+    line += f"    Risk: {result.risk_score}/100"
     console.print(f" [bold]{line.strip()}[/bold]")
     console.print()
 
@@ -482,27 +503,93 @@ def _count_sinks(graph: RiskGraph) -> int:
 # ── Incident Matches ─────────────────────────────────────────────────────────
 
 def _render_incident_matches(result: ScanResult) -> None:
-    """Render real-world incident matches from graph topology analysis."""
+    """Render real-world incident matches with match reasons."""
     matches = getattr(result, 'incident_matches', None)
     if not matches:
         return
 
-    # Show the highest-confidence match
-    top = matches[0]
-    if top["confidence"] < 0.5:
+    console.rule("[bold red]INCIDENT MATCHES[/bold red]", style="bold red")
+    console.print()
+
+    for match in matches[:3]:
+        confidence = match.confidence if isinstance(match.confidence, (int, float)) else 0
+        if confidence < 0.5:
+            continue
+
+        pct = int(confidence * 100)
+        console.print(f"  [bold]\u25cf {match.name}[/bold] (confidence: {pct}%)")
+
+        # Show match_reason if available
+        reason = getattr(match, 'match_reason', '') or ''
+        if reason:
+            console.print(f"    {reason}")
+        else:
+            console.print(f"    {match.attack_summary}")
+
+        console.print(f"    Impact: {match.impact}")
+        url = match.source_url.replace("https://", "").replace("http://", "")
+        console.print(f"    [dim]\u2197 {url}[/dim]")
+        console.print()
+
+
+def _render_topology(result: ScanResult) -> None:
+    """Render graph topology summary."""
+    graph = getattr(result, 'graph', None)
+    if not graph or not hasattr(graph, 'risk_surface'):
         return
 
-    console.rule("[bold red]KNOWN INCIDENT MATCH[/bold red]", style="bold red")
+    rs = graph.risk_surface
+    if rs.total_nodes == 0:
+        return
+
+    console.rule("[bold]TOPOLOGY[/bold]", style="bold")
     console.print()
-    console.print(f"  [bold]{top['name']}[/bold] ({top['date']})")
-    console.print(f"  Impact: {top['impact']}")
+    console.print(
+        f"  {rs.total_nodes} nodes \u00b7 {rs.total_edges} edges \u00b7 "
+        f"{rs.trust_boundary_crossings} trust boundary crossings"
+    )
+    coverage_str = f"{rs.control_coverage_pct:.0f}%"
+    if rs.edges_needing_controls > 0:
+        console.print(
+            f"  Control coverage: {coverage_str} "
+            f"({rs.edges_with_controls} of {rs.edges_needing_controls} crossing edges have guardrails)"
+        )
     console.print()
-    console.print(f"  {top['attack_summary']}")
-    console.print()
-    # Short URL for display
-    url = top["source_url"].replace("https://", "").replace("http://", "")
-    console.print(f"  [dim]Source: {url}[/dim]")
-    console.print()
+
+    # Show top uncontrolled paths
+    if graph.uncontrolled_paths:
+        console.print("  [bold]Data flows:[/bold]")
+        for path in graph.uncontrolled_paths[:5]:
+            labels = []
+            for nid in path.nodes:
+                node = graph.nodes.get(nid)
+                if node:
+                    sens = f" ({node.data_sensitivity})" if node.data_sensitivity not in ("unknown", "public") else ""
+                    labels.append(f"{node.label}{sens}")
+            flow = "  \u2500\u25b6  ".join(labels)
+            control_str = "[red]\u26a0 no filter[/red]" if not any(e.has_control for e in path.edges) else "[green]\u2713[/green]"
+            console.print(f"    {flow}    {control_str}")
+        console.print()
+
+    # Show agent chains from crew definitions
+    crews = getattr(result, 'crew_definitions', [])
+    if crews:
+        console.print("  [bold]Agent chains:[/bold]")
+        for crew in crews[:3]:
+            if crew.process_type == "sequential" and len(crew.agent_names) > 1:
+                chain = " \u2192 ".join(crew.agent_names)
+                # Count intermediate validations
+                validations = 0
+                for name in crew.agent_names[1:-1]:
+                    for g in result.guardrails:
+                        if g.kind == "validation" and "output_pydantic" in g.detail:
+                            validations += 1
+                            break
+                console.print(
+                    f"    {chain}  ({len(crew.agent_names)} agents, "
+                    f"{validations} intermediate validations)"
+                )
+        console.print()
 
 
 # ── Known Incidents ──────────────────────────────────────────────────────────

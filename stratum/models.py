@@ -114,6 +114,48 @@ class Finding:
     finding_class: str = "security"  # "reliability" | "operational" | "security"
     citation: dict | None = None  # For JSON output: {stat, source, url}
     quick_fix_type: str = ""  # Key into remediation TEMPLATES dict
+    graph_paths: list = field(default_factory=list)  # list[RiskPath] from graph
+
+
+# ── Agent Relationship Models ────────────────────────────────
+
+@dataclass
+class AgentRelationship:
+    """A directed relationship between two agents."""
+    source_agent: str
+    target_agent: str
+    relationship_type: str  # "delegates_to", "feeds_into", "shares_tool"
+    shared_resource: str = ""
+    source_file: str = ""
+
+
+@dataclass
+class CrewDefinition:
+    """A crew/team/flow grouping agents together."""
+    name: str
+    framework: str  # "CrewAI", "LangGraph", "AutoGen"
+    agent_names: list[str] = field(default_factory=list)
+    process_type: str = ""  # "sequential", "hierarchical", "parallel"
+    source_file: str = ""
+    has_manager: bool = False
+    delegation_enabled: bool = False
+
+
+# ── Incident Match Enhancement ────────────────────────────────
+
+@dataclass
+class IncidentMatch:
+    """Enhanced incident match with explanation."""
+    incident_id: str
+    name: str
+    date: str
+    impact: str
+    confidence: float
+    attack_summary: str
+    source_url: str
+    match_reason: str = ""
+    matching_capabilities: list[str] = field(default_factory=list)
+    matching_files: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -151,9 +193,13 @@ class ScanResult:
     mcp_configs_scanned: int = 0
     env_files_scanned: int = 0
 
+    # Agent relationships
+    crew_definitions: list[CrewDefinition] = field(default_factory=list)
+    agent_relationships: list[AgentRelationship] = field(default_factory=list)
+
     # Learning & Governance
     agent_definitions: list = field(default_factory=list)  # list[AgentDefinition] from graph.agents
-    incident_matches: list = field(default_factory=list)  # list[dict] from intelligence.incidents
+    incident_matches: list[IncidentMatch] = field(default_factory=list)
     learning_type: str | None = None
     has_learning_loop: bool = False
     has_shared_context: bool = False

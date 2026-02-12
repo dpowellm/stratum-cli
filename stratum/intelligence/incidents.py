@@ -3,184 +3,217 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-
-@dataclass
-class GraphPattern:
-    """A pattern that matches against a RiskGraph's serialized dict."""
-    source_keywords: list[str] = field(default_factory=list)
-    sink_keywords: list[str] = field(default_factory=list)
-    requires_no_control: bool = True
-    sensitivity_types: list[str] = field(default_factory=list)
+from stratum.models import IncidentMatch
 
 
-@dataclass
-class Incident:
-    id: str
-    name: str
-    date: str
-    impact: str
-    url: str
-    attack_summary: str
-    graph_pattern: GraphPattern
-
-
-KNOWN_INCIDENTS: list[Incident] = [
-    Incident(
-        id="ECHOLEAK-2025",
-        name="Microsoft Copilot EchoLeak",
-        date="2025-Q1",
-        impact="$200M+ est. across 160+ reported incidents",
-        url="https://embracethered.com/blog/posts/2024/m365-copilot-echo-leak/",
-        attack_summary=(
-            "Zero-click prompt injection via email. Copilot ingested "
-            "crafted email, extracted data from OneDrive/SharePoint/Teams, "
-            "and exfiltrated it through trusted Microsoft domains."
+INCIDENT_DB: list[dict] = [
+    {
+        "id": "ECHOLEAK-2025",
+        "name": "Microsoft Copilot EchoLeak",
+        "date": "2025-Q1",
+        "impact": "$200M+ est. across 160+ reported incidents",
+        "attack_summary": (
+            "Zero-click prompt injection via email. Copilot ingested crafted email, "
+            "extracted data from OneDrive/SharePoint/Teams, and exfiltrated it through "
+            "trusted Microsoft domains."
         ),
-        graph_pattern=GraphPattern(
-            source_keywords=["email", "gmail", "messaging", "inbox"],
-            sink_keywords=["email", "gmail", "http", "search", "api", "outbound"],
-            requires_no_control=True,
-            sensitivity_types=["personal", "credentials"],
+        "source_url": "https://embracethered.com/blog/posts/2024/m365-copilot-echo-leak/",
+        "required_cap_kinds": ["data_access", "outbound"],
+        "tool_signals": ["gmail", "email", "outlook", "inbox", "thread"],
+        "pattern": "data_ingestion_to_outbound",
+    },
+    {
+        "id": "SLACK-AI-EXFIL-2024",
+        "name": "Slack AI Data Exfiltration",
+        "date": "2024-H2",
+        "impact": "Private channel data leaked via crafted message links",
+        "attack_summary": (
+            "Hidden instructions in Slack messages caused AI assistant to insert "
+            "malicious link. Clicking it sent private channel data to attacker's server."
         ),
-    ),
-    Incident(
-        id="SLACK-AI-EXFIL-2024",
-        name="Slack AI Data Exfiltration",
-        date="2024-H2",
-        impact="Private channel data leaked via crafted message links",
-        url="https://promptarmor.substack.com/p/data-exfiltration-from-slack-ai-via",
-        attack_summary=(
-            "Hidden instructions in Slack messages caused AI assistant "
-            "to insert malicious link. Clicking it sent private channel "
-            "data to attacker's server."
+        "source_url": "https://promptarmor.substack.com/p/data-exfiltration-from-slack-ai-via",
+        "required_cap_kinds": ["data_access", "outbound"],
+        "tool_signals": ["slack", "chat", "message", "channel"],
+        "pattern": "data_ingestion_to_outbound",
+    },
+    {
+        "id": "SERVICENOW-NOWASSIST-2025",
+        "name": "ServiceNow Now Assist Privilege Escalation",
+        "date": "2025-H2",
+        "impact": "Cross-tenant case file exfiltration",
+        "attack_summary": (
+            "Second-order prompt injection: low-privilege agent tricks high-privilege "
+            "agent into exporting case files to external URL."
         ),
-        graph_pattern=GraphPattern(
-            source_keywords=["messaging", "slack"],
-            sink_keywords=["http", "messaging", "api"],
-            requires_no_control=True,
-            sensitivity_types=["personal", "internal"],
+        "source_url": "https://sombrainc.com/blog/llm-security-risks-2026",
+        "required_cap_kinds": ["data_access", "outbound"],
+        "tool_signals": [],  # Pattern-based, not tool-specific
+        "pattern": "cross_agent_privilege_escalation",
+    },
+    {
+        "id": "DOCKER-GORDON-2025",
+        "name": "Docker Ask Gordon Prompt Injection",
+        "date": "2025-Q4",
+        "impact": "Sensitive data exfiltration via poisoned Docker Hub metadata",
+        "attack_summary": (
+            "Prompt injection via crafted Docker Hub repository metadata. AI assistant "
+            "auto-executed tools to fetch payloads from attacker-controlled servers "
+            "without user consent."
         ),
-    ),
-    Incident(
-        id="SERVICENOW-NOWASSIST-2025",
-        name="ServiceNow Now Assist Privilege Escalation",
-        date="2025-H2",
-        impact="Cross-tenant case file exfiltration",
-        url="https://sombrainc.com/blog/llm-security-risks-2026",
-        attack_summary=(
-            "Second-order prompt injection: low-privilege agent tricks "
-            "high-privilege agent into exporting case files to external URL."
-        ),
-        graph_pattern=GraphPattern(
-            source_keywords=["database", "internal", "sql", "postgres"],
-            sink_keywords=["http", "email", "api"],
-            requires_no_control=True,
-            sensitivity_types=["personal", "internal", "credentials"],
-        ),
-    ),
-    Incident(
-        id="DOCKER-GORDON-2025",
-        name="Docker Ask Gordon Prompt Injection",
-        date="2025-Q4",
-        impact="Sensitive data exfiltration via poisoned Docker Hub metadata",
-        url="https://www.docker.com/blog/docker-security-advisory-ask-gordon/",
-        attack_summary=(
-            "Prompt injection via crafted Docker Hub repository metadata. "
-            "AI assistant auto-executed tools to fetch payloads from "
-            "attacker-controlled servers without user consent."
-        ),
-        graph_pattern=GraphPattern(
-            source_keywords=["database", "internal", "email"],
-            sink_keywords=["http", "api"],
-            requires_no_control=True,
-            sensitivity_types=["personal", "credentials", "internal"],
-        ),
-    ),
+        "source_url": "https://www.docker.com/blog/docker-security-advisory-ask-gordon/",
+        "required_cap_kinds": ["outbound"],
+        "tool_signals": ["fetch", "http", "requests", "scrape", "search"],
+        "pattern": "auto_tool_execution",
+    },
 ]
 
 
-def match_incidents(graph_dict: dict) -> list[dict]:
-    """Match the scan's risk graph against known incident patterns.
+def match_incidents(result) -> list[IncidentMatch]:
+    """Match scan results against known incident patterns and explain WHY.
 
     Args:
-        graph_dict: Serialized graph from RiskGraph.to_dict()
+        result: ScanResult object (uses capabilities, agent_relationships,
+                graph.uncontrolled_paths, agent_definitions).
 
     Returns:
-        List of match dicts sorted by confidence, only >= 0.5.
+        List of IncidentMatch objects sorted by confidence.
     """
-    matches: list[dict] = []
+    matches: list[IncidentMatch] = []
+    cap_kinds = {c.kind for c in result.capabilities if c.confidence.value == "confirmed"}
+    tool_names: set[str] = set()
+    for c in result.capabilities:
+        if c.library:
+            tool_names.add(c.library.lower())
+        fn = (c.function_name or "").lower().strip("[]")
+        if fn:
+            tool_names.add(fn)
 
-    for incident in KNOWN_INCIDENTS:
-        confidence = _compute_match_confidence(graph_dict, incident.graph_pattern)
-        if confidence >= 0.5:
-            matches.append({
-                "incident_id": incident.id,
-                "name": incident.name,
-                "date": incident.date,
-                "impact": incident.impact,
-                "confidence": round(confidence, 2),
-                "attack_summary": incident.attack_summary,
-                "source_url": incident.url,
-            })
+    for incident in INCIDENT_DB:
+        # Check required capability kinds
+        if not all(k in cap_kinds for k in incident["required_cap_kinds"]):
+            continue
 
-    matches.sort(key=lambda m: m["confidence"], reverse=True)
+        # Compute confidence based on pattern + tool match
+        confidence = 0.5  # base: capability kinds match
+        tool_matches = [
+            sig for sig in incident["tool_signals"]
+            if any(sig in tn for tn in tool_names)
+        ]
+        if tool_matches:
+            confidence += 0.25
+
+        # Pattern-specific boosts
+        if incident["pattern"] == "cross_agent_privilege_escalation":
+            if any(
+                r.relationship_type in ("delegates_to", "feeds_into")
+                for r in result.agent_relationships
+            ):
+                confidence += 0.25
+
+        if incident["pattern"] == "data_ingestion_to_outbound":
+            graph = getattr(result, 'graph', None)
+            if graph and hasattr(graph, 'uncontrolled_paths'):
+                if any(
+                    p.source_sensitivity in ("personal", "financial")
+                    for p in graph.uncontrolled_paths
+                ):
+                    confidence += 0.25
+
+        if confidence < 0.5:
+            continue
+
+        confidence = min(confidence, 1.0)
+
+        match_reason = _generate_match_reason(incident, result, tool_matches)
+        matching_files = _get_matching_files(incident, result, tool_matches)
+        matching_caps = [
+            c.function_name for c in result.capabilities
+            if c.kind in incident["required_cap_kinds"]
+            and c.confidence.value == "confirmed"
+        ][:5]
+
+        matches.append(IncidentMatch(
+            incident_id=incident["id"],
+            name=incident["name"],
+            date=incident["date"],
+            impact=incident["impact"],
+            confidence=round(confidence, 2),
+            attack_summary=incident["attack_summary"],
+            source_url=incident["source_url"],
+            match_reason=match_reason,
+            matching_capabilities=matching_caps,
+            matching_files=matching_files[:5],
+        ))
+
+    matches.sort(key=lambda m: m.confidence, reverse=True)
     return matches
 
 
-def _compute_match_confidence(graph_dict: dict, pattern: GraphPattern) -> float:
-    """Score how closely the graph matches an incident pattern.
+def _generate_match_reason(
+    incident: dict, result, tool_matches: list[str],
+) -> str:
+    """Generate a human-readable explanation of WHY this incident pattern matched."""
+    if incident["pattern"] == "data_ingestion_to_outbound":
+        data_sources = [c for c in result.capabilities if c.kind == "data_access"]
+        outbound_targets = [c for c in result.capabilities if c.kind == "outbound"]
 
-    Four checks, each worth 0.25:
-    1. Source keyword match (data_store node labels)
-    2. Sink keyword match (external node labels)
-    3. Uncontrolled path exists
-    4. Sensitivity type overlap
-    """
-    score = 0.0
-    nodes = graph_dict.get("nodes", [])
-    risk_surface = graph_dict.get("risk_surface", {})
+        source_name = (
+            data_sources[0].function_name.strip("[]") if data_sources else "data source"
+        )
+        target_name = (
+            outbound_targets[0].function_name.strip("[]") if outbound_targets else "external service"
+        )
 
-    # 1. Source type match — check data_store node labels
-    source_labels = [
-        n.get("label", "").lower()
-        for n in nodes
-        if n.get("type") == "data_store"
-    ]
-    if pattern.source_keywords:
-        if any(
-            kw in label
-            for kw in pattern.source_keywords
-            for label in source_labels
-        ):
-            score += 0.25
+        first_sentence = incident["attack_summary"].split(".")[0].lower()
+        return (
+            f"Your code reads data via {source_name} and sends it externally via "
+            f"{target_name} — the same data→external pattern that enabled "
+            f"{incident['name']}. In that incident, {first_sentence}."
+        )
 
-    # 2. Sink type match — check external node labels
-    sink_labels = [
-        n.get("label", "").lower()
-        for n in nodes
-        if n.get("type") == "external"
-    ]
-    if pattern.sink_keywords:
-        if any(
-            kw in label
-            for kw in pattern.sink_keywords
-            for label in sink_labels
-        ):
-            score += 0.25
+    elif incident["pattern"] == "cross_agent_privilege_escalation":
+        agents_with_power = [
+            a for a in result.agent_definitions
+            if _agent_has_power(a, result)
+        ]
+        agent_name = agents_with_power[0].name if agents_with_power else "a high-privilege agent"
+        return (
+            f"Your agent architecture has cross-agent delegation where one agent can "
+            f"influence {agent_name}'s actions — similar to the {incident['name']} pattern "
+            f"where a low-privilege agent tricked a high-privilege agent into exfiltrating data."
+        )
 
-    # 3. Uncontrolled path exists
-    if pattern.requires_no_control:
-        if risk_surface.get("uncontrolled_path_count", 0) > 0:
-            score += 0.25
-    else:
-        score += 0.25
+    elif incident["pattern"] == "auto_tool_execution":
+        http_tools = [
+            c for c in result.capabilities
+            if c.kind == "outbound" and c.library in ("requests", "httpx")
+        ]
+        tool_name = http_tools[0].function_name.strip("[]") if http_tools else "HTTP tools"
+        return (
+            f"Your agent auto-executes {tool_name} to fetch external content — "
+            f"the same pattern as {incident['name']}. In that incident, "
+            f"poisoned metadata triggered tools to fetch attacker-controlled payloads."
+        )
 
-    # 4. Sensitivity type overlap
-    graph_sensitivities = set(risk_surface.get("sensitive_data_types", []))
-    if pattern.sensitivity_types:
-        if graph_sensitivities & set(pattern.sensitivity_types):
-            score += 0.25
-    else:
-        score += 0.25
+    return f"Architectural similarity to {incident['name']}."
 
-    return score
+
+def _agent_has_power(agent, result) -> bool:
+    """Check if agent has destructive/financial/outbound capabilities."""
+    for tool in agent.tool_names:
+        for cap in result.capabilities:
+            fn = cap.function_name.strip("[]")
+            if fn == tool and cap.kind in ("destructive", "financial", "outbound"):
+                return True
+    return False
+
+
+def _get_matching_files(
+    incident: dict, result, tool_matches: list[str],
+) -> list[str]:
+    """Get source files implicated in the match."""
+    files: set[str] = set()
+    for cap in result.capabilities:
+        if cap.kind in incident["required_cap_kinds"]:
+            files.add(cap.source_file)
+    return sorted(files)

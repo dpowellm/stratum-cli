@@ -973,3 +973,101 @@ def detect_framework(file_imports: set[str], alias_map: dict[str, str]) -> set[s
                 found.add(framework_name)
                 break
     return found
+
+
+# ── Guardrail coverage resolution ──────────────────────────────────────────
+
+
+def resolve_guardrail_coverage(
+    guard: GuardrailSignal,
+    ast_trees: dict[str, ast.Module],
+    capabilities: list[Capability],
+) -> list[str]:
+    """Determine which tools a guardrail protects.
+
+    ast_trees: dict of file_path -> ast.Module.
+    """
+    covered: list[str] = []
+
+    tree = ast_trees.get(guard.source_file)
+    if not tree:
+        return covered
+
+    if "output_pydantic" in guard.detail or "human_input" in guard.detail:
+        # Find Task() call at this line, extract agent= -> get that agent's tools
+        task_node = _find_call_at_line(tree, guard.line_number, "Task")
+        if task_node:
+            agent_name = _extract_agent_keyword(task_node)
+            if agent_name:
+                covered = _find_agent_tools(tree, agent_name)
+
+    elif "interrupt_before" in guard.detail or "interrupt_after" in guard.detail:
+        covered = guard.covers_tools  # Already populated during detection
+
+    elif "isinstance" in guard.detail:
+        # Covers capabilities in the same file
+        covered = [
+            c.function_name for c in capabilities
+            if c.source_file == guard.source_file
+        ]
+
+    return covered
+
+
+def _find_call_at_line(tree: ast.Module, line: int, func_name: str) -> ast.Call | None:
+    """Find a Call node at a specific line matching func_name."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and getattr(node, 'lineno', 0) == line:
+            if isinstance(node.func, ast.Name) and node.func.id == func_name:
+                return node
+            if isinstance(node.func, ast.Attribute) and node.func.attr == func_name:
+                return node
+    # Broader search: within 5 lines
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            node_line = getattr(node, 'lineno', 0)
+            if abs(node_line - line) <= 5:
+                if isinstance(node.func, ast.Name) and node.func.id == func_name:
+                    return node
+                if isinstance(node.func, ast.Attribute) and node.func.attr == func_name:
+                    return node
+    return None
+
+
+def _extract_agent_keyword(call_node: ast.Call) -> str:
+    """Extract the agent= keyword value from a Task() call."""
+    for kw in call_node.keywords:
+        if kw.arg == "agent":
+            if isinstance(kw.value, ast.Name):
+                return kw.value.id
+            if isinstance(kw.value, ast.Call):
+                if isinstance(kw.value.func, ast.Name):
+                    return kw.value.func.id
+                if isinstance(kw.value.func, ast.Attribute):
+                    return kw.value.func.attr
+    return ""
+
+
+def _find_agent_tools(tree: ast.Module, agent_var: str) -> list[str]:
+    """Find the tools assigned to an agent variable in the AST."""
+    tools: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            func_name = ""
+            if isinstance(node.func, ast.Name):
+                func_name = node.func.id
+            elif isinstance(node.func, ast.Attribute):
+                func_name = node.func.attr
+            if func_name != "Agent":
+                continue
+            for kw in node.keywords:
+                if kw.arg == "tools" and isinstance(kw.value, ast.List):
+                    for elt in kw.value.elts:
+                        if isinstance(elt, ast.Call):
+                            if isinstance(elt.func, ast.Name):
+                                tools.append(elt.func.id)
+                            elif isinstance(elt.func, ast.Attribute):
+                                tools.append(elt.func.attr)
+                        elif isinstance(elt, ast.Name):
+                            tools.append(elt.id)
+    return tools
