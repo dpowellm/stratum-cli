@@ -49,7 +49,7 @@ def build_profile(result: ScanResult) -> TelemetryProfile:
     topology_hash = _compute_topology_hash(result)
 
     # Archetype class
-    archetype = _compute_archetype_class(caps)
+    archetype = _compute_archetype_class(caps, result)
 
     # MCP stats
     mcp_remote = sum(1 for s in result.mcp_servers if s.is_remote)
@@ -190,7 +190,7 @@ def build_profile(result: ScanResult) -> TelemetryProfile:
         telemetry_destination_count=len(result.telemetry_destinations),
         has_eval_framework=any(f.id in ("EVAL-001",) for f in all_findings) or not any(f.id == "EVAL-002" for f in all_findings),
         has_eval_conflict=result.has_eval_conflict,
-        agent_count=len(result.agent_profiles),
+        agent_count=len(getattr(result, 'agent_definitions', [])),
         has_shared_credentials=has_shared_creds,
         has_agent_identity=has_agent_identity,
         # Graph telemetry
@@ -323,19 +323,61 @@ def _compute_mitigation_coverage(
     }
 
 
-def _compute_archetype_class(capabilities: list[Capability]) -> str:
-    """Compute a coarse archetype hash from capability-kind presence.
+def _compute_archetype_class(capabilities: list[Capability], result: ScanResult | None = None) -> str:
+    """Classify the project into a human-readable archetype based on capabilities.
 
-    Encodes ONLY which capability kinds exist (non-heuristic).
-    SHA-256, first 12 hex chars (shorter than topology hash to distinguish).
-    Returns empty string if no confirmed capabilities.
+    Archetypes (checked in priority order):
+    - multi_agent_orchestrator: 2+ agent nodes
+    - code_agent: has code_exec capabilities
+    - email_processor: has email/gmail data sources AND outbound
+    - data_pipeline: has database/internal data sources AND outbound
+    - rag_chatbot: has database/vector_db sources, no outbound to external
+    - research_agent: has outbound (search) but no sensitive data sources
+    - custom: doesn't match any pattern
     """
-    kinds = sorted({c.kind for c in capabilities if c.confidence != Confidence.HEURISTIC})
+    kinds = {c.kind for c in capabilities if c.confidence != Confidence.HEURISTIC}
     if not kinds:
-        return ""
-    canonical = "|".join(kinds)
-    digest = hashlib.sha256(canonical.encode()).hexdigest()
-    return digest[:12]
+        return "custom"
+
+    # Check agent count
+    agent_count = len(getattr(result, 'agent_definitions', [])) if result else 0
+    if agent_count >= 2:
+        return "multi_agent_orchestrator"
+
+    # Check code exec
+    if "code_exec" in kinds:
+        return "code_agent"
+
+    # Check for email/messaging sources
+    has_email_source = False
+    has_db_source = False
+    has_outbound = "outbound" in kinds
+    email_keywords = ("gmail", "email", "mail", "smtp", "o365", "slack", "messaging")
+    db_keywords = ("sql", "postgres", "mongo", "sqlite", "chromadb", "pinecone", "weaviate", "redis", "database")
+
+    for cap in capabilities:
+        lib_lower = cap.library.lower()
+        fn_lower = cap.function_name.lower()
+        combined = lib_lower + " " + fn_lower
+        if cap.kind == "data_access":
+            if any(kw in combined for kw in email_keywords):
+                has_email_source = True
+            if any(kw in combined for kw in db_keywords):
+                has_db_source = True
+
+    if has_email_source and has_outbound:
+        return "email_processor"
+
+    if has_db_source and has_outbound:
+        return "data_pipeline"
+
+    if has_db_source and not has_outbound:
+        return "rag_chatbot"
+
+    if has_outbound and not has_email_source and not has_db_source:
+        return "research_agent"
+
+    return "custom"
 
 
 def _validate_profile(profile: TelemetryProfile) -> TelemetryProfile:
@@ -346,8 +388,12 @@ def _validate_profile(profile: TelemetryProfile) -> TelemetryProfile:
     # Check hash lengths
     if profile.topology_signature_hash and len(profile.topology_signature_hash) != 16:
         logger.warning("topology_signature_hash is not 16 chars: %s", profile.topology_signature_hash)
-    if profile.archetype_class and len(profile.archetype_class) != 12:
-        logger.warning("archetype_class is not 12 chars: %s", profile.archetype_class)
+    valid_archetypes = (
+        "email_processor", "rag_chatbot", "research_agent", "code_agent",
+        "data_pipeline", "multi_agent_orchestrator", "custom", "",
+    )
+    if profile.archetype_class and profile.archetype_class not in valid_archetypes:
+        logger.warning("Unknown archetype_class: %s", profile.archetype_class)
 
     # Check ratio fields in [0.0, 1.0]
     ratio_fields = [

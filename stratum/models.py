@@ -117,26 +117,6 @@ class Finding:
 
 
 @dataclass
-class AgentProfile:
-    """Metadata about an agent definition detected in the project."""
-    source_file: str
-    scope_name: str
-    model_provider: str = ""
-    has_unique_identity: bool = False
-    credential_env_var: str = ""
-
-    # Learning
-    learning_type: str | None = None
-    memory_stores: list[str] = field(default_factory=list)
-
-    # Telemetry
-    telemetry_destinations: list[str] = field(default_factory=list)
-
-    # Eval
-    eval_provider: str | None = None
-
-
-@dataclass
 class ScanResult:
     scan_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
@@ -172,8 +152,8 @@ class ScanResult:
     env_files_scanned: int = 0
 
     # Learning & Governance
-    agent_profiles: list[AgentProfile] = field(default_factory=list)
     agent_definitions: list = field(default_factory=list)  # list[AgentDefinition] from graph.agents
+    incident_matches: list = field(default_factory=list)  # list[dict] from intelligence.incidents
     learning_type: str | None = None
     has_learning_loop: bool = False
     has_shared_context: bool = False

@@ -194,13 +194,13 @@ def _build_what_happens(
     # Determine source context
     if "mail" in source_label or "email" in source_label or "gmail" in source_label:
         trigger = "Someone sends your agent a crafted email"
-        reads = f"reads your {source.label.lower()}"
+        reads = f"reads your {source.label}"
     elif "slack" in source_label:
         trigger = "Someone sends your agent a crafted Slack message"
-        reads = f"reads your {source.label.lower()}"
+        reads = f"reads your {source.label}"
     elif "database" in source_label or "sql" in source_label or "postgres" in source_label:
         trigger = "An attacker injects a crafted prompt"
-        reads = f"queries your {source.label.lower()}"
+        reads = f"queries your {source.label}"
     else:
         trigger = "An attacker crafts malicious input"
         reads = f"reads from {source.label}"

@@ -61,6 +61,31 @@ FRIENDLY_NAMES: dict[str, tuple[str, str]] = {
 }
 
 
+EXTERNAL_SERVICE_SENSITIVITY: dict[str, str] = {
+    "Serper API": "public",
+    "Serper results": "public",
+    "Tavily API": "public",
+    "Tavily results": "public",
+    "DuckDuckGo": "public",
+    "Wikipedia": "public",
+    "Gmail outbound": "personal",
+    "Email (SMTP)": "personal",
+    "Slack": "internal",
+    "Office 365": "personal",
+    "HTTP endpoint": "unknown",
+    "System (code execution)": "unknown",
+}
+
+TOOLKIT_MEMBERS: dict[str, list[str]] = {
+    "GmailToolkit": [
+        "GmailToolkit", "GmailCreateDraft", "GmailSendMessage",
+        "GmailGetThread", "GmailGetMessage", "GmailSearch",
+    ],
+    "O365Toolkit": ["O365Toolkit"],
+    "SlackToolkit": ["SlackToolkit"],
+}
+
+
 def build_graph(result: ScanResult) -> RiskGraph:
     """Build a directed risk graph from scan results.
 
@@ -117,15 +142,25 @@ def build_graph(result: ScanResult) -> RiskGraph:
         graph.nodes[agent_node.id] = agent_node
 
         # Connect agent to its tools via TOOL_OF edges
+        # Build set of all tool names this agent owns (including toolkit members)
+        agent_tool_set: set[str] = set()
         for tool_name in agent_def.tool_names:
-            for nid, node in graph.nodes.items():
-                if node.node_type == NodeType.CAPABILITY and node.label == tool_name:
-                    graph.edges.append(GraphEdge(
-                        source=nid,
-                        target=agent_node.id,
-                        edge_type=EdgeType.TOOL_OF,
-                        has_control=False,
-                    ))
+            agent_tool_set.add(tool_name)
+            agent_tool_set.update(TOOLKIT_MEMBERS.get(tool_name, []))
+
+        # Also check reverse: if agent has a member tool, it owns the toolkit too
+        for toolkit, members in TOOLKIT_MEMBERS.items():
+            if any(m in agent_tool_set for m in members):
+                agent_tool_set.add(toolkit)
+
+        for nid, node in graph.nodes.items():
+            if node.node_type == NodeType.CAPABILITY and node.label in agent_tool_set:
+                graph.edges.append(GraphEdge(
+                    source=nid,
+                    target=agent_node.id,
+                    edge_type=EdgeType.TOOL_OF,
+                    has_control=False,
+                ))
 
     # Step 4: Connect data-reading capabilities to outbound capabilities
     # (implicit: the agent can use any tool, so data flows from reads to sends)
@@ -222,11 +257,13 @@ def _infer_connected_nodes(
         ))
 
     elif cap.kind == "outbound":
+        service_name = _friendly_service_name(cap)
         service = GraphNode(
             id=_service_node_id(cap),
             node_type=NodeType.EXTERNAL_SERVICE,
-            label=_friendly_service_name(cap),
+            label=service_name,
             trust_level=TrustLevel.EXTERNAL,
+            data_sensitivity=EXTERNAL_SERVICE_SENSITIVITY.get(service_name, "unknown"),
         )
         if service.id not in graph.nodes:
             graph.nodes[service.id] = service

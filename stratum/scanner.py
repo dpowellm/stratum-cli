@@ -271,6 +271,12 @@ def scan(path: str) -> ScanResult:
         )
         result.top_paths = result.top_paths[:5]
 
+    # Match against known real-world incidents
+    if result.graph:
+        from stratum.intelligence.incidents import match_incidents
+        graph_dict = result.graph.to_dict()
+        result.incident_matches = match_incidents(graph_dict)
+
     return result
 
 

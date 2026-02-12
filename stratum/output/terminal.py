@@ -78,6 +78,7 @@ def render(result: ScanResult, verbose: bool = False,
     _render_header(result)
     _render_summary_line(result)
     _render_agent_profile(result, quick_wins)
+    _render_incident_matches(result)
     _render_flow_map(result)
     _render_known_incidents(result)
     if result.diff:
@@ -94,6 +95,7 @@ def render(result: ScanResult, verbose: bool = False,
         _render_top_paths_dev(result)
         _render_quick_wins(result, quick_wins)
     _render_learn_more(result)
+    _render_quick_actions(result)
     _render_whats_next(result, quick_wins)
     _render_footer(result)
 
@@ -287,6 +289,11 @@ def _render_agent_profile(result: ScanResult, quick_wins: list[QuickWin]) -> Non
     }
     console.print(f" State           {state_labels.get(result.checkpoint_type, result.checkpoint_type)}")
 
+    # Archetype (from telemetry profile if available)
+    archetype = getattr(result, '_archetype', None)
+    if archetype and archetype != "custom":
+        console.print(f" Archetype       {archetype}")
+
     console.print()
 
     # Risk score
@@ -470,6 +477,32 @@ def _count_sinks(graph: RiskGraph) -> int:
         n for n in graph.nodes.values()
         if n.node_type in (NodeType.EXTERNAL_SERVICE, NodeType.MCP_SERVER)
     ])
+
+
+# ── Incident Matches ─────────────────────────────────────────────────────────
+
+def _render_incident_matches(result: ScanResult) -> None:
+    """Render real-world incident matches from graph topology analysis."""
+    matches = getattr(result, 'incident_matches', None)
+    if not matches:
+        return
+
+    # Show the highest-confidence match
+    top = matches[0]
+    if top["confidence"] < 0.5:
+        return
+
+    console.rule("[bold red]KNOWN INCIDENT MATCH[/bold red]", style="bold red")
+    console.print()
+    console.print(f"  [bold]{top['name']}[/bold] ({top['date']})")
+    console.print(f"  Impact: {top['impact']}")
+    console.print()
+    console.print(f"  {top['attack_summary']}")
+    console.print()
+    # Short URL for display
+    url = top["source_url"].replace("https://", "").replace("http://", "")
+    console.print(f"  [dim]Source: {url}[/dim]")
+    console.print()
 
 
 # ── Known Incidents ──────────────────────────────────────────────────────────
@@ -907,6 +940,21 @@ def _render_progress(result: ScanResult) -> None:
     n = len(resolved)
     console.print()
     console.print(f"  Nice work. {n} issue{'s' if n != 1 else ''} resolved in one pass.")
+    console.print()
+
+
+# ── Quick Actions ─────────────────────────────────────────────────────────────
+
+def _render_quick_actions(result: ScanResult) -> None:
+    """Render the QUICK ACTIONS section with CLI commands."""
+    all_findings = result.top_paths + result.signals
+    if not all_findings:
+        return
+
+    console.rule("[bold]QUICK ACTIONS[/bold]", style="bold")
+    console.print()
+    console.print("  [cyan]stratum scan . --fix[/cyan]          Apply fixes automatically")
+    console.print("  [cyan]stratum scan . --format sarif[/cyan] Export for GitHub Code Scanning")
     console.print()
 
 

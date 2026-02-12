@@ -36,9 +36,13 @@ def cli() -> None:
               help="Exit 1 if risk score exceeds this threshold (for CI gates)")
 @click.option("--security", "security_mode", is_flag=True,
               help="Security-first ordering (severity-based, default for --ci)")
+@click.option("--format", "output_format", type=click.Choice(["terminal", "json", "sarif"]),
+              default="terminal", help="Output format")
+@click.option("--fix", "apply_fix", is_flag=True,
+              help="Auto-apply safe fixes (human_input, memory) to source files")
 def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
              no_telemetry: bool, offline: bool, fail_above: int | None,
-             security_mode: bool) -> None:
+             security_mode: bool, output_format: str, apply_fix: bool) -> None:
     """Run a security audit on an AI agent project."""
     # --ci implies --security ordering
     if ci:
@@ -94,6 +98,10 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
         except OSError:
             pass
 
+    # Set archetype on result for terminal display
+    if profile is not None:
+        result._archetype = profile.archetype_class
+
     # POST telemetry
     submission_success = False
     if telemetry_enabled and profile is not None:
@@ -109,8 +117,33 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
         if cit:
             finding.citation = {"stat": cit.stat, "source": cit.source, "url": cit.url}
 
+    # --json-output and --ci override --format
+    if json_output or ci:
+        output_format = "json"
+
+    # Build telemetry profile fields for JSON output
+    telemetry_profile_dict = None
+    if profile is not None:
+        telemetry_profile_dict = {
+            "topology_signature": profile.topology_signature_hash,
+            "archetype": profile.archetype_class,
+            "archetype_confidence": 0.9,
+            "framework_fingerprint": result.detected_frameworks,
+            "capability_fingerprint": {
+                "outbound": result.outbound_count,
+                "data_access": result.data_access_count,
+                "code_exec": result.code_exec_count,
+                "destructive": result.destructive_count,
+            },
+        }
+
     # Output
-    if ci or json_output:
+    if output_format == "sarif":
+        from stratum.output.sarif import generate_sarif
+        sarif = generate_sarif(result)
+        click.echo(json.dumps(sarif, indent=2))
+
+    elif output_format == "json" or ci:
         import dataclasses
         # Temporarily remove graph (not a plain dataclass for asdict)
         graph_obj = result.graph
@@ -120,6 +153,9 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
         # Add graph as structured JSON
         if graph_obj is not None:
             out["graph"] = graph_obj.to_dict()
+        # Add telemetry profile summary
+        if telemetry_profile_dict:
+            out["telemetry_profile"] = telemetry_profile_dict
         click.echo(json.dumps(out, indent=2))
 
         if ci:
@@ -158,6 +194,23 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
         # Comparison URL (only if submission succeeded, terminal mode only)
         if submission_success:
             print_comparison_url(result.scan_id)
+
+    # --fix mode: apply auto-remediations
+    if apply_fix:
+        from stratum.fix import apply_fixes
+        fixes = apply_fixes(result, abs_path)
+        if fixes:
+            click.echo()
+            click.echo(f"  Applied {len(fixes)} fix(es):")
+            click.echo()
+            for fix in fixes:
+                click.echo(f"  {fix.finding_id}  {fix.description}")
+                click.echo(f"               {fix.file_path}")
+            click.echo()
+            click.echo("  Re-run `stratum scan .` to verify.")
+        else:
+            click.echo()
+            click.echo("  No auto-fixable issues found.")
 
     # --fail-above threshold check (works with all output modes)
     if fail_above is not None and result.risk_score > fail_above:
