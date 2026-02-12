@@ -40,6 +40,14 @@ SENSITIVITY_MAP: dict[str, str] = {
     "pinecone": "internal",
     "weaviate": "internal",
 
+    # Health data (triggers HIPAA)
+    "fhirclient": "health",
+    "hl7": "health",
+    "pydicom": "health",
+    "health": "health",
+    "medical": "health",
+    "epic_fhir": "health",
+
     # Public (search tools -- these are NOT data sources, they are outbound services)
     "SerperDevTool": "public",
     "Serper": "public",
@@ -52,6 +60,7 @@ SENSITIVITY_MAP: dict[str, str] = {
 SENSITIVITY_RANK: dict[str, int] = {
     "credentials": 5,
     "personal": 4,
+    "health": 4,
     "financial": 3,
     "internal": 2,
     "public": 1,
@@ -98,34 +107,50 @@ def infer_sensitivity_for_cap(cap) -> str:
 def propagate_sensitivity(graph: RiskGraph) -> None:
     """Propagate data sensitivity forward along edges.
 
-    BFS from data source nodes. Each edge inherits the highest
-    sensitivity from its source, unless blocked by a guardrail.
+    BFS from all nodes with known sensitivity. When a node's sensitivity
+    is upgraded, re-add it to the queue to propagate the upgrade downstream.
     """
-    # Start from all nodes with known sensitivity
-    queue: list[str] = []
-    for node in graph.nodes.values():
-        if node.data_sensitivity != "unknown":
-            queue.append(node.id)
+    # Start from all nodes with non-trivial sensitivity
+    queue: list[str] = [
+        nid for nid, node in graph.nodes.items()
+        if node.data_sensitivity not in ("public", "unknown")
+    ]
 
-    visited: set[str] = set()
-    while queue:
+    # No visited set -- nodes can be re-processed when upgraded
+    max_iterations = len(graph.nodes) * len(graph.edges) + 1  # safety cap
+    iterations = 0
+
+    while queue and iterations < max_iterations:
+        iterations += 1
         current_id = queue.pop(0)
-        if current_id in visited:
-            continue
-        visited.add(current_id)
-
-        current_node = graph.nodes[current_id]
-        current_sensitivity = current_node.data_sensitivity
+        current = graph.nodes[current_id]
+        current_rank = SENSITIVITY_RANK.get(current.data_sensitivity, 0)
 
         for edge in graph.edges:
-            if edge.source == current_id:
-                # Propagate sensitivity to edge
-                if SENSITIVITY_RANK.get(current_sensitivity, 0) > SENSITIVITY_RANK.get(edge.data_sensitivity, 0):
-                    edge.data_sensitivity = current_sensitivity
+            if edge.source != current_id:
+                continue
 
-                # Propagate to target node if not blocked by guardrail
-                target = graph.nodes.get(edge.target)
-                if target and not edge.has_control:
-                    if SENSITIVITY_RANK.get(current_sensitivity, 0) > SENSITIVITY_RANK.get(target.data_sensitivity, 0):
-                        target.data_sensitivity = current_sensitivity
-                    queue.append(edge.target)
+            # Upgrade edge sensitivity
+            edge_rank = SENSITIVITY_RANK.get(edge.data_sensitivity, 0)
+            if current_rank > edge_rank:
+                edge.data_sensitivity = current.data_sensitivity
+
+            # Upgrade target node sensitivity (if not blocked by control)
+            if edge.has_control:
+                continue
+
+            target = graph.nodes.get(edge.target)
+            if not target:
+                continue
+
+            # Don't overwrite native sensitivity of external sinks —
+            # the node describes what the service IS, the edge carries
+            # what data FLOWS through it.
+            if target.node_type in (NodeType.EXTERNAL_SERVICE, NodeType.MCP_SERVER):
+                continue
+
+            target_rank = SENSITIVITY_RANK.get(target.data_sensitivity, 0)
+            if current_rank > target_rank:
+                target.data_sensitivity = current.data_sensitivity
+                # Re-queue to propagate the upgrade downstream
+                queue.append(edge.target)

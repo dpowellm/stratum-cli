@@ -17,7 +17,8 @@ from stratum.parsers.capabilities import detect_framework
 from stratum.rules.engine import Engine
 from stratum.graph.builder import build_graph
 from stratum.graph.models import NodeType, RiskPath
-from stratum.graph.remediation import framework_remediation
+from stratum.graph.remediation import framework_remediation, framework_remediation_008, framework_remediation_010
+from stratum.graph.agents import extract_agents_from_yaml, extract_agents_from_python
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +120,30 @@ def scan(path: str) -> ScanResult:
     yaml_caps = _scan_yaml_configs(yaml_files)
     all_capabilities.extend(yaml_caps)
 
+    # Extract agent definitions from YAML files
+    all_agent_defs = []
+    for file_path, content in yaml_files:
+        all_agent_defs.extend(extract_agents_from_yaml(content, file_path))
+
+    # Extract agent definitions from Python files (use relative paths)
+    for file_path, content in py_files:
+        rel = os.path.relpath(file_path, abs_path)
+        all_agent_defs.extend(extract_agents_from_python(content, rel))
+
+    # Deduplicate agent definitions by (name, framework), merge tool_names
+    agent_dedup: dict[tuple[str, str], object] = {}
+    for ad in all_agent_defs:
+        key = (ad.name, ad.framework)
+        if key not in agent_dedup:
+            agent_dedup[key] = ad
+        else:
+            existing = agent_dedup[key]
+            # Merge tools from duplicate
+            for t in ad.tool_names:
+                if t not in existing.tool_names:
+                    existing.tool_names.append(t)
+    all_agent_defs = list(agent_dedup.values())
+
     # Deduplicate capabilities
     all_capabilities = _deduplicate_capabilities(all_capabilities)
 
@@ -148,6 +173,14 @@ def scan(path: str) -> ScanResult:
         env_var_names, env_findings, checkpoint_type,
         py_files=rel_py_files,
     )
+
+    # Post-process findings with framework-aware remediation
+    fw_list = sorted(all_frameworks)
+    for f in top_paths + signals:
+        if f.id == "STRATUM-008":
+            f.remediation = framework_remediation_008(fw_list)
+        elif f.id == "STRATUM-010":
+            f.remediation = framework_remediation_010(fw_list)
 
     # Calculate risk score
     all_findings = top_paths + signals
@@ -207,6 +240,7 @@ def scan(path: str) -> ScanResult:
         has_shared_context=learning_ctx.get("has_shared_context", False),
         telemetry_destinations=telemetry_ctx.get("telemetry_destinations", []),
         has_eval_conflict=eval_ctx.get("has_eval_conflict", False),
+        agent_definitions=all_agent_defs,
     )
 
     # Build risk graph
@@ -221,6 +255,9 @@ def scan(path: str) -> ScanResult:
             )
             if finding:
                 graph_findings.append(finding)
+
+        # Consolidate graph findings with same rule ID
+        graph_findings = _consolidate_graph_findings(graph_findings)
 
         # Remove old pairwise STRATUM-001 findings, replace with graph findings
         result.top_paths = [
@@ -536,3 +573,67 @@ def _graph_finding_for_path(
         finding_class="security",
         quick_fix_type="add_hitl",
     )
+
+
+def _consolidate_graph_findings(findings: list[Finding]) -> list[Finding]:
+    """Merge findings with the same rule ID into one finding with multiple paths.
+
+    Three STRATUM-001 findings become one STRATUM-001 with three paths listed.
+    Keeps the highest severity. Uses the most dangerous path's scenario as primary.
+    """
+    by_id: dict[str, list[Finding]] = {}
+    for f in findings:
+        by_id.setdefault(f.id, []).append(f)
+
+    consolidated: list[Finding] = []
+    for rule_id, group in by_id.items():
+        if len(group) == 1:
+            consolidated.append(group[0])
+            continue
+
+        # Sort by severity (most severe first)
+        severity_rank = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
+        group.sort(
+            key=lambda f: severity_rank.get(
+                f.severity.value if hasattr(f.severity, 'value') else f.severity, 0
+            ),
+            reverse=True,
+        )
+
+        primary = group[0]  # Most dangerous path
+
+        # Build multi-path display
+        all_paths = [f.path for f in group]
+        path_display = "\n    ".join(all_paths)
+
+        # Merge evidence (deduplicate)
+        all_evidence: list[str] = []
+        seen_ev: set[str] = set()
+        for f in group:
+            for ev in f.evidence:
+                if ev not in seen_ev:
+                    seen_ev.add(ev)
+                    all_evidence.append(ev)
+
+        merged = Finding(
+            id=primary.id,
+            severity=primary.severity,
+            confidence=primary.confidence,
+            category=primary.category,
+            title=f"{primary.title} ({len(group)} paths)",
+            path=path_display,
+            description=primary.description,
+            evidence=all_evidence,
+            scenario=primary.scenario,
+            business_context=primary.business_context,
+            remediation=primary.remediation,
+            effort=primary.effort,
+            references=primary.references,
+            owasp_id=primary.owasp_id,
+            owasp_name=primary.owasp_name,
+            finding_class=primary.finding_class,
+            quick_fix_type=primary.quick_fix_type,
+        )
+        consolidated.append(merged)
+
+    return consolidated

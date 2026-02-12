@@ -70,3 +70,83 @@ def framework_remediation(
             )
 
     return ""
+
+
+def framework_remediation_008(detected_frameworks: list[str]) -> str:
+    """Framework-specific error handling remediation."""
+    framework = detected_frameworks[0] if detected_frameworks else "unknown"
+
+    if framework == "CrewAI":
+        return (
+            "Fix (CrewAI):\n"
+            "  Wrap crew execution in error handling:\n\n"
+            "  try:\n"
+            "      result = crew.kickoff()\n"
+            "  except Exception as e:\n"
+            '      logger.error(f"Crew failed: {e}")\n'
+            "      # degrade gracefully"
+        )
+    elif framework in ("LangChain", "LangGraph"):
+        return (
+            "Fix (LangGraph):\n"
+            "  Add a fallback to your graph:\n\n"
+            "  from langchain_core.runnables import RunnableWithFallbacks\n"
+            "  chain_with_fallback = chain.with_fallbacks(\n"
+            "      [fallback_chain]\n"
+            "  )"
+        )
+    elif framework == "AutoGen":
+        return (
+            "Fix (AutoGen):\n"
+            "  Register a reply function with error handling:\n\n"
+            "  @agent.register_reply(trigger=...)\n"
+            "  def safe_reply(recipient, messages, sender, config):\n"
+            "      try:\n"
+            "          return original_logic(messages)\n"
+            "      except Exception as e:\n"
+            '          return f"Error: {e}"'
+        )
+    else:
+        return (
+            "Fix:\n"
+            "  Wrap external tool calls in try/except.\n"
+            "  Return a user-friendly error message on failure."
+        )
+
+
+def framework_remediation_010(detected_frameworks: list[str]) -> str:
+    """Framework-specific checkpointing remediation."""
+    framework = detected_frameworks[0] if detected_frameworks else "unknown"
+
+    if framework == "CrewAI":
+        return (
+            "Fix (CrewAI):\n"
+            "  Enable memory on your crew:\n\n"
+            "  crew = Crew(\n"
+            "      agents=[...],\n"
+            "      tasks=[...],\n"
+            "+     memory=True,\n"
+            "+     verbose=True\n"
+            "  )"
+        )
+    elif framework in ("LangChain", "LangGraph"):
+        return (
+            "Fix (LangGraph):\n"
+            "  from langgraph.checkpoint.memory import MemorySaver\n"
+            "  # minimum — use PostgresSaver for durability\n"
+            "  graph.compile(checkpointer=MemorySaver())"
+        )
+    elif framework == "AutoGen":
+        return (
+            "Fix (AutoGen):\n"
+            "  Enable caching for conversation state:\n\n"
+            "  from autogen import Cache\n"
+            "  with Cache.disk() as cache:\n"
+            "      result = agent.initiate_chat(..., cache=cache)"
+        )
+    else:
+        return (
+            "Fix:\n"
+            "  Add state persistence to your agent workflow.\n"
+            "  Check your framework's docs for checkpointing/memory."
+        )

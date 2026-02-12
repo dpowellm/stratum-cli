@@ -75,7 +75,7 @@ REGULATORY_MAP: list[dict] = [
         "label": "HIPAA Technical Safeguards",
         "description": "Access controls and audit trails for health data",
         "triggers": {
-            "data_sensitivity": ["personal"],
+            "data_sensitivity": ["health"],
             "missing_controls": ["output_filter", "hitl"],
         },
     },

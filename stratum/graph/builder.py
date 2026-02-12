@@ -103,6 +103,30 @@ def build_graph(result: ScanResult) -> RiskGraph:
         graph.nodes[guard_node.id] = guard_node
         _connect_guardrail(graph, guard, guard_node)
 
+    # Step 3.5: Agent definitions -> AGENT nodes + TOOL_OF edges
+    for agent_def in getattr(result, 'agent_definitions', []):
+        agent_id = f"agent_{agent_def.name.lower().replace(' ', '_')}"
+        agent_node = GraphNode(
+            id=agent_id,
+            node_type=NodeType.AGENT,
+            label=agent_def.role or agent_def.name,
+            trust_level=TrustLevel.INTERNAL,
+            framework=agent_def.framework,
+            source_file=agent_def.source_file,
+        )
+        graph.nodes[agent_node.id] = agent_node
+
+        # Connect agent to its tools via TOOL_OF edges
+        for tool_name in agent_def.tool_names:
+            for nid, node in graph.nodes.items():
+                if node.node_type == NodeType.CAPABILITY and node.label == tool_name:
+                    graph.edges.append(GraphEdge(
+                        source=nid,
+                        target=agent_node.id,
+                        edge_type=EdgeType.TOOL_OF,
+                        has_control=False,
+                    ))
+
     # Step 4: Connect data-reading capabilities to outbound capabilities
     # (implicit: the agent can use any tool, so data flows from reads to sends)
     _connect_agent_data_flows(graph, unique_caps)

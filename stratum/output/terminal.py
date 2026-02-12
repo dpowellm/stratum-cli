@@ -207,8 +207,14 @@ def _render_agent_profile(result: ScanResult, quick_wins: list[QuickWin]) -> Non
 
     # Framework
     if result.detected_frameworks:
-        fw_str = ", ".join(result.detected_frameworks)
+        fw_str = " \u00b7 ".join(result.detected_frameworks)
         console.print(f" Framework       {fw_str}")
+
+    # Agents (from agent definitions)
+    agent_defs = getattr(result, 'agent_definitions', [])
+    if agent_defs:
+        agent_names = " \u00b7 ".join(ad.role or ad.name for ad in agent_defs)
+        console.print(f" Agents          {agent_names}")
 
     # Capabilities
     console.print(f" Capabilities    {result.total_capabilities} across {func_count} functions")
@@ -338,40 +344,62 @@ def _render_flow_map(result: ScanResult) -> None:
     if not graph.uncontrolled_paths:
         return
 
-    console.rule("[bold]\u2550 DATA FLOW MAP[/bold]", style="bold")
+    console.rule("[bold]\u2550 HOW YOUR DATA FLOWS[/bold]", style="bold")
     console.print()
 
-    # Render edges from top 5 uncontrolled paths (Option B: list-style flow)
-    rendered_edges: set[str] = set()
-    for path in graph.uncontrolled_paths[:5]:
-        for edge in path.edges:
-            edge_key = f"{edge.source}\u2192{edge.target}"
-            if edge_key in rendered_edges:
+    # Group paths by agent if agents exist
+    agent_nodes = {
+        nid: n for nid, n in graph.nodes.items()
+        if n.node_type == NodeType.AGENT
+    }
+
+    if agent_nodes:
+        # Map capabilities to their owning agent
+        cap_to_agent: dict[str, str] = {}
+        for edge in graph.edges:
+            if edge.edge_type == EdgeType.TOOL_OF:
+                cap_to_agent[edge.source] = edge.target
+
+        rendered: set[str] = set()
+        for agent_id, agent_node in agent_nodes.items():
+            agent_caps = {cid for cid, aid in cap_to_agent.items() if aid == agent_id}
+            agent_paths = [
+                p for p in graph.uncontrolled_paths
+                if any(nid in agent_caps for nid in p.nodes)
+            ]
+            if not agent_paths:
                 continue
-            rendered_edges.add(edge_key)
 
-            source = graph.nodes.get(edge.source)
-            target = graph.nodes.get(edge.target)
-            if not source or not target:
-                continue
+            console.print(f" [bold][{agent_node.label}][/bold]")
+            for path in agent_paths:
+                line = _render_flow_path_line(path, graph)
+                if line not in rendered:
+                    rendered.add(line)
+                    console.print(line)
+            console.print()
 
-            control_marker = ""
-            if not edge.has_control and _edge_needs_control_marker(edge, source, target):
-                if edge.edge_type == EdgeType.SENDS_TO:
-                    control_marker = "  [yellow]\u26a0 no output filter[/yellow]"
-                else:
-                    control_marker = "  [yellow]\u26a0 uncontrolled[/yellow]"
+        # Paths not assigned to any agent
+        unassigned = [
+            p for p in graph.uncontrolled_paths
+            if not any(nid in cap_to_agent for nid in p.nodes)
+        ]
+        for path in unassigned:
+            line = _render_flow_path_line(path, graph)
+            if line not in rendered:
+                rendered.add(line)
+                console.print(line)
+        if unassigned:
+            console.print()
 
-            sensitivity_tag = ""
-            if edge.data_sensitivity not in ("unknown", "public"):
-                sensitivity_tag = f" ({edge.data_sensitivity.upper()})"
-
-            console.print(
-                f"  {source.label}{sensitivity_tag} "
-                f"\u2500\u2500\u25b6 {target.label}{control_marker}"
-            )
-
-    console.print()
+    else:
+        # No agents - flat list of paths
+        rendered: set[str] = set()
+        for path in graph.uncontrolled_paths[:5]:
+            line = _render_flow_path_line(path, graph)
+            if line not in rendered:
+                rendered.add(line)
+                console.print(line)
+        console.print()
 
     # Summary line
     if graph.uncontrolled_paths:
@@ -396,6 +424,35 @@ def _render_flow_map(result: ScanResult) -> None:
         )
 
     console.print()
+
+
+def _render_flow_path_line(path, graph: RiskGraph) -> str:
+    """Render one uncontrolled path as a flow line with arrow notation."""
+    nodes = [graph.nodes[nid] for nid in path.nodes]
+    source = nodes[0]
+    dest = nodes[-1]
+    middle = nodes[1:-1]
+
+    # Source with sensitivity tag
+    sens_tag = ""
+    if source.data_sensitivity not in ("unknown", "public"):
+        sens_tag = f" ({source.data_sensitivity})"
+
+    # Build chain parts
+    parts = [f"  {source.label}{sens_tag}"]
+    for m in middle:
+        parts.append(m.label)
+
+    # Destination with control marker
+    has_gap = any(
+        not e.has_control and _edge_needs_control_marker(e, graph.nodes.get(e.source), graph.nodes.get(e.target))
+        for e in path.edges
+        if graph.nodes.get(e.source) and graph.nodes.get(e.target)
+    )
+    control = "  [yellow]\u26a0 no filter[/yellow]" if has_gap else ""
+    parts.append(f"{dest.label}{control}")
+
+    return "  \u2500\u2500\u25b6  ".join(parts)
 
 
 def _edge_needs_control_marker(edge, source, target) -> bool:

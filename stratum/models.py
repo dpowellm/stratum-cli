@@ -173,6 +173,7 @@ class ScanResult:
 
     # Learning & Governance
     agent_profiles: list[AgentProfile] = field(default_factory=list)
+    agent_definitions: list = field(default_factory=list)  # list[AgentDefinition] from graph.agents
     learning_type: str | None = None
     has_learning_loop: bool = False
     has_shared_context: bool = False

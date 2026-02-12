@@ -563,7 +563,11 @@ def _check_no_error_handling(capabilities: list[Capability]) -> list[Finding]:
     if len(unhandled) < 2:
         return []
 
-    evidence = [f"{c.source_file}:{c.line_number}" for c in unhandled[:5]]
+    evidence_raw = [
+        f"{c.source_file}:{c.line_number}" if c.line_number > 0 else c.source_file
+        for c in unhandled[:5]
+    ]
+    evidence = list(dict.fromkeys(evidence_raw))  # dedup preserving order
 
     owasp_id, owasp_name = get_owasp("STRATUM-008")
     return [Finding(
@@ -649,6 +653,38 @@ def _check_no_timeout(capabilities: list[Capability]) -> list[Finding]:
 # ── STRATUM-010: Volatile Agent State ────────────────────────────────────────
 
 
+def _build_checkpoint_scenario(capabilities: list[Capability]) -> str:
+    """Build a scenario for STRATUM-010 that reflects the actual project."""
+    kinds = set(cap.kind for cap in capabilities)
+
+    if "financial" in kinds:
+        return (
+            "The process crashes mid-workflow. The agent loses track "
+            "of what it was doing, potentially leaving a payment "
+            "or transaction half-complete with no way to resume."
+        )
+    elif "outbound" in kinds and "data_access" in kinds:
+        return (
+            "The process crashes mid-workflow. The agent may have "
+            "read data but not yet sent the response \u2014 or sent a "
+            "partial response. There's no way to resume or know "
+            "what was already done."
+        )
+    elif "destructive" in kinds:
+        return (
+            "The process crashes mid-workflow. The agent may have "
+            "deleted or modified records but not completed the "
+            "operation \u2014 leaving data in an inconsistent state "
+            "with no recovery path."
+        )
+    else:
+        return (
+            "The process crashes mid-workflow. With no checkpoint, "
+            "there's no way to resume \u2014 the agent starts over "
+            "from scratch, potentially repeating actions."
+        )
+
+
 def _check_volatile_state(
     checkpoint_type: str,
     capabilities: list[Capability],
@@ -697,10 +733,7 @@ def _check_volatile_state(
         path=f"{checkpoint_type} checkpointing + {confirmed_count} capabilities -> state loss risk",
         description=desc,
         evidence=["agent.py"],
-        scenario=(
-            "The server process crashes mid-workflow. The agent loses track of "
-            "what it was doing, potentially leaving a financial transaction half-complete."
-        ),
+        scenario=_build_checkpoint_scenario(capabilities),
         remediation=remediation,
         effort="med",
         owasp_id=owasp_id,

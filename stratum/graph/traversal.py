@@ -205,35 +205,35 @@ def _build_what_happens(
         trigger = "An attacker crafts malicious input"
         reads = f"reads from {source.label}"
 
-    # Determine exfiltration method
+    # Build full scenario based on destination type
     dl = dest_label.lower()
     if any(t in dl for t in ("mail", "email", "smtp", "gmail")):
-        exfil = (
-            f"forwards sensitive content to an external address via "
-            f"{dest_label} \u2014 an attacker-controlled destination embedded "
-            f"in the injected instructions"
+        return (
+            f"{trigger}. The agent {reads} and forwards sensitive content "
+            f"via {dest_label} \u2014 to an attacker-controlled address "
+            f"embedded in the injected instructions."
         )
     elif any(t in dl for t in ("search", "serper", "tavily", "duckduckgo")):
-        exfil = (
-            f"search for your private {sensitivity} content on {dest_label} "
-            f"\u2014 leaking it through the search query string"
+        return (
+            f"{trigger}. The agent {reads} and the injected instructions "
+            f"cause it to search for your email content on {dest_label} "
+            f"\u2014 leaking it in the query string."
         )
     elif any(t in dl for t in ("slack", "discord", "telegram", "teams")):
-        exfil = (
-            f"send your private data to an attacker-controlled channel via "
-            f"{dest_label}"
+        return (
+            f"{trigger}. The agent {reads} and sends your data "
+            f"to an attacker-controlled channel via {dest_label}."
         )
     elif any(t in dl for t in ("http", "api", "webhook")):
-        exfil = f"exfiltrate data to {dest_label}"
+        return (
+            f"{trigger}. The agent {reads} and exfiltrates data "
+            f"to {dest_label}."
+        )
     else:
-        exfil = f"leak data to {dest_label}"
-
-    no_filter = " with no output filter" if "output_filter" in missing else ""
-
-    return (
-        f"{trigger}. The agent {reads}, and the injected instructions cause it to "
-        f"{exfil}{no_filter}."
-    )
+        return (
+            f"{trigger}. The agent {reads} and sends the content to "
+            f"{dest_label} with no check on what leaves."
+        )
 
 
 def _sink_priority(path: RiskPath, graph: RiskGraph) -> int:
