@@ -1,6 +1,6 @@
 {
-  "scan_id": "582cc1c9",
-  "timestamp": "2026-02-13T01:37:24.646171+00:00",
+  "scan_id": "d2a9ecc1",
+  "timestamp": "2026-02-13T02:03:23.694179+00:00",
   "directory": "C:\\stratum-cli\\crewAI-examples",
   "capabilities": [
     {
@@ -4081,10 +4081,10 @@
   "telemetry_destinations": [],
   "has_eval_conflict": false,
   "telemetry_profile": {
-    "scan_id": "582cc1c9",
+    "scan_id": "d2a9ecc1",
     "topology_signature": "f9e0f129986fd183",
     "schema_version": "2.0",
-    "scan_timestamp": "2026-02-13T01:37:24.646171+00:00",
+    "scan_timestamp": "2026-02-13T02:03:23.694179+00:00",
     "scanner_version": "0.2.0",
     "archetype": "multi_agent_orchestrator",
     "archetype_confidence": 0.9,
@@ -4155,14 +4155,14 @@
     ],
     "tool_count": 16,
     "tool_categories": {
+      "data": 1,
+      "validation": 2,
       "search": 5,
       "financial": 3,
-      "social": 1,
-      "file": 2,
-      "data": 1,
-      "email": 1,
       "scraping": 1,
-      "validation": 2
+      "email": 1,
+      "file": 2,
+      "social": 1
     },
     "libraries": [
       "crewai_tools",
