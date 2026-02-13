@@ -141,6 +141,22 @@ class CrewDefinition:
     delegation_enabled: bool = False
 
 
+# ── Blast Radius ────────────────────────────────────────────────
+
+@dataclass
+class BlastRadius:
+    """Quantifies the impact of a single shared tool being compromised."""
+    source_node_id: str
+    source_label: str
+    affected_agent_ids: list[str] = field(default_factory=list)
+    affected_agent_labels: list[str] = field(default_factory=list)
+    downstream_external_ids: list[str] = field(default_factory=list)
+    downstream_external_labels: list[str] = field(default_factory=list)
+    agent_count: int = 0
+    external_count: int = 0
+    crew_name: str = ""
+
+
 # ── Incident Match Enhancement ────────────────────────────────
 
 @dataclass
@@ -196,6 +212,9 @@ class ScanResult:
     # Agent relationships
     crew_definitions: list[CrewDefinition] = field(default_factory=list)
     agent_relationships: list[AgentRelationship] = field(default_factory=list)
+
+    # Blast radius (from graph analysis)
+    blast_radii: list[BlastRadius] = field(default_factory=list)
 
     # Learning & Governance
     agent_definitions: list = field(default_factory=list)  # list[AgentDefinition] from graph.agents
@@ -317,3 +336,17 @@ class TelemetryProfile:
     control_coverage_pct: float = 0.0                                     # [structural]
     regulatory_framework_count: int = 0                                   # [scale]
     downward_trust_crossings: int = 0                                     # [scale]
+
+    # === Enriched topology (from STRATUM-EVAL-AND-PATCH) ===
+    crew_count: int = 0                                                    # [scale]
+    max_blast_radius: int = 0                                              # [structural]
+    control_bypass_count: int = 0                                          # [scale]
+    has_hitl_anywhere: bool = False                                         # [structural]
+    has_observability: bool = False                                         # [structural]
+    incident_match_count: int = 0                                          # [scale]
+    incident_ids: list[str] = field(default_factory=list)                  # [structural]
+    has_pii: bool = False                                                   # [structural]
+    has_financial_data: bool = False                                        # [structural]
+    edge_density: float = 0.0                                               # [structural]
+    shared_tool_max_agents: int = 0                                         # [structural]
+    external_sink_count: int = 0                                            # [scale]

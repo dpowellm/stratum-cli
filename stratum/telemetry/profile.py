@@ -204,6 +204,28 @@ def build_profile(result: ScanResult) -> TelemetryProfile:
         control_coverage_pct=graph_control_coverage_pct,
         regulatory_framework_count=graph_regulatory_framework_count,
         downward_trust_crossings=graph_downward_trust_crossings,
+        # Enriched topology
+        crew_count=len(getattr(result, 'crew_definitions', [])),
+        max_blast_radius=max(
+            (br.agent_count for br in getattr(result, 'blast_radii', [])),
+            default=0,
+        ),
+        control_bypass_count=len(getattr(result, '_control_bypasses', [])),
+        has_hitl_anywhere=any(g.kind == "hitl" for g in result.guardrails),
+        has_observability=not any(f.id == "TELEMETRY-003" for f in all_findings),
+        incident_match_count=len(getattr(result, 'incident_matches', [])),
+        incident_ids=[m.incident_id for m in getattr(result, 'incident_matches', [])],
+        has_pii="personal" in graph_data_sensitivity_types,
+        has_financial_data="financial" in graph_data_sensitivity_types,
+        edge_density=(
+            graph_edge_count / (graph_node_count * (graph_node_count - 1))
+            if graph_node_count > 1 else 0.0
+        ),
+        shared_tool_max_agents=max(
+            (br.agent_count for br in getattr(result, 'blast_radii', [])),
+            default=0,
+        ),
+        external_sink_count=graph_node_type_dist.get("external", 0),
     )
 
     return _validate_profile(profile)

@@ -17,6 +17,7 @@ from stratum.parsers.capabilities import detect_framework
 from stratum.rules.engine import Engine
 from stratum.graph.builder import build_graph
 from stratum.graph.models import NodeType, RiskPath
+from stratum.graph.traversal import find_blast_radii, find_control_bypasses
 from stratum.graph.remediation import framework_remediation, framework_remediation_008, framework_remediation_010
 from stratum.graph.agents import extract_agents_from_yaml, extract_agents_from_python
 
@@ -280,6 +281,10 @@ def scan(path: str) -> ScanResult:
     # Build risk graph
     result.graph = build_graph(result)
 
+    # Compute blast radii and control bypasses
+    result.blast_radii = find_blast_radii(result.graph, crew_definitions)
+    result._control_bypasses = find_control_bypasses(result.graph, crew_definitions)
+
     # Replace pairwise STRATUM-001 findings with graph-derived findings
     if result.graph and result.graph.uncontrolled_paths:
         graph_findings = []
@@ -317,8 +322,17 @@ def scan(path: str) -> ScanResult:
     from stratum.rules.compounding_risk import evaluate_compounding_risks
     compounding_findings = evaluate_compounding_risks(result)
 
+    # Generate blast radius findings (STRATUM-CR05)
+    blast_radius_findings = _generate_blast_radius_findings(result)
+
+    # Generate control bypass findings (STRATUM-CR06)
+    bypass_findings = _generate_bypass_findings(result)
+
     # Merge new findings — consolidate duplicates per rule ID
-    all_new_findings = business_findings + operational_findings + compounding_findings
+    all_new_findings = (
+        business_findings + operational_findings + compounding_findings
+        + blast_radius_findings + bypass_findings
+    )
     # Apply severity gating
     from stratum.rules.engine import _gate_severity
     for f in all_new_findings:
@@ -365,6 +379,10 @@ def scan(path: str) -> ScanResult:
         compounding_bonus += 5
     if any(f.id == "STRATUM-CR03" for f in all_findings_final):
         compounding_bonus += 10
+    if any(f.id == "STRATUM-CR05" for f in all_findings_final):
+        compounding_bonus += 10  # Blast radius with 3+ agents
+    if any(f.id == "STRATUM-CR06" for f in all_findings_final):
+        compounding_bonus += 8   # Architectural control bypass
     result.risk_score = min(result.risk_score + compounding_bonus, 100)
 
     # Match against known real-world incidents
@@ -737,3 +755,165 @@ def _consolidate_graph_findings(findings: list[Finding]) -> list[Finding]:
         consolidated.append(merged)
 
     return consolidated
+
+
+# ---------------------------------------------------------------------------
+# Blast radius + control bypass findings
+# ---------------------------------------------------------------------------
+
+def _generate_blast_radius_findings(result: ScanResult) -> list[Finding]:
+    """Generate STRATUM-CR05 findings from blast radius analysis."""
+    findings: list[Finding] = []
+    for br in result.blast_radii:
+        if br.agent_count < 2:
+            continue
+
+        # Severity: CRITICAL if fan-out >= 3 with external downstream, HIGH if >= 2
+        if br.agent_count >= 3 and br.external_count >= 1:
+            severity = Severity.CRITICAL
+        elif br.agent_count >= 2:
+            severity = Severity.HIGH
+        else:
+            continue
+
+        agent_list = ", ".join(br.affected_agent_labels[:6])
+        ext_list = ", ".join(br.downstream_external_labels[:4])
+        crew_context = f" in crew '{br.crew_name}'" if br.crew_name else ""
+
+        # Build fan-out diagram
+        fan_lines = [f"{br.source_label} (shared tool)"]
+        for i, alabel in enumerate(br.affected_agent_labels):
+            prefix = "  L--> " if i == len(br.affected_agent_labels) - 1 else "  |--> "
+            fan_lines.append(f"{prefix}{alabel}")
+        fan_diagram = "\n".join(fan_lines)
+
+        findings.append(Finding(
+            id="STRATUM-CR05",
+            severity=severity,
+            confidence=Confidence.CONFIRMED,
+            category=RiskCategory.COMPOUNDING,
+            title=f"Shared tool blast radius: {br.source_label} -> {br.agent_count} agents",
+            path=fan_diagram,
+            description=(
+                f"{br.source_label} feeds {br.agent_count} agents{crew_context} -- "
+                f"blast radius: {br.external_count} external services. "
+                f"If {br.source_label} returns poisoned data (prompt injection in scraped "
+                f"content), {br.agent_count} agents are compromised simultaneously. "
+                f"Each has independent downstream actions, so a single point of compromise "
+                f"fans out to {br.external_count} external services."
+            ),
+            evidence=[
+                f"Shared by: {agent_list}",
+                f"Downstream: {ext_list}" if ext_list else "(no external services)",
+            ],
+            scenario=(
+                f"A single poisoned input to {br.source_label} would compromise your "
+                f"entire analysis pipeline: {agent_list}."
+            ),
+            business_context=(
+                "This finding can only exist because the graph traced the fan-out from "
+                "one shared tool. No checklist produces it -- this is emergent risk from "
+                "the agent architecture."
+            ),
+            remediation=(
+                f"Option 1 -- Add input validation on the shared tool:\n"
+                f"  class Validated{br.source_label.replace(' ', '')}(BaseTool):\n"
+                f"      def _run(self, input: str) -> str:\n"
+                f"          raw = {br.source_label.replace(' ', '')}()._run(input)\n"
+                f"          if contains_injection_patterns(raw):\n"
+                f"              raise ValueError('Suspicious content detected')\n"
+                f"          return raw\n\n"
+                f"Option 2 -- Give each agent its own tool instance"
+            ),
+            effort="med",
+            finding_class="compounding",
+            owasp_id="ASI01",
+            owasp_name="Agent Goal Hijacking",
+        ))
+
+    # Consolidate: keep only the most severe blast radius finding
+    if len(findings) > 1:
+        findings.sort(
+            key=lambda f: (f.severity == Severity.CRITICAL, f.severity == Severity.HIGH),
+            reverse=True,
+        )
+        primary = findings[0]
+        # Merge evidence from others
+        for f in findings[1:]:
+            for ev in f.evidence:
+                if ev not in primary.evidence:
+                    primary.evidence.append(ev)
+        findings = [primary]
+
+    return findings
+
+
+def _generate_bypass_findings(result: ScanResult) -> list[Finding]:
+    """Generate STRATUM-CR06 findings from control bypass analysis."""
+    bypasses = getattr(result, '_control_bypasses', [])
+    if not bypasses:
+        return []
+
+    findings: list[Finding] = []
+    seen_pairs: set[tuple[str, str]] = set()
+
+    for bp in bypasses:
+        pair = (bp["upstream_agent"], bp["downstream_agent"])
+        if pair in seen_pairs:
+            continue
+        seen_pairs.add(pair)
+
+        findings.append(Finding(
+            id="STRATUM-CR06",
+            severity=Severity.HIGH,
+            confidence=Confidence.PROBABLE,
+            category=RiskCategory.COMPOUNDING,
+            title=(
+                f"'{bp['downstream_agent']}' bypasses '{bp['upstream_agent']}' "
+                f"-- reads {bp['data_source']} directly"
+            ),
+            path=(
+                f"{bp['data_source']} --> {bp['upstream_agent']} (intended filter)\n"
+                f"{bp['data_source']} --> {bp['downstream_agent']} (direct access, bypassing filter)"
+            ),
+            description=(
+                f"{bp['upstream_agent']} is supposed to filter input from "
+                f"{bp['data_source']}, but {bp['downstream_agent']} reads "
+                f"{bp['data_source']} directly via the same tool. The filter agent "
+                f"doesn't sit on the data path -- it runs in parallel, not as a gate."
+            ),
+            evidence=[
+                f"Crew: {bp['crew_name']}",
+                f"Shared source: {bp['data_source']}",
+            ],
+            scenario=(
+                f"Malicious content in {bp['data_source']} reaches "
+                f"{bp['downstream_agent']} unfiltered regardless of what "
+                f"{bp['upstream_agent']} does. The filter is architecturally irrelevant."
+            ),
+            business_context=(
+                "The control exists but data flows around it. This is worse than no "
+                "control -- it creates a false sense of security."
+            ),
+            remediation=(
+                f"Route all {bp['data_source']} access through {bp['upstream_agent']}:\n"
+                f"  1. Remove direct {bp['data_source']} access from {bp['downstream_agent']}\n"
+                f"  2. Pass filtered output from {bp['upstream_agent']} to {bp['downstream_agent']}\n"
+                f"  3. Or add output_filter on {bp['downstream_agent']}'s direct read"
+            ),
+            effort="med",
+            finding_class="compounding",
+            owasp_id="ASI05",
+            owasp_name="Insufficient Sandboxing",
+        ))
+
+    # Consolidate: max 1 bypass finding
+    if len(findings) > 1:
+        primary = findings[0]
+        for f in findings[1:]:
+            for ev in f.evidence:
+                if ev not in primary.evidence:
+                    primary.evidence.append(ev)
+        findings = [primary]
+
+    return findings

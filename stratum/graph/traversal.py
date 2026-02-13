@@ -1,6 +1,7 @@
 """Multi-hop path discovery: BFS from sensitive sources to external sinks."""
 from __future__ import annotations
 
+from stratum.models import BlastRadius
 from stratum.graph.models import (
     EdgeType, GraphEdge, NodeType, RiskGraph, RiskPath,
 )
@@ -288,3 +289,174 @@ def _deduplicate_paths(paths: list[RiskPath]) -> list[RiskPath]:
                 seen_endpoints[key] = path
 
     return list(seen_endpoints.values())
+
+
+# ---------------------------------------------------------------------------
+# Blast radius computation
+# ---------------------------------------------------------------------------
+
+def find_blast_radii(graph: RiskGraph, crews: list) -> list[BlastRadius]:
+    """Find shared tools that fan out to multiple agents.
+
+    For each capability node connected to 2+ agent nodes via TOOL_OF,
+    compute how many agents share it and what external services are
+    reachable downstream from those agents.
+    """
+    # Build tool -> agents map from TOOL_OF edges
+    tool_agents: dict[str, list[str]] = {}
+    for edge in graph.edges:
+        if edge.edge_type == EdgeType.TOOL_OF:
+            tool_agents.setdefault(edge.source, []).append(edge.target)
+
+    # Build agent -> downstream externals map
+    agent_externals: dict[str, set[str]] = {}
+    for agent_id in graph.nodes:
+        node = graph.nodes[agent_id]
+        if node.node_type != NodeType.AGENT:
+            continue
+        externals: set[str] = set()
+        # Find tools this agent owns
+        agent_tools = [
+            e.source for e in graph.edges
+            if e.edge_type == EdgeType.TOOL_OF and e.target == agent_id
+        ]
+        # From each tool, find SENDS_TO edges to external services
+        for tool_id in agent_tools:
+            for e in graph.edges:
+                if e.source == tool_id and e.edge_type == EdgeType.SENDS_TO:
+                    externals.add(e.target)
+        agent_externals[agent_id] = externals
+
+    results: list[BlastRadius] = []
+    for tool_id, agent_ids in tool_agents.items():
+        if len(agent_ids) < 2:
+            continue
+        tool_node = graph.nodes.get(tool_id)
+        if not tool_node:
+            continue
+
+        # Collect downstream externals from all affected agents
+        all_externals: set[str] = set()
+        agent_labels = []
+        for aid in agent_ids:
+            anode = graph.nodes.get(aid)
+            if anode:
+                agent_labels.append(anode.label)
+            all_externals.update(agent_externals.get(aid, set()))
+
+        ext_labels = []
+        for eid in all_externals:
+            enode = graph.nodes.get(eid)
+            if enode:
+                ext_labels.append(enode.label)
+
+        # Find crew name
+        crew_name = ""
+        for crew in crews:
+            agent_name_set = {n.lower().replace(" ", "_") for n in crew.agent_names}
+            matched = sum(1 for aid in agent_ids if aid.replace("agent_", "") in agent_name_set)
+            if matched >= 2:
+                crew_name = crew.name
+                break
+
+        results.append(BlastRadius(
+            source_node_id=tool_id,
+            source_label=tool_node.label,
+            affected_agent_ids=agent_ids,
+            affected_agent_labels=sorted(agent_labels),
+            downstream_external_ids=sorted(all_externals),
+            downstream_external_labels=sorted(ext_labels),
+            agent_count=len(agent_ids),
+            external_count=len(all_externals),
+            crew_name=crew_name,
+        ))
+
+    # Sort by agent count descending
+    results.sort(key=lambda br: (br.agent_count, br.external_count), reverse=True)
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Control bypass detection
+# ---------------------------------------------------------------------------
+
+def find_control_bypasses(graph: RiskGraph, crews: list) -> list[dict]:
+    """Find cases where downstream agents bypass upstream filter agents.
+
+    Pattern: In a sequential crew [A, B, C], if A reads from data_store X
+    and B or C also reads from X directly, then A's filtering is irrelevant
+    because downstream agents have unfiltered access to the same source.
+    """
+    bypasses: list[dict] = []
+
+    # Build node -> reads_from data stores
+    agent_data_sources: dict[str, set[str]] = {}
+    for edge in graph.edges:
+        if edge.edge_type != EdgeType.TOOL_OF:
+            continue
+        agent_id = edge.target
+        tool_id = edge.source
+        # Find what data stores this tool reads from
+        for e2 in graph.edges:
+            if e2.source == tool_id and e2.edge_type == EdgeType.READS_FROM:
+                # tool reads from data store — but READS_FROM goes ds -> tool
+                pass
+        # READS_FROM edges go data_store -> capability
+        # TOOL_OF edges go capability -> agent
+        # So: ds --reads_from--> cap --tool_of--> agent
+        for e2 in graph.edges:
+            if e2.target == tool_id and e2.edge_type == EdgeType.READS_FROM:
+                agent_data_sources.setdefault(agent_id, set()).add(e2.source)
+
+    for crew in crews:
+        if crew.process_type != "sequential" or len(crew.agent_names) < 2:
+            continue
+
+        # Get agent IDs in crew order
+        agent_ids = [
+            f"agent_{name.lower().replace(' ', '_')}"
+            for name in crew.agent_names
+        ]
+
+        # Check each upstream agent against all downstream agents
+        for i, upstream_id in enumerate(agent_ids):
+            upstream_sources = agent_data_sources.get(upstream_id, set())
+            if not upstream_sources:
+                continue
+
+            for j in range(i + 1, len(agent_ids)):
+                downstream_id = agent_ids[j]
+                downstream_sources = agent_data_sources.get(downstream_id, set())
+                shared_sources = upstream_sources & downstream_sources
+                if not shared_sources:
+                    continue
+
+                upstream_node = graph.nodes.get(upstream_id)
+                downstream_node = graph.nodes.get(downstream_id)
+                if not upstream_node or not downstream_node:
+                    continue
+
+                for ds_id in shared_sources:
+                    ds_node = graph.nodes.get(ds_id)
+                    ds_label = ds_node.label if ds_node else ds_id
+
+                    bypasses.append({
+                        "upstream_agent": upstream_node.label,
+                        "downstream_agent": downstream_node.label,
+                        "data_source": ds_label,
+                        "data_source_id": ds_id,
+                        "crew_name": crew.name,
+                        "upstream_id": upstream_id,
+                        "downstream_id": downstream_id,
+                    })
+
+    # Deduplicate by (upstream, downstream, data_source)
+    seen: set[tuple] = set()
+    unique: list[dict] = []
+    for bp in bypasses:
+        key = (bp["upstream_id"], bp["downstream_id"], bp["data_source_id"])
+        if key not in seen:
+            seen.add(key)
+            unique.append(bp)
+
+    return unique

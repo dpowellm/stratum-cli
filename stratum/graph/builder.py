@@ -340,33 +340,77 @@ def _infer_connected_nodes(
 # ---------------------------------------------------------------------------
 
 def _connect_agent_data_flows(graph: RiskGraph, capabilities: list[Capability]) -> None:
-    """Connect data-reading capabilities to outbound/financial capabilities.
+    """Connect data-reading capabilities to outbound capabilities WITHIN the same agent.
 
-    When an agent has both data_access and outbound capabilities, the agent
-    can read data and then send it out. This creates implicit edges from
-    data_access capability nodes to outbound/financial capability nodes.
+    Scoped shares_with: only create edges when the same agent owns both a
+    data_access tool and an outbound/financial tool. This replaces the old
+    global Cartesian product that created N*M noise edges.
     """
-    data_caps = [c for c in capabilities if c.kind == "data_access"]
-    outbound_caps = [c for c in capabilities if c.kind in ("outbound", "financial")]
+    # Build agent -> tool node IDs map from TOOL_OF edges
+    agent_tools: dict[str, list[str]] = {}
+    for edge in graph.edges:
+        if edge.edge_type == EdgeType.TOOL_OF:
+            agent_tools.setdefault(edge.target, []).append(edge.source)
 
-    for dc in data_caps:
-        dc_cls = tool_class_name(dc)
-        dc_node_id = f"cap_{dc_cls}_{dc.kind}"
-        if dc_node_id not in graph.nodes:
-            continue
+    for agent_id, tool_ids in agent_tools.items():
+        # Classify tools into data_access and outbound
+        data_tool_ids = []
+        outbound_tool_ids = []
+        for tid in tool_ids:
+            node = graph.nodes.get(tid)
+            if not node:
+                continue
+            # Look at edges FROM this tool to determine its role
+            for cap in capabilities:
+                cap_cls = tool_class_name(cap)
+                cap_id = f"cap_{cap_cls}_{cap.kind}"
+                if cap_id == tid:
+                    if cap.kind == "data_access":
+                        data_tool_ids.append(tid)
+                    elif cap.kind in ("outbound", "financial"):
+                        outbound_tool_ids.append(tid)
+                    break
 
+        # Create shares_with edges only within this agent
+        for dc_id in data_tool_ids:
+            for oc_id in outbound_tool_ids:
+                graph.edges.append(GraphEdge(
+                    source=dc_id,
+                    target=oc_id,
+                    edge_type=EdgeType.SHARES_WITH,
+                    has_control=False,
+                ))
+
+    # Also create shares_with for capabilities that co-occur in the same source file
+    # (for projects without agent definitions)
+    if not agent_tools:
+        data_caps = [c for c in capabilities if c.kind == "data_access"]
+        outbound_caps = [c for c in capabilities if c.kind in ("outbound", "financial")]
+
+        # Group by source file
+        file_data: dict[str, list[str]] = {}
+        file_outbound: dict[str, list[str]] = {}
+        for dc in data_caps:
+            dc_cls = tool_class_name(dc)
+            dc_id = f"cap_{dc_cls}_{dc.kind}"
+            if dc_id in graph.nodes:
+                file_data.setdefault(dc.source_file, []).append(dc_id)
         for oc in outbound_caps:
             oc_cls = tool_class_name(oc)
-            oc_node_id = f"cap_{oc_cls}_{oc.kind}"
-            if oc_node_id not in graph.nodes:
-                continue
+            oc_id = f"cap_{oc_cls}_{oc.kind}"
+            if oc_id in graph.nodes:
+                file_outbound.setdefault(oc.source_file, []).append(oc_id)
 
-            graph.edges.append(GraphEdge(
-                source=dc_node_id,
-                target=oc_node_id,
-                edge_type=EdgeType.SHARES_WITH,
-                has_control=False,
-            ))
+        for src_file in file_data:
+            if src_file in file_outbound:
+                for dc_id in file_data[src_file]:
+                    for oc_id in file_outbound[src_file]:
+                        graph.edges.append(GraphEdge(
+                            source=dc_id,
+                            target=oc_id,
+                            edge_type=EdgeType.SHARES_WITH,
+                            has_control=False,
+                        ))
 
 
 # ---------------------------------------------------------------------------

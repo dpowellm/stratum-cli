@@ -40,9 +40,12 @@ def cli() -> None:
               default="terminal", help="Output format")
 @click.option("--fix", "apply_fix", is_flag=True,
               help="Auto-apply safe fixes (human_input, memory) to source files")
+@click.option("--badge", "generate_badge", is_flag=True,
+              help="Generate stratum-badge.svg in the scanned directory")
 def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
              no_telemetry: bool, offline: bool, fail_above: int | None,
-             security_mode: bool, output_format: str, apply_fix: bool) -> None:
+             security_mode: bool, output_format: str, apply_fix: bool,
+             generate_badge: bool) -> None:
     """Run a security audit on an AI agent project."""
     # --ci implies --security ordering
     if ci:
@@ -149,6 +152,15 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
                 result.graph.risk_surface.control_coverage_pct
                 if result.graph else 0.0
             ),
+            "max_blast_radius": (
+                max((br.agent_count for br in result.blast_radii), default=0)
+            ),
+            "blast_radius_count": len([
+                br for br in result.blast_radii if br.agent_count >= 2
+            ]),
+            "control_bypass_count": len(
+                getattr(result, '_control_bypasses', [])
+            ),
         }
 
     # Output
@@ -225,6 +237,20 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
         else:
             click.echo()
             click.echo("  No auto-fixable issues found.")
+
+    # --badge: generate SVG badge
+    if generate_badge:
+        from stratum.output.badge import generate_badge_svg
+        finding_count = len(result.top_paths) + len(result.signals)
+        svg = generate_badge_svg(result.risk_score, finding_count)
+        badge_path = os.path.join(abs_path, "stratum-badge.svg")
+        try:
+            with open(badge_path, "w", encoding="utf-8") as f:
+                f.write(svg)
+            click.echo(f"\n  Badge saved: {badge_path}")
+            click.echo(f"  Embed: ![Stratum Risk Score](./stratum-badge.svg)")
+        except OSError as e:
+            click.echo(f"  Failed to write badge: {e}", err=True)
 
     # --fail-above threshold check (works with all output modes)
     if fail_above is not None and result.risk_score > fail_above:

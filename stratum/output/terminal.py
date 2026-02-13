@@ -556,28 +556,26 @@ def _render_topology(result: ScanResult) -> None:
         )
     console.print()
 
-    # Show top uncontrolled paths
-    if graph.uncontrolled_paths:
-        console.print("  [bold]Data flows:[/bold]")
-        for path in graph.uncontrolled_paths[:5]:
-            labels = []
-            for nid in path.nodes:
-                node = graph.nodes.get(nid)
-                if node:
-                    sens = f" ({node.data_sensitivity})" if node.data_sensitivity not in ("unknown", "public") else ""
-                    labels.append(f"{node.label}{sens}")
-            flow = "  \u2500\u25b6  ".join(labels)
-            control_str = "[red]\u26a0 no filter[/red]" if not any(e.has_control for e in path.edges) else "[green]\u2713[/green]"
-            console.print(f"    {flow}    {control_str}")
-        console.print()
+    # Render flow map with blast radius and bypass diagrams
+    from stratum.output.flow_map import render_flow_map
+    blast_radii = getattr(result, 'blast_radii', [])
+    control_bypasses = getattr(result, '_control_bypasses', [])
+    flow_sections = render_flow_map(graph, blast_radii, control_bypasses)
+    if flow_sections:
+        for section in flow_sections:
+            console.print(section)
+            console.print()
 
     # Show agent chains from crew definitions
     crews = getattr(result, 'crew_definitions', [])
     if crews:
         console.print("  [bold]Agent chains:[/bold]")
-        for crew in crews[:3]:
+        shown = 0
+        for crew in crews:
+            if shown >= 3:
+                break
             if crew.process_type == "sequential" and len(crew.agent_names) > 1:
-                chain = " \u2192 ".join(crew.agent_names)
+                chain = " -> ".join(crew.agent_names)
                 # Count intermediate validations
                 validations = 0
                 for name in crew.agent_names[1:-1]:
@@ -589,6 +587,7 @@ def _render_topology(result: ScanResult) -> None:
                     f"    {chain}  ({len(crew.agent_names)} agents, "
                     f"{validations} intermediate validations)"
                 )
+                shown += 1
         console.print()
 
 

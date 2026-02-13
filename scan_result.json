@@ -1,6 +1,6 @@
 {
-  "scan_id": "49d8568f",
-  "timestamp": "2026-02-12T22:11:46.007000+00:00",
+  "scan_id": "3865f6eb",
+  "timestamp": "2026-02-12T23:46:40.738837+00:00",
   "directory": "C:\\stratum-cli\\crewAI-examples",
   "capabilities": [
     {
@@ -736,16 +736,12 @@
       "severity": "CRITICAL",
       "confidence": "confirmed",
       "category": "security",
-      "title": "Unguarded data-to-external path (6 paths)",
-      "path": "Gmail inbox \u2192 GmailGetThread \u2192 GmailToolkit \u2192 Gmail outbound\n    Gmail inbox \u2192 GmailGetThread \u2192 slack_sdk \u2192 Slack\n    Gmail inbox \u2192 GmailGetThread \u2192 SerperDevTool \u2192 Serper API\n    Gmail inbox \u2192 GmailGetThread \u2192 requests \u2192 HTTP endpoint\n    Gmail inbox \u2192 GmailGetThread \u2192 TavilySearchResults \u2192 Tavily API\n    Gmail inbox \u2192 GmailGetThread \u2192 WebsiteSearchTool \u2192 Crewai Tools",
+      "title": "Unguarded data-to-external path (2 paths)",
+      "path": "Gmail inbox \u2192 GmailGetThread \u2192 GmailToolkit \u2192 Gmail outbound\n    Gmail inbox \u2192 GmailGetThread \u2192 TavilySearchResults \u2192 Tavily API",
       "description": "Someone sends your agent a crafted email. The agent reads your Gmail inbox and forwards sensitive content via Gmail outbound \u2014 to an attacker-controlled address embedded in the injected instructions.",
       "evidence": [
         "flows\\email_auto_responder_flow\\src\\email_auto_responder_flow\\crews\\email_filter_crew\\email_filter_crew.py",
-        "flows\\email_auto_responder_flow\\src\\email_auto_responder_flow\\tools\\create_draft.py",
-        "flows\\meeting_assistant_flow\\src\\meeting_assistant_flow\\utils\\slack_helper.py:19",
-        "crews\\job-posting\\src\\job_posting\\crew.py",
-        "crews\\stock_analysis\\src\\stock_analysis\\tools\\sec_tools.py:69",
-        "crews\\stock_analysis\\src\\stock_analysis\\crew.py"
+        "flows\\email_auto_responder_flow\\src\\email_auto_responder_flow\\tools\\create_draft.py"
       ],
       "scenario": "Someone sends your agent a crafted email. The agent reads your Gmail inbox and forwards sensitive content via Gmail outbound \u2014 to an attacker-controlled address embedded in the injected instructions.",
       "business_context": "",
@@ -763,6 +759,35 @@
         "url": "https://arxiv.org/abs/2508.14925"
       },
       "quick_fix_type": "add_hitl",
+      "graph_paths": []
+    },
+    {
+      "id": "STRATUM-CR05",
+      "severity": "CRITICAL",
+      "confidence": "confirmed",
+      "category": "compounding",
+      "title": "Shared tool blast radius: SerperDevTool -> 9 agents",
+      "path": "SerperDevTool (shared tool)\n  |--> Activity Planner\n  |--> Candidate Outreach Strategist\n  |--> Chief Marketing Strategist\n  |--> Email Filter Agent\n  |--> Itinerary Compiler\n  |--> Job Candidate Researcher\n  |--> Lead Market Analyst\n  |--> Matcher\n  L--> Restaurant Scout",
+      "description": "SerperDevTool feeds 9 agents in crew 'MarketingPostsCrew' -- blast radius: 1 external services. If SerperDevTool returns poisoned data (prompt injection in scraped content), 9 agents are compromised simultaneously. Each has independent downstream actions, so a single point of compromise fans out to 1 external services.",
+      "evidence": [
+        "Shared by: Activity Planner, Candidate Outreach Strategist, Chief Marketing Strategist, Email Filter Agent, Itinerary Compiler, Job Candidate Researcher",
+        "Downstream: Serper API",
+        "Shared by: Email Action Agent, Email Response Writer, Lead Market Analyst",
+        "Downstream: Gmail outbound, Tavily API",
+        "Shared by: Financial Agent, Financial Analyst Agent, Investment Advisor Agent",
+        "Downstream: Crewai Tools",
+        "Shared by: CV Reader, Matcher"
+      ],
+      "scenario": "A single poisoned input to SerperDevTool would compromise your entire analysis pipeline: Activity Planner, Candidate Outreach Strategist, Chief Marketing Strategist, Email Filter Agent, Itinerary Compiler, Job Candidate Researcher.",
+      "business_context": "This finding can only exist because the graph traced the fan-out from one shared tool. No checklist produces it -- this is emergent risk from the agent architecture.",
+      "remediation": "Option 1 -- Add input validation on the shared tool:\n  class ValidatedSerperDevTool(BaseTool):\n      def _run(self, input: str) -> str:\n          raw = SerperDevTool()._run(input)\n          if contains_injection_patterns(raw):\n              raise ValueError('Suspicious content detected')\n          return raw\n\nOption 2 -- Give each agent its own tool instance",
+      "effort": "med",
+      "references": [],
+      "owasp_id": "ASI01",
+      "owasp_name": "Agent Goal Hijacking",
+      "finding_class": "compounding",
+      "citation": null,
+      "quick_fix_type": "",
       "graph_paths": []
     },
     {
@@ -846,6 +871,32 @@
       ],
       "owasp_id": "ASI01",
       "owasp_name": "Agent Goal Hijacking",
+      "finding_class": "compounding",
+      "citation": null,
+      "quick_fix_type": "",
+      "graph_paths": []
+    },
+    {
+      "id": "STRATUM-CR06",
+      "severity": "HIGH",
+      "confidence": "probable",
+      "category": "compounding",
+      "title": "'Matcher' bypasses 'CV Reader' -- reads Crewai Tools directly",
+      "path": "Crewai Tools --> CV Reader (intended filter)\nCrewai Tools --> Matcher (direct access, bypassing filter)",
+      "description": "CV Reader is supposed to filter input from Crewai Tools, but Matcher reads Crewai Tools directly via the same tool. The filter agent doesn't sit on the data path -- it runs in parallel, not as a gate.",
+      "evidence": [
+        "Crew: MatchToProposalCrew",
+        "Shared source: Crewai Tools",
+        "Crew: EmailFilterCrew",
+        "Shared source: Gmail inbox"
+      ],
+      "scenario": "Malicious content in Crewai Tools reaches Matcher unfiltered regardless of what CV Reader does. The filter is architecturally irrelevant.",
+      "business_context": "The control exists but data flows around it. This is worse than no control -- it creates a false sense of security.",
+      "remediation": "Route all Crewai Tools access through CV Reader:\n  1. Remove direct Crewai Tools access from Matcher\n  2. Pass filtered output from CV Reader to Matcher\n  3. Or add output_filter on Matcher's direct read",
+      "effort": "med",
+      "references": [],
+      "owasp_id": "ASI05",
+      "owasp_name": "Insufficient Sandboxing",
       "finding_class": "compounding",
       "citation": null,
       "quick_fix_type": "",
@@ -1088,7 +1139,7 @@
       "graph_paths": []
     }
   ],
-  "risk_score": 80,
+  "risk_score": 98,
   "total_capabilities": 30,
   "outbound_count": 18,
   "data_access_count": 11,
@@ -1110,7 +1161,7 @@
         "type": "capability",
         "label": "SerperDevTool",
         "trust_level": "external",
-        "data_sensitivity": "personal"
+        "data_sensitivity": "public"
       },
       {
         "id": "ext_serper_api",
@@ -1173,7 +1224,7 @@
         "type": "capability",
         "label": "WebsiteSearchTool",
         "trust_level": "external",
-        "data_sensitivity": "personal"
+        "data_sensitivity": "unknown"
       },
       {
         "id": "ext_crewai_tools",
@@ -1194,7 +1245,7 @@
         "type": "capability",
         "label": "requests",
         "trust_level": "external",
-        "data_sensitivity": "personal"
+        "data_sensitivity": "unknown"
       },
       {
         "id": "ext_http_endpoint",
@@ -1439,21 +1490,21 @@
         "type": "agent",
         "label": "Lead Market Analyst",
         "trust_level": "internal",
-        "data_sensitivity": "personal"
+        "data_sensitivity": "unknown"
       },
       {
         "id": "agent_chief_marketing_strategist",
         "type": "agent",
         "label": "Chief Marketing Strategist",
         "trust_level": "internal",
-        "data_sensitivity": "personal"
+        "data_sensitivity": "unknown"
       },
       {
         "id": "agent_creative_content_creator",
         "type": "agent",
         "label": "Creative Content Creator",
         "trust_level": "internal",
-        "data_sensitivity": "personal"
+        "data_sensitivity": "unknown"
       },
       {
         "id": "agent_chief_creative_director",
@@ -1481,7 +1532,7 @@
         "type": "agent",
         "label": "Matcher",
         "trust_level": "internal",
-        "data_sensitivity": "personal"
+        "data_sensitivity": "unknown"
       },
       {
         "id": "agent_meta_quest_expert",
@@ -1495,21 +1546,21 @@
         "type": "agent",
         "label": "Job Candidate Researcher",
         "trust_level": "internal",
-        "data_sensitivity": "personal"
+        "data_sensitivity": "unknown"
       },
       {
         "id": "agent_communicator",
         "type": "agent",
         "label": "Candidate Outreach Strategist",
         "trust_level": "internal",
-        "data_sensitivity": "personal"
+        "data_sensitivity": "unknown"
       },
       {
         "id": "agent_reporter",
         "type": "agent",
         "label": "Candidate Reporting Specialist",
         "trust_level": "internal",
-        "data_sensitivity": "personal"
+        "data_sensitivity": "unknown"
       },
       {
         "id": "agent_spamfilter",
@@ -1572,21 +1623,21 @@
         "type": "agent",
         "label": "Activity Planner",
         "trust_level": "internal",
-        "data_sensitivity": "personal"
+        "data_sensitivity": "unknown"
       },
       {
         "id": "agent_restaurant_scout",
         "type": "agent",
         "label": "Restaurant Scout",
         "trust_level": "internal",
-        "data_sensitivity": "personal"
+        "data_sensitivity": "unknown"
       },
       {
         "id": "agent_itinerary_compiler",
         "type": "agent",
         "label": "Itinerary Compiler",
         "trust_level": "internal",
-        "data_sensitivity": "personal"
+        "data_sensitivity": "unknown"
       },
       {
         "id": "agent_email_followup_agent",
@@ -1628,14 +1679,14 @@
         "type": "agent",
         "label": "Book Outlining Agent",
         "trust_level": "internal",
-        "data_sensitivity": "personal"
+        "data_sensitivity": "unknown"
       },
       {
         "id": "agent_writer",
         "type": "agent",
         "label": "Chapter Writer",
         "trust_level": "internal",
-        "data_sensitivity": "personal"
+        "data_sensitivity": "unknown"
       },
       {
         "id": "agent_agent",
@@ -1684,35 +1735,35 @@
         "type": "agent",
         "label": "Financial Agent",
         "trust_level": "internal",
-        "data_sensitivity": "personal"
+        "data_sensitivity": "unknown"
       },
       {
         "id": "agent_research_analyst_agent",
         "type": "agent",
         "label": "Research Analyst Agent",
         "trust_level": "internal",
-        "data_sensitivity": "personal"
+        "data_sensitivity": "unknown"
       },
       {
         "id": "agent_financial_analyst_agent",
         "type": "agent",
         "label": "Financial Analyst Agent",
         "trust_level": "internal",
-        "data_sensitivity": "personal"
+        "data_sensitivity": "unknown"
       },
       {
         "id": "agent_investment_advisor_agent",
         "type": "agent",
         "label": "Investment Advisor Agent",
         "trust_level": "internal",
-        "data_sensitivity": "personal"
+        "data_sensitivity": "unknown"
       },
       {
         "id": "agent_email_filter_agent",
         "type": "agent",
         "label": "Email Filter Agent",
         "trust_level": "internal",
-        "data_sensitivity": "personal"
+        "data_sensitivity": "unknown"
       },
       {
         "id": "agent_email_action_agent",
@@ -1735,7 +1786,7 @@
         "target": "ext_serper_api",
         "type": "sends_to",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -1780,7 +1831,7 @@
         "target": "ext_crewai_tools",
         "type": "sends_to",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -1798,7 +1849,7 @@
         "target": "ext_http_endpoint",
         "type": "sends_to",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -1861,7 +1912,7 @@
         "target": "agent_lead_market_analyst",
         "type": "tool_of",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": true,
         "crossing_direction": "inward"
       },
@@ -1870,7 +1921,7 @@
         "target": "agent_chief_marketing_strategist",
         "type": "tool_of",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": true,
         "crossing_direction": "inward"
       },
@@ -1888,7 +1939,7 @@
         "target": "agent_matcher",
         "type": "tool_of",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": true,
         "crossing_direction": "inward"
       },
@@ -1915,7 +1966,7 @@
         "target": "agent_researcher",
         "type": "tool_of",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": true,
         "crossing_direction": "inward"
       },
@@ -1924,7 +1975,7 @@
         "target": "agent_communicator",
         "type": "tool_of",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": true,
         "crossing_direction": "inward"
       },
@@ -1933,7 +1984,7 @@
         "target": "agent_personalized_activity_planner",
         "type": "tool_of",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": true,
         "crossing_direction": "inward"
       },
@@ -1942,7 +1993,7 @@
         "target": "agent_restaurant_scout",
         "type": "tool_of",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": true,
         "crossing_direction": "inward"
       },
@@ -1951,7 +2002,7 @@
         "target": "agent_itinerary_compiler",
         "type": "tool_of",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": true,
         "crossing_direction": "inward"
       },
@@ -1996,7 +2047,7 @@
         "target": "agent_financial_agent",
         "type": "tool_of",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": true,
         "crossing_direction": "inward"
       },
@@ -2005,7 +2056,7 @@
         "target": "agent_financial_analyst_agent",
         "type": "tool_of",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": true,
         "crossing_direction": "inward"
       },
@@ -2014,7 +2065,7 @@
         "target": "agent_investment_advisor_agent",
         "type": "tool_of",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": true,
         "crossing_direction": "inward"
       },
@@ -2023,7 +2074,7 @@
         "target": "agent_email_filter_agent",
         "type": "tool_of",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": true,
         "crossing_direction": "inward"
       },
@@ -2158,7 +2209,7 @@
         "target": "agent_chief_marketing_strategist",
         "type": "feeds_into",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2167,7 +2218,7 @@
         "target": "agent_creative_content_creator",
         "type": "feeds_into",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2185,7 +2236,7 @@
         "target": "agent_matcher",
         "type": "feeds_into",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2194,7 +2245,7 @@
         "target": "agent_communicator",
         "type": "feeds_into",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2203,7 +2254,7 @@
         "target": "agent_reporter",
         "type": "feeds_into",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2230,7 +2281,7 @@
         "target": "agent_research_analyst_agent",
         "type": "feeds_into",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2239,7 +2290,7 @@
         "target": "agent_financial_analyst_agent",
         "type": "feeds_into",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2248,7 +2299,7 @@
         "target": "agent_investment_advisor_agent",
         "type": "feeds_into",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2257,7 +2308,7 @@
         "target": "agent_restaurant_scout",
         "type": "feeds_into",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2266,7 +2317,7 @@
         "target": "agent_itinerary_compiler",
         "type": "feeds_into",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2275,7 +2326,7 @@
         "target": "agent_email_action_agent",
         "type": "feeds_into",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2293,7 +2344,7 @@
         "target": "agent_outliner",
         "type": "feeds_into",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2302,7 +2353,7 @@
         "target": "agent_writer",
         "type": "feeds_into",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2338,7 +2389,7 @@
         "target": "agent_chief_marketing_strategist",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2347,7 +2398,7 @@
         "target": "agent_matcher",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2356,7 +2407,7 @@
         "target": "agent_researcher",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2365,7 +2416,7 @@
         "target": "agent_communicator",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2374,7 +2425,7 @@
         "target": "agent_personalized_activity_planner",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2383,7 +2434,7 @@
         "target": "agent_restaurant_scout",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2392,7 +2443,7 @@
         "target": "agent_itinerary_compiler",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2401,7 +2452,7 @@
         "target": "agent_email_filter_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2410,7 +2461,7 @@
         "target": "agent_matcher",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2419,7 +2470,7 @@
         "target": "agent_researcher",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2428,7 +2479,7 @@
         "target": "agent_communicator",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2437,7 +2488,7 @@
         "target": "agent_personalized_activity_planner",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2446,7 +2497,7 @@
         "target": "agent_restaurant_scout",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2455,7 +2506,7 @@
         "target": "agent_itinerary_compiler",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2464,7 +2515,7 @@
         "target": "agent_email_filter_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2473,7 +2524,7 @@
         "target": "agent_researcher",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2482,7 +2533,7 @@
         "target": "agent_communicator",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2491,7 +2542,7 @@
         "target": "agent_personalized_activity_planner",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2500,7 +2551,7 @@
         "target": "agent_restaurant_scout",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2509,7 +2560,7 @@
         "target": "agent_itinerary_compiler",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2518,7 +2569,7 @@
         "target": "agent_email_filter_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2527,7 +2578,7 @@
         "target": "agent_communicator",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2536,7 +2587,7 @@
         "target": "agent_personalized_activity_planner",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2545,7 +2596,7 @@
         "target": "agent_restaurant_scout",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2554,7 +2605,7 @@
         "target": "agent_itinerary_compiler",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2563,7 +2614,7 @@
         "target": "agent_email_filter_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2572,7 +2623,7 @@
         "target": "agent_personalized_activity_planner",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2581,7 +2632,7 @@
         "target": "agent_restaurant_scout",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2590,7 +2641,7 @@
         "target": "agent_itinerary_compiler",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2599,7 +2650,7 @@
         "target": "agent_email_filter_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2608,7 +2659,7 @@
         "target": "agent_restaurant_scout",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2617,7 +2668,7 @@
         "target": "agent_itinerary_compiler",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2626,7 +2677,7 @@
         "target": "agent_email_filter_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2635,7 +2686,7 @@
         "target": "agent_itinerary_compiler",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2644,7 +2695,7 @@
         "target": "agent_email_filter_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2653,7 +2704,7 @@
         "target": "agent_email_filter_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2662,7 +2713,7 @@
         "target": "agent_financial_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2671,7 +2722,7 @@
         "target": "agent_research_analyst_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2680,7 +2731,7 @@
         "target": "agent_financial_analyst_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2689,7 +2740,7 @@
         "target": "agent_investment_advisor_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2698,7 +2749,7 @@
         "target": "agent_financial_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2707,7 +2758,7 @@
         "target": "agent_research_analyst_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2716,7 +2767,7 @@
         "target": "agent_financial_analyst_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2725,7 +2776,7 @@
         "target": "agent_investment_advisor_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2734,7 +2785,7 @@
         "target": "agent_financial_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2743,7 +2794,7 @@
         "target": "agent_research_analyst_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2752,7 +2803,7 @@
         "target": "agent_financial_analyst_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2761,7 +2812,7 @@
         "target": "agent_investment_advisor_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2770,7 +2821,7 @@
         "target": "agent_financial_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2779,7 +2830,7 @@
         "target": "agent_research_analyst_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2788,7 +2839,7 @@
         "target": "agent_financial_analyst_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2797,7 +2848,7 @@
         "target": "agent_investment_advisor_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2806,7 +2857,7 @@
         "target": "agent_financial_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2815,7 +2866,7 @@
         "target": "agent_research_analyst_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2824,7 +2875,7 @@
         "target": "agent_financial_analyst_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2833,7 +2884,7 @@
         "target": "agent_investment_advisor_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2842,7 +2893,7 @@
         "target": "agent_financial_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2851,7 +2902,7 @@
         "target": "agent_research_analyst_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2860,7 +2911,7 @@
         "target": "agent_financial_analyst_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2869,7 +2920,7 @@
         "target": "agent_investment_advisor_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2878,7 +2929,7 @@
         "target": "agent_financial_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2887,7 +2938,7 @@
         "target": "agent_research_analyst_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2896,7 +2947,7 @@
         "target": "agent_financial_analyst_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2905,7 +2956,7 @@
         "target": "agent_investment_advisor_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2914,7 +2965,7 @@
         "target": "agent_research_analyst_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2923,7 +2974,7 @@
         "target": "agent_financial_analyst_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2932,7 +2983,7 @@
         "target": "agent_investment_advisor_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2941,7 +2992,7 @@
         "target": "agent_financial_analyst_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2950,7 +3001,7 @@
         "target": "agent_investment_advisor_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -2959,7 +3010,7 @@
         "target": "agent_investment_advisor_agent",
         "type": "shares_tool",
         "has_control": false,
-        "data_sensitivity": "personal",
+        "data_sensitivity": "unknown",
         "trust_crossing": false,
         "crossing_direction": ""
       },
@@ -3018,290 +3069,11 @@
         "crossing_direction": "outward"
       },
       {
-        "source": "cap_FileReadTool_data_access",
-        "target": "cap_WebsiteSearchTool_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_FileReadTool_data_access",
-        "target": "cap_requests_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_FileReadTool_data_access",
-        "target": "cap_TavilySearchResults_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_FileReadTool_data_access",
-        "target": "cap_GmailToolkit_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_FileReadTool_data_access",
-        "target": "cap_slack_sdk_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_FileManagementToolkit_data_access",
-        "target": "cap_SerperDevTool_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_FileManagementToolkit_data_access",
-        "target": "cap_WebsiteSearchTool_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_FileManagementToolkit_data_access",
-        "target": "cap_requests_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_FileManagementToolkit_data_access",
-        "target": "cap_TavilySearchResults_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_FileManagementToolkit_data_access",
-        "target": "cap_GmailToolkit_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_FileManagementToolkit_data_access",
-        "target": "cap_slack_sdk_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
         "source": "cap_CSVSearchTool_data_access",
         "target": "cap_SerperDevTool_outbound",
         "type": "shares_with",
         "has_control": false,
         "data_sensitivity": "unknown",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_CSVSearchTool_data_access",
-        "target": "cap_WebsiteSearchTool_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_CSVSearchTool_data_access",
-        "target": "cap_requests_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_CSVSearchTool_data_access",
-        "target": "cap_TavilySearchResults_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_CSVSearchTool_data_access",
-        "target": "cap_GmailToolkit_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_CSVSearchTool_data_access",
-        "target": "cap_slack_sdk_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_TXTSearchTool_data_access",
-        "target": "cap_SerperDevTool_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_TXTSearchTool_data_access",
-        "target": "cap_WebsiteSearchTool_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_TXTSearchTool_data_access",
-        "target": "cap_requests_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_TXTSearchTool_data_access",
-        "target": "cap_TavilySearchResults_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_TXTSearchTool_data_access",
-        "target": "cap_GmailToolkit_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_TXTSearchTool_data_access",
-        "target": "cap_slack_sdk_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_RagTool_data_access",
-        "target": "cap_SerperDevTool_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_RagTool_data_access",
-        "target": "cap_WebsiteSearchTool_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_RagTool_data_access",
-        "target": "cap_requests_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_RagTool_data_access",
-        "target": "cap_TavilySearchResults_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_RagTool_data_access",
-        "target": "cap_GmailToolkit_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_RagTool_data_access",
-        "target": "cap_slack_sdk_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_GmailGetThread_data_access",
-        "target": "cap_SerperDevTool_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "personal",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_GmailGetThread_data_access",
-        "target": "cap_WebsiteSearchTool_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "personal",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_GmailGetThread_data_access",
-        "target": "cap_requests_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "personal",
         "trust_crossing": true,
         "crossing_direction": "outward"
       },
@@ -3324,42 +3096,6 @@
         "crossing_direction": "outward"
       },
       {
-        "source": "cap_GmailGetThread_data_access",
-        "target": "cap_slack_sdk_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "personal",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_GmailToolkit_data_access",
-        "target": "cap_SerperDevTool_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "personal",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_GmailToolkit_data_access",
-        "target": "cap_WebsiteSearchTool_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "personal",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_GmailToolkit_data_access",
-        "target": "cap_requests_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "personal",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
         "source": "cap_GmailToolkit_data_access",
         "target": "cap_TavilySearchResults_outbound",
         "type": "shares_with",
@@ -3371,15 +3107,6 @@
       {
         "source": "cap_GmailToolkit_data_access",
         "target": "cap_GmailToolkit_outbound",
-        "type": "shares_with",
-        "has_control": false,
-        "data_sensitivity": "personal",
-        "trust_crossing": true,
-        "crossing_direction": "outward"
-      },
-      {
-        "source": "cap_GmailToolkit_data_access",
-        "target": "cap_slack_sdk_outbound",
         "type": "shares_with",
         "has_control": false,
         "data_sensitivity": "personal",
@@ -3389,8 +3116,8 @@
     ],
     "risk_surface": {
       "total_nodes": 89,
-      "total_edges": 184,
-      "uncontrolled_path_count": 6,
+      "total_edges": 148,
+      "uncontrolled_path_count": 2,
       "max_path_hops": 3,
       "sensitive_data_types": [
         "personal"
@@ -3403,12 +3130,12 @@
         "GDPR Art. 35",
         "NIST AI RMF MAP 1.5"
       ],
-      "trust_boundary_crossings": 67,
-      "downward_crossings": 44
+      "trust_boundary_crossings": 31,
+      "downward_crossings": 8
     }
   },
   "diff": {
-    "previous_risk_score": 80,
+    "previous_risk_score": 98,
     "risk_score_delta": 0,
     "new_finding_ids": [],
     "resolved_finding_ids": []
@@ -4599,6 +4326,187 @@
       "source_file": ""
     }
   ],
+  "blast_radii": [
+    {
+      "source_node_id": "cap_SerperDevTool_outbound",
+      "source_label": "SerperDevTool",
+      "affected_agent_ids": [
+        "agent_lead_market_analyst",
+        "agent_chief_marketing_strategist",
+        "agent_matcher",
+        "agent_researcher",
+        "agent_communicator",
+        "agent_personalized_activity_planner",
+        "agent_restaurant_scout",
+        "agent_itinerary_compiler",
+        "agent_email_filter_agent"
+      ],
+      "affected_agent_labels": [
+        "Activity Planner",
+        "Candidate Outreach Strategist",
+        "Chief Marketing Strategist",
+        "Email Filter Agent",
+        "Itinerary Compiler",
+        "Job Candidate Researcher",
+        "Lead Market Analyst",
+        "Matcher",
+        "Restaurant Scout"
+      ],
+      "downstream_external_ids": [
+        "ext_serper_api"
+      ],
+      "downstream_external_labels": [
+        "Serper API"
+      ],
+      "agent_count": 9,
+      "external_count": 1,
+      "crew_name": "MarketingPostsCrew"
+    },
+    {
+      "source_node_id": "cap_GmailGetThread_data_access",
+      "source_label": "GmailGetThread",
+      "affected_agent_ids": [
+        "agent_agent",
+        "agent_email_action_agent",
+        "agent_email_response_writer"
+      ],
+      "affected_agent_labels": [
+        "Email Action Agent",
+        "Email Response Writer",
+        "Lead Market Analyst"
+      ],
+      "downstream_external_ids": [
+        "ext_gmail_outbound",
+        "ext_tavily_api"
+      ],
+      "downstream_external_labels": [
+        "Gmail outbound",
+        "Tavily API"
+      ],
+      "agent_count": 3,
+      "external_count": 2,
+      "crew_name": "EmailFilterCrew"
+    },
+    {
+      "source_node_id": "cap_TavilySearchResults_outbound",
+      "source_label": "TavilySearchResults",
+      "affected_agent_ids": [
+        "agent_agent",
+        "agent_email_action_agent",
+        "agent_email_response_writer"
+      ],
+      "affected_agent_labels": [
+        "Email Action Agent",
+        "Email Response Writer",
+        "Lead Market Analyst"
+      ],
+      "downstream_external_ids": [
+        "ext_gmail_outbound",
+        "ext_tavily_api"
+      ],
+      "downstream_external_labels": [
+        "Gmail outbound",
+        "Tavily API"
+      ],
+      "agent_count": 3,
+      "external_count": 2,
+      "crew_name": "EmailFilterCrew"
+    },
+    {
+      "source_node_id": "cap_GmailToolkit_data_access",
+      "source_label": "GmailToolkit",
+      "affected_agent_ids": [
+        "agent_agent",
+        "agent_email_action_agent",
+        "agent_email_response_writer"
+      ],
+      "affected_agent_labels": [
+        "Email Action Agent",
+        "Email Response Writer",
+        "Lead Market Analyst"
+      ],
+      "downstream_external_ids": [
+        "ext_gmail_outbound",
+        "ext_tavily_api"
+      ],
+      "downstream_external_labels": [
+        "Gmail outbound",
+        "Tavily API"
+      ],
+      "agent_count": 3,
+      "external_count": 2,
+      "crew_name": "EmailFilterCrew"
+    },
+    {
+      "source_node_id": "cap_GmailToolkit_outbound",
+      "source_label": "GmailToolkit",
+      "affected_agent_ids": [
+        "agent_agent",
+        "agent_email_action_agent",
+        "agent_email_response_writer"
+      ],
+      "affected_agent_labels": [
+        "Email Action Agent",
+        "Email Response Writer",
+        "Lead Market Analyst"
+      ],
+      "downstream_external_ids": [
+        "ext_gmail_outbound",
+        "ext_tavily_api"
+      ],
+      "downstream_external_labels": [
+        "Gmail outbound",
+        "Tavily API"
+      ],
+      "agent_count": 3,
+      "external_count": 2,
+      "crew_name": "EmailFilterCrew"
+    },
+    {
+      "source_node_id": "cap_WebsiteSearchTool_outbound",
+      "source_label": "WebsiteSearchTool",
+      "affected_agent_ids": [
+        "agent_financial_agent",
+        "agent_financial_analyst_agent",
+        "agent_investment_advisor_agent"
+      ],
+      "affected_agent_labels": [
+        "Financial Agent",
+        "Financial Analyst Agent",
+        "Investment Advisor Agent"
+      ],
+      "downstream_external_ids": [
+        "ext_crewai_tools"
+      ],
+      "downstream_external_labels": [
+        "Crewai Tools"
+      ],
+      "agent_count": 3,
+      "external_count": 1,
+      "crew_name": "StockAnalysisCrew"
+    },
+    {
+      "source_node_id": "cap_FileReadTool_data_access",
+      "source_label": "FileReadTool",
+      "affected_agent_ids": [
+        "agent_cv_reader",
+        "agent_matcher"
+      ],
+      "affected_agent_labels": [
+        "CV Reader",
+        "Matcher"
+      ],
+      "downstream_external_ids": [
+        "ext_serper_api"
+      ],
+      "downstream_external_labels": [
+        "Serper API"
+      ],
+      "agent_count": 2,
+      "external_count": 1,
+      "crew_name": "MatchToProposalCrew"
+    }
+  ],
   "agent_definitions": [
     {
       "name": "senior_engineer_agent",
@@ -5168,7 +5076,10 @@
     "agent_count": 53,
     "crew_count": 29,
     "shared_tool_pairs": 118,
-    "trust_boundary_crossings": 67,
-    "control_coverage_pct": 0.0
+    "trust_boundary_crossings": 31,
+    "control_coverage_pct": 0.0,
+    "max_blast_radius": 9,
+    "blast_radius_count": 7,
+    "control_bypass_count": 2
   }
 }
