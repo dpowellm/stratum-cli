@@ -44,10 +44,13 @@ def cli() -> None:
               help="Generate stratum-badge.svg in the scanned directory")
 @click.option("--profile-output", type=click.Path(),
               help="Write ScanProfile as standalone JSON to this path")
+@click.option("--quiet", is_flag=True,
+              help="Minimal output: score + top 3 actions")
 def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
              no_telemetry: bool, offline: bool, fail_above: int | None,
              security_mode: bool, output_format: str, apply_fix: bool,
-             generate_badge: bool, profile_output: str | None) -> None:
+             generate_badge: bool, profile_output: str | None,
+             quiet: bool = False) -> None:
     """Run a security audit on an AI agent project."""
     # --ci implies --security ordering
     if ci:
@@ -200,7 +203,7 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
                 if has_high:
                     sys.exit(2)
     else:
-        render(result, verbose=verbose, security_mode=security_mode)
+        render(result, verbose=verbose, security_mode=security_mode, quiet=quiet)
 
         # Comparison URL (only if submission succeeded, terminal mode only)
         if submission_success:

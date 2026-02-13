@@ -1,202 +1,322 @@
-"""ASCII flow map renderer — the viral screenshot artifact.
+"""Per-crew ASCII flow diagrams in bordered boxes.
 
-Renders data flow paths as tree-style diagrams with risk markers,
-grouped by crew when crew definitions are available.
+Renders data flow through agent chains with annotations for
+bypasses, shared tools (blast radii), and incident matches.
 """
 from __future__ import annotations
 
-from stratum.graph.models import NodeType, RiskGraph, RiskPath
-from stratum.models import BlastRadius
+from stratum.graph.models import EdgeType, NodeType, RiskGraph
+from stratum.models import BlastRadius, CrewDefinition, Finding, IncidentMatch, Severity
 
 
-def render_flow_map(
+MAX_WIDTH = 70
+
+
+def render_all_crew_maps(
+    crews: list[CrewDefinition],
+    graph: RiskGraph | None,
+    findings: list[Finding],
+    blast_radii: list[BlastRadius],
+    control_bypasses: list[dict],
+    incident_matches: list[IncidentMatch],
+) -> str:
+    """Render flow maps for crews that have findings. Max 4 crews."""
+    if not crews or graph is None:
+        return ""
+
+    ranked = _rank_crews_by_severity(crews, findings)
+    if not ranked:
+        return ""
+
+    maps: list[str] = []
+    for crew in ranked[:4]:
+        m = render_crew_flow_map(
+            crew, graph, blast_radii, control_bypasses, incident_matches,
+        )
+        if m:
+            maps.append(m)
+
+    return "\n\n".join(maps)
+
+
+def render_crew_flow_map(
+    crew: CrewDefinition,
     graph: RiskGraph,
     blast_radii: list[BlastRadius],
     control_bypasses: list[dict],
-    crew_definitions: list | None = None,
-) -> list[str]:
-    """Render flow map sections for terminal output.
-
-    Returns a list of Rich-formatted strings.  When *crew_definitions* is
-    provided, diagrams are grouped under crew headers.
-    """
-    # Group blast_radii and bypasses by crew
-    crew_brs: dict[str, list[BlastRadius]] = {}
-    for br in blast_radii:
-        if br.agent_count < 2:
-            continue
-        key = br.crew_name or "(ungrouped)"
-        crew_brs.setdefault(key, []).append(br)
-
-    crew_bps: dict[str, list[dict]] = {}
-    for bp in control_bypasses:
-        key = bp.get("crew_name", "") or "(ungrouped)"
-        crew_bps.setdefault(key, []).append(bp)
-
-    # Determine crew order: crews with more findings first
-    all_crew_keys: list[str] = []
-    seen: set[str] = set()
-    for key in list(crew_brs.keys()) + list(crew_bps.keys()):
-        if key not in seen:
-            all_crew_keys.append(key)
-            seen.add(key)
-
-    sections: list[str] = []
-    rendered_tools: set[str] = set()
-
-    for crew_key in all_crew_keys[:4]:  # Cap at 4 crew sections
-        crew_sections: list[str] = []
-
-        # Blast radius diagrams for this crew (top 2 per crew)
-        br_count = 0
-        for br in crew_brs.get(crew_key, []):
-            if br_count >= 2:
-                break
-            section = _render_blast_radius(graph, br)
-            if section:
-                crew_sections.append(section)
-                rendered_tools.add(br.source_node_id)
-                br_count += 1
-
-        # Bypass diagrams for this crew
-        rendered_bypasses: set[str] = set()
-        for bp in crew_bps.get(crew_key, []):
-            key = f"{bp['upstream_agent']}-{bp['downstream_agent']}"
-            if key in rendered_bypasses:
-                continue
-            rendered_bypasses.add(key)
-            section = _render_bypass(bp)
-            if section:
-                crew_sections.append(section)
-
-        if crew_sections:
-            if crew_key != "(ungrouped)":
-                header = f"  [bold][ {crew_key} ][/bold]"
-                sections.append(header + "\n" + "\n\n".join(crew_sections))
-            else:
-                sections.extend(crew_sections)
-
-    # Uncontrolled path trees (not grouped by crew — global)
-    if graph.uncontrolled_paths:
-        source_groups = _group_paths_by_source(graph)
-        for source_id, paths in source_groups.items():
-            if source_id in rendered_tools:
-                continue
-            section = _render_source_tree(graph, source_id, paths)
-            if section:
-                sections.append(section)
-
-    return sections[:6]
-
-
-def _render_blast_radius(graph: RiskGraph, br: BlastRadius) -> str:
-    """Render a blast radius diagram showing tool fan-out to agents."""
-    lines: list[str] = []
-    crew_ctx = f" in {br.crew_name}" if br.crew_name else ""
-
-    lines.append(
-        f"  [bold red]BLAST RADIUS[/bold red]: "
-        f"[bold]{br.source_label}[/bold] -> "
-        f"{br.agent_count} agents -> {br.external_count} external services"
-    )
-    lines.append("")
-    lines.append(f"  [bold]{br.source_label}[/bold] (shared tool{crew_ctx})")
-
-    # Build per-agent external services
-    agent_externals: dict[str, list[str]] = {}
-    for aid, alabel in zip(br.affected_agent_ids, br.affected_agent_labels):
-        exts: list[str] = []
-        agent_tools = [
-            e.source for e in graph.edges
-            if e.edge_type.value == "tool_of" and e.target == aid
-        ]
-        for tool_id in agent_tools:
-            for e in graph.edges:
-                if e.source == tool_id and e.edge_type.value == "sends_to":
-                    ext_node = graph.nodes.get(e.target)
-                    if ext_node:
-                        exts.append(ext_node.label)
-        agent_externals[alabel] = sorted(set(exts))
-
-    for i, alabel in enumerate(br.affected_agent_labels):
-        is_last = i == len(br.affected_agent_labels) - 1
-        branch = "    L-->" if is_last else "    |-->"
-        exts = agent_externals.get(alabel, [])
-        ext_str = f" -> [{', '.join(exts)}]" if exts else ""
-        lines.append(f"  {branch} {alabel}{ext_str}")
-
-    lines.append("")
-
-    if br.agent_count >= 3:
-        lines.append(
-            f"  [dim]If {br.source_label} returns poisoned data, "
-            f"{br.agent_count} agents are compromised simultaneously.[/dim]"
-        )
-    elif br.agent_count >= 2:
-        lines.append(
-            f"  [dim]{br.source_label} is shared by {br.agent_count} agents "
-            f"with no isolation.[/dim]"
-        )
-
-    return "\n".join(lines)
-
-
-def _render_bypass(bp: dict) -> str:
-    """Render a control bypass diagram."""
-    lines: list[str] = []
-    lines.append(
-        f"  [bold yellow]BYPASS[/bold yellow]: "
-        f"[bold]{bp['downstream_agent']}[/bold] reads "
-        f"[bold]{bp['data_source']}[/bold] directly, "
-        f"bypassing [bold]{bp['upstream_agent']}[/bold]"
-    )
-    lines.append("")
-    lines.append(f"  {bp['data_source']}")
-    lines.append(f"    |-->[dim] {bp['upstream_agent']}[/dim]  (intended filter)")
-    lines.append(f"    L-->[bold] {bp['downstream_agent']}[/bold]  [red](direct access)[/red]")
-    lines.append("")
-    lines.append(
-        f"  [dim]The filter is architecturally irrelevant -- "
-        f"data reaches {bp['downstream_agent']} unfiltered.[/dim]"
-    )
-    return "\n".join(lines)
-
-
-def _group_paths_by_source(graph: RiskGraph) -> dict[str, list[RiskPath]]:
-    """Group uncontrolled paths by their source data store."""
-    groups: dict[str, list[RiskPath]] = {}
-    for path in graph.uncontrolled_paths:
-        if path.nodes:
-            source_id = path.nodes[0]
-            groups.setdefault(source_id, []).append(path)
-    return groups
-
-
-def _render_source_tree(
-    graph: RiskGraph, source_id: str, paths: list[RiskPath],
+    incident_matches: list[IncidentMatch],
+    max_width: int = MAX_WIDTH,
 ) -> str:
-    """Render a tree of paths from a single data source."""
-    source_node = graph.nodes.get(source_id)
-    if not source_node:
-        return ""
-
+    """Render a single crew's flow diagram in a bordered box."""
     lines: list[str] = []
-    sensitivity = source_node.data_sensitivity
-    sens_tag = f" ({sensitivity})" if sensitivity not in ("unknown", "public") else ""
+    crew_name = crew.name
+    agent_names = crew.agent_names
+    process_type = crew.process_type or "sequential"
 
-    lines.append(f"  [bold]{source_node.label}[/bold]{sens_tag}")
+    # Header
+    header = f"{crew_name} ({len(agent_names)} agents, {process_type})"
+    lines.append(f" {header}")
+    lines.append(f" \u250c{'\u2500' * (max_width - 3)}\u2510")
+    lines.append(_pad("", max_width))
 
-    for i, path in enumerate(paths[:5]):
-        is_last = i == len(paths[:5]) - 1
-        branch = "    L-->" if is_last else "    |-->"
+    # Get data sources and external sinks from graph
+    agent_labels = _get_agent_labels(graph, agent_names)
+    data_sources = _get_crew_data_sources(graph, agent_names)
+    external_sinks = _get_crew_external_sinks(graph, agent_names)
 
-        labels = [graph.nodes[nid].label for nid in path.nodes[1:] if nid in graph.nodes]
-        path_str = " --> ".join(labels)
+    # Agent chain
+    chain = " \u2500\u2500\u25b6 ".join(agent_labels) if agent_labels else " \u2500\u2500\u25b6 ".join(agent_names)
 
-        control_marker = ""
-        if not any(e.has_control for e in path.edges):
-            control_marker = "  [red]!! no gate[/red]"
+    if data_sources:
+        for ds in data_sources:
+            sens = f" ({ds['sensitivity']})" if ds.get("sensitivity", "unknown") != "unknown" else ""
+            lines.append(_pad(f"  {ds['label']}{sens}", max_width))
+            lines.append(_pad(f"    \u2514\u2500\u2500\u25b6 {chain}", max_width))
+    else:
+        lines.append(_pad(f"  {chain}", max_width))
 
-        lines.append(f"  {branch} {path_str}{control_marker}")
+    # External sinks with gate markers
+    for sink in external_sinks:
+        control_marker = "\u2713 gated" if sink.get("has_control") else "\u26a0 no gate"
+        via = sink.get("via_agent", "")
+        pos = _find_agent_position(agent_names, via)
+        indent = "      " + "     " * pos
+        lines.append(_pad(f"{indent}\u251c\u2500\u2500\u25b6 {sink['label']}  {control_marker}", max_width))
+
+    lines.append(_pad("", max_width))
+
+    # Crew-specific bypasses
+    crew_bypasses = [
+        b for b in control_bypasses
+        if crew_name in str(b.get("evidence", []))
+        or crew_name == b.get("crew_name", "")
+    ]
+    for bypass in crew_bypasses:
+        bypasser = bypass.get("downstream_agent", bypass.get("downstream", "?"))
+        source = bypass.get("data_source", bypass.get("shared_source", "?"))
+        lines.append(_pad(f"  \u26a0 BYPASS: {bypasser} reads {source} directly", max_width))
+
+    # Crew-specific blast radii (deduplicated by tool name)
+    crew_brs = [br for br in blast_radii if br.crew_name == crew_name]
+    seen_tools: set[str] = set()
+    for br in crew_brs:
+        if br.source_label in seen_tools:
+            continue
+        seen_tools.add(br.source_label)
+        lines.append(
+            _pad(f"  \U0001f534 {br.source_label} shared by {br.agent_count} agents", max_width)
+        )
+
+    # Crew-specific incidents
+    crew_incidents = _get_crew_incidents(incident_matches, crew_name, graph, agent_names)
+    for incident in crew_incidents:
+        lines.append(_pad(f"  \U0001f4ce Matches: {incident['name']}", max_width))
+
+    # Add spacing if we had annotations
+    if crew_bypasses or crew_brs or crew_incidents:
+        lines.append(_pad("", max_width))
+
+    # Footer
+    lines.append(f" \u2514{'\u2500' * (max_width - 3)}\u2518")
 
     return "\n".join(lines)
+
+
+def _pad(text: str, width: int) -> str:
+    """Pad a line to fit within box borders."""
+    inner = text[:width - 5]
+    padding = width - 5 - len(inner)
+    if padding < 0:
+        padding = 0
+    return f" \u2502 {inner}{' ' * padding} \u2502"
+
+
+def _get_agent_labels(
+    graph: RiskGraph, agent_names: list[str], max_total: int = 62,
+) -> list[str]:
+    """Get display labels for agents from graph nodes.
+
+    Shortens names so the full chain fits within max_total characters.
+    """
+    # Resolve names from graph
+    raw_labels: list[str] = []
+    for name in agent_names:
+        found = False
+        for node in graph.nodes.values():
+            if node.node_type == NodeType.AGENT and (
+                node.label == name or node.id == name
+            ):
+                raw_labels.append(node.label)
+                found = True
+                break
+        if not found:
+            raw_labels.append(name)
+
+    if not raw_labels:
+        return raw_labels
+
+    # Calculate how much space we have per agent
+    # Chain = "A ──▶ B ──▶ C" — separator is " ──▶ " (5 chars)
+    separator_total = (len(raw_labels) - 1) * 5
+    available = max_total - separator_total
+    max_per = max(8, available // len(raw_labels))
+
+    labels: list[str] = []
+    for label in raw_labels:
+        if len(label) > max_per:
+            labels.append(label[:max_per - 2] + "..")
+        else:
+            labels.append(label)
+    return labels
+
+
+def _get_crew_data_sources(
+    graph: RiskGraph, agent_names: list[str],
+) -> list[dict]:
+    """Find data stores that feed into this crew's agents."""
+    sources: list[dict] = []
+    seen: set[str] = set()
+
+    # Find agent node IDs
+    agent_ids = _resolve_agent_ids(graph, agent_names)
+
+    # Find capabilities (tools) of these agents
+    cap_ids: set[str] = set()
+    for edge in graph.edges:
+        if edge.edge_type == EdgeType.TOOL_OF and edge.target in agent_ids:
+            cap_ids.add(edge.source)
+
+    # Find data stores that connect to these capabilities or agents
+    for edge in graph.edges:
+        if edge.edge_type == EdgeType.READS_FROM:
+            # capability reads_from data_store
+            if edge.source in cap_ids or edge.source in agent_ids:
+                ds_node = graph.nodes.get(edge.target)
+                if ds_node and ds_node.id not in seen:
+                    seen.add(ds_node.id)
+                    sources.append({
+                        "label": ds_node.label,
+                        "sensitivity": ds_node.data_sensitivity,
+                    })
+
+    return sources
+
+
+def _get_crew_external_sinks(
+    graph: RiskGraph, agent_names: list[str],
+) -> list[dict]:
+    """Find external services this crew's agents send data to."""
+    sinks: list[dict] = []
+    seen: set[str] = set()
+
+    agent_ids = _resolve_agent_ids(graph, agent_names)
+
+    # Find capabilities of these agents
+    cap_to_agent: dict[str, str] = {}
+    for edge in graph.edges:
+        if edge.edge_type == EdgeType.TOOL_OF and edge.target in agent_ids:
+            cap_to_agent[edge.source] = edge.target
+
+    # Find external services reachable from capabilities
+    for edge in graph.edges:
+        if edge.edge_type in (EdgeType.SENDS_TO, EdgeType.CALLS, EdgeType.WRITES_TO):
+            if edge.source in cap_to_agent:
+                ext_node = graph.nodes.get(edge.target)
+                if ext_node and ext_node.node_type in (
+                    NodeType.EXTERNAL_SERVICE, NodeType.MCP_SERVER,
+                ) and ext_node.id not in seen:
+                    seen.add(ext_node.id)
+                    # Find which agent this goes through
+                    via_agent_id = cap_to_agent[edge.source]
+                    via_agent_name = _agent_id_to_name(graph, via_agent_id, agent_names)
+                    sinks.append({
+                        "label": ext_node.label,
+                        "has_control": edge.has_control,
+                        "via_agent": via_agent_name,
+                    })
+
+    return sinks
+
+
+def _resolve_agent_ids(graph: RiskGraph, agent_names: list[str]) -> set[str]:
+    """Resolve agent names to graph node IDs."""
+    ids: set[str] = set()
+    for name in agent_names:
+        for node in graph.nodes.values():
+            if node.node_type == NodeType.AGENT and (
+                node.label == name or node.id == name
+            ):
+                ids.add(node.id)
+                break
+    return ids
+
+
+def _agent_id_to_name(
+    graph: RiskGraph, agent_id: str, agent_names: list[str],
+) -> str:
+    """Convert agent node ID back to a display name."""
+    node = graph.nodes.get(agent_id)
+    if node:
+        return node.label
+    return agent_id
+
+
+def _find_agent_position(agent_names: list[str], via_agent: str) -> int:
+    """Find position of an agent in the chain for indentation."""
+    for i, name in enumerate(agent_names):
+        if name == via_agent or via_agent in name or name in via_agent:
+            return i
+    return 0
+
+
+def _get_crew_incidents(
+    incident_matches: list[IncidentMatch],
+    crew_name: str,
+    graph: RiskGraph,
+    agent_names: list[str],
+) -> list[dict]:
+    """Find incidents related to this crew."""
+    results: list[dict] = []
+    crew_lower = crew_name.lower()
+
+    for m in incident_matches:
+        if m.confidence < 0.5:
+            continue
+        # Check if crew name appears in matching files or capabilities
+        files_str = " ".join(getattr(m, "matching_files", [])).lower()
+        caps_str = " ".join(getattr(m, "matching_capabilities", [])).lower()
+        reason = (m.match_reason or "").lower()
+
+        if (crew_lower in files_str or crew_lower in caps_str
+                or crew_lower in reason
+                or any(a.lower() in reason for a in agent_names)):
+            results.append({
+                "name": m.name,
+                "confidence": m.confidence,
+            })
+            break  # One incident per crew
+
+    return results
+
+
+def _rank_crews_by_severity(
+    crews: list[CrewDefinition], findings: list[Finding],
+) -> list[CrewDefinition]:
+    """Return crews sorted by severity of findings associated with them."""
+    severity_scores = {
+        Severity.CRITICAL: 100, Severity.HIGH: 50,
+        Severity.MEDIUM: 10, Severity.LOW: 1,
+    }
+    scored: list[tuple[CrewDefinition, int]] = []
+    for crew in crews:
+        score = 0
+        for f in findings:
+            if (crew.name in str(f.evidence)
+                    or crew.name in f.title
+                    or any(a in f.title for a in crew.agent_names)):
+                score += severity_scores.get(f.severity, 0)
+        if score > 0:
+            scored.append((crew, score))
+
+    scored.sort(key=lambda x: -x[1])
+    return [c for c, _ in scored]
