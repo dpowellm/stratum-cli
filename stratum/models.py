@@ -261,7 +261,7 @@ class TelemetryProfile:
     """
     scan_id: str = ""                                    # [scale]
     timestamp: str = ""                                  # [scale]
-    version: str = "0.1.0"                               # [scale]
+    version: str = "0.2.0"                               # [scale]
 
     # === Capability structure ===
     total_capabilities: int = 0                          # [scale]
@@ -350,3 +350,10 @@ class TelemetryProfile:
     edge_density: float = 0.0                                               # [structural]
     shared_tool_max_agents: int = 0                                         # [structural]
     external_sink_count: int = 0                                            # [scale]
+
+    # === v0.2 enrichment ===
+    findings_by_category: dict[str, int] = field(default_factory=dict)       # [scale]
+    blast_radius_distribution: list[int] = field(default_factory=list)       # [scale]
+    guardrail_linked_count: int = 0                                          # [scale]
+    regulatory_surface: list[str] = field(default_factory=list)              # [structural]
+    schema_version: str = "0.2"                                              # [structural]

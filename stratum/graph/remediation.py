@@ -14,11 +14,13 @@ def framework_remediation(
 
     Uses clean node labels (no brackets) and matches the detected framework.
     """
-    tool_names = [
-        graph.nodes[nid].label
-        for nid in path_nodes
-        if graph.nodes[nid].node_type == NodeType.CAPABILITY
-    ]
+    tool_names = []
+    if graph and path_nodes:
+        tool_names = [
+            graph.nodes[nid].label
+            for nid in path_nodes
+            if nid in graph.nodes and graph.nodes[nid].node_type == NodeType.CAPABILITY
+        ]
 
     # Pick the primary framework (first detected)
     framework = detected_frameworks[0] if detected_frameworks else "unknown"

@@ -115,7 +115,7 @@ def _render_header(result: ScanResult) -> None:
     """Render the header banner."""
     header = Text()
     header.append("  STRATUM ", style="bold white")
-    header.append("v0.1 -- AI Agent Security Audit", style="dim")
+    header.append("v0.2 -- AI Agent Security Audit", style="dim")
     console.print(Panel(header, style="bold blue"))
 
 
@@ -357,6 +357,14 @@ def _render_agent_profile(result: ScanResult, quick_wins: list[QuickWin]) -> Non
                 f"available -- fix critical issues first to lower score"
             )
 
+    # Per-crew risk scores
+    per_crew_scores = getattr(result, '_per_crew_scores', None)
+    if per_crew_scores and len(per_crew_scores) > 1:
+        sorted_crews = sorted(per_crew_scores.items(), key=lambda x: x[1], reverse=True)
+        top_crews = sorted_crews[:3]
+        crew_parts = [f"{name}: {s}" for name, s in top_crews]
+        console.print(f"                 [dim]Per crew: {' \u00b7 '.join(crew_parts)}[/dim]")
+
     console.print()
 
 
@@ -560,14 +568,14 @@ def _render_topology(result: ScanResult) -> None:
     from stratum.output.flow_map import render_flow_map
     blast_radii = getattr(result, 'blast_radii', [])
     control_bypasses = getattr(result, '_control_bypasses', [])
-    flow_sections = render_flow_map(graph, blast_radii, control_bypasses)
+    crews = getattr(result, 'crew_definitions', [])
+    flow_sections = render_flow_map(graph, blast_radii, control_bypasses, crews)
     if flow_sections:
         for section in flow_sections:
             console.print(section)
             console.print()
 
     # Show agent chains from crew definitions
-    crews = getattr(result, 'crew_definitions', [])
     if crews:
         console.print("  [bold]Agent chains:[/bold]")
         shown = 0
@@ -634,8 +642,9 @@ def _render_top_paths_security(result: ScanResult) -> None:
     console.rule("[bold]TOP RISK PATHS[/bold]", style="bold")
     console.print()
     graph = result.graph if hasattr(result, "graph") else None
+    incidents = getattr(result, 'incident_matches', None)
     for finding in result.top_paths:
-        _render_finding_compact(finding, graph)
+        _render_finding_compact(finding, graph, incidents)
         console.print()
 
 
@@ -658,6 +667,7 @@ def _render_top_paths_dev(result: ScanResult) -> None:
     )
 
     graph = result.graph if hasattr(result, "graph") else None
+    incidents = getattr(result, 'incident_matches', None)
     current_class = None
     for finding in sorted_findings:
         fc = finding.finding_class
@@ -667,7 +677,7 @@ def _render_top_paths_dev(result: ScanResult) -> None:
             console.print(f" [bold dim]{label}[/bold dim]")
             console.print()
 
-        _render_finding_compact(finding, graph)
+        _render_finding_compact(finding, graph, incidents)
         console.print()
 
 
@@ -679,22 +689,27 @@ def _render_learning_governance_sections(result: ScanResult) -> None:
     governance_findings = [f for f in all_findings if f.finding_class == "governance"]
 
     graph = result.graph if hasattr(result, "graph") else None
+    incidents = getattr(result, 'incident_matches', None)
     if learning_findings:
         console.rule("[bold]LEARNING & DRIFT RISK[/bold]", style="bold")
         console.print()
         for finding in learning_findings:
-            _render_finding_compact(finding, graph)
+            _render_finding_compact(finding, graph, incidents)
             console.print()
 
     if governance_findings:
         console.rule("[bold]GOVERNANCE ARCHITECTURE[/bold]", style="bold")
         console.print()
         for finding in governance_findings:
-            _render_finding_compact(finding, graph)
+            _render_finding_compact(finding, graph, incidents)
             console.print()
 
 
-def _render_finding_compact(finding: Finding, graph: RiskGraph | None = None) -> None:
+def _render_finding_compact(
+    finding: Finding,
+    graph: RiskGraph | None = None,
+    incident_matches: list | None = None,
+) -> None:
     """Render a finding in compact attack-scenario format with ASI ID and citation."""
     sev_label = {
         Severity.CRITICAL: "[bold red]CRITICAL[/bold red]",
@@ -732,6 +747,12 @@ def _render_finding_compact(finding: Finding, graph: RiskGraph | None = None) ->
         evidence_str = " \u00b7 ".join(finding.evidence)
         conf = finding.confidence.value.upper()
         console.print(f"  [dim]Evidence: {evidence_str}[/dim] [dim]\\[{conf}][/dim]")
+
+    # Inline incident match
+    matched = _find_inline_incident(finding, incident_matches)
+    if matched:
+        pct = int(matched.confidence * 100)
+        console.print(f"  [red]Matches: {matched.name} ({pct}%)[/red]")
 
 
 def _get_graph_annotation(finding: Finding, graph: RiskGraph | None) -> str:
@@ -789,6 +810,31 @@ def _get_regulatory_flags(finding: Finding, graph: RiskGraph | None) -> list[str
         if _path_matches_finding(path, finding, graph):
             return path.regulatory_flags
     return []
+
+
+def _find_inline_incident(finding: Finding, incident_matches: list | None):
+    """Find an incident match relevant to this finding by keyword overlap."""
+    if not incident_matches:
+        return None
+    # Build keyword set from finding evidence and title
+    finding_words: set[str] = set()
+    for ev in finding.evidence:
+        finding_words.update(ev.lower().split("/")[-1].replace(".py", "").split("_"))
+    finding_words.update(finding.title.lower().split())
+
+    for match in incident_matches:
+        if match.confidence < 0.5:
+            continue
+        # Check overlap between matching_capabilities and finding evidence/title
+        match_words: set[str] = set()
+        for cap in getattr(match, 'matching_capabilities', []):
+            if cap:
+                match_words.update(cap.lower().strip("[]").split("_"))
+        for mf in getattr(match, 'matching_files', []):
+            match_words.update(mf.lower().split("/")[-1].replace(".py", "").split("_"))
+        if finding_words & match_words:
+            return match
+    return None
 
 
 def _path_matches_finding(path, finding: Finding, graph: RiskGraph) -> bool:
@@ -1092,7 +1138,7 @@ def _render_footer(result: ScanResult) -> None:
     console.print()
     console.print(
         "[dim]                                     "
-        "stratum v0.1 \u00b7 github.com/stratum-systems/stratum-cli[/dim]"
+        "stratum v0.2 \u00b7 github.com/stratum-systems/stratum-cli[/dim]"
     )
 
 

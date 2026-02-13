@@ -296,11 +296,11 @@ def _deduplicate_paths(paths: list[RiskPath]) -> list[RiskPath]:
 # ---------------------------------------------------------------------------
 
 def find_blast_radii(graph: RiskGraph, crews: list) -> list[BlastRadius]:
-    """Find shared tools that fan out to multiple agents.
+    """Find shared tools that fan out to multiple agents, **per-crew**.
 
-    For each capability node connected to 2+ agent nodes via TOOL_OF,
-    compute how many agents share it and what external services are
-    reachable downstream from those agents.
+    For each (tool, crew) pair where 2+ agents in that crew share the tool,
+    compute the blast radius within that crew only.  No more cross-crew
+    inflation (e.g. "SerperDevTool → 9 agents" across 5 independent crews).
     """
     # Build tool -> agents map from TOOL_OF edges
     tool_agents: dict[str, list[str]] = {}
@@ -308,70 +308,71 @@ def find_blast_radii(graph: RiskGraph, crews: list) -> list[BlastRadius]:
         if edge.edge_type == EdgeType.TOOL_OF:
             tool_agents.setdefault(edge.source, []).append(edge.target)
 
+    # Build agent -> crew mapping
+    agent_to_crew: dict[str, str] = {}
+    for crew in crews:
+        for name in crew.agent_names:
+            aid = f"agent_{name.lower().replace(' ', '_')}"
+            agent_to_crew[aid] = crew.name
+
     # Build agent -> downstream externals map
     agent_externals: dict[str, set[str]] = {}
-    for agent_id in graph.nodes:
-        node = graph.nodes[agent_id]
+    for agent_id, node in graph.nodes.items():
         if node.node_type != NodeType.AGENT:
             continue
         externals: set[str] = set()
-        # Find tools this agent owns
         agent_tools = [
             e.source for e in graph.edges
             if e.edge_type == EdgeType.TOOL_OF and e.target == agent_id
         ]
-        # From each tool, find SENDS_TO edges to external services
-        for tool_id in agent_tools:
+        for tid in agent_tools:
             for e in graph.edges:
-                if e.source == tool_id and e.edge_type == EdgeType.SENDS_TO:
+                if e.source == tid and e.edge_type == EdgeType.SENDS_TO:
                     externals.add(e.target)
         agent_externals[agent_id] = externals
 
     results: list[BlastRadius] = []
     for tool_id, agent_ids in tool_agents.items():
-        if len(agent_ids) < 2:
-            continue
         tool_node = graph.nodes.get(tool_id)
         if not tool_node:
             continue
 
-        # Collect downstream externals from all affected agents
-        all_externals: set[str] = set()
-        agent_labels = []
+        # Partition agents by crew
+        crew_groups: dict[str, list[str]] = {}
         for aid in agent_ids:
-            anode = graph.nodes.get(aid)
-            if anode:
-                agent_labels.append(anode.label)
-            all_externals.update(agent_externals.get(aid, set()))
+            cname = agent_to_crew.get(aid, "(default)")
+            crew_groups.setdefault(cname, []).append(aid)
 
-        ext_labels = []
-        for eid in all_externals:
-            enode = graph.nodes.get(eid)
-            if enode:
-                ext_labels.append(enode.label)
+        for crew_name, crew_agent_ids in crew_groups.items():
+            if len(crew_agent_ids) < 2:
+                continue
 
-        # Find crew name
-        crew_name = ""
-        for crew in crews:
-            agent_name_set = {n.lower().replace(" ", "_") for n in crew.agent_names}
-            matched = sum(1 for aid in agent_ids if aid.replace("agent_", "") in agent_name_set)
-            if matched >= 2:
-                crew_name = crew.name
-                break
+            all_externals: set[str] = set()
+            agent_labels = []
+            for aid in crew_agent_ids:
+                anode = graph.nodes.get(aid)
+                if anode:
+                    agent_labels.append(anode.label)
+                all_externals.update(agent_externals.get(aid, set()))
 
-        results.append(BlastRadius(
-            source_node_id=tool_id,
-            source_label=tool_node.label,
-            affected_agent_ids=agent_ids,
-            affected_agent_labels=sorted(agent_labels),
-            downstream_external_ids=sorted(all_externals),
-            downstream_external_labels=sorted(ext_labels),
-            agent_count=len(agent_ids),
-            external_count=len(all_externals),
-            crew_name=crew_name,
-        ))
+            ext_labels = []
+            for eid in all_externals:
+                enode = graph.nodes.get(eid)
+                if enode:
+                    ext_labels.append(enode.label)
 
-    # Sort by agent count descending
+            results.append(BlastRadius(
+                source_node_id=tool_id,
+                source_label=tool_node.label,
+                affected_agent_ids=crew_agent_ids,
+                affected_agent_labels=sorted(agent_labels),
+                downstream_external_ids=sorted(all_externals),
+                downstream_external_labels=sorted(ext_labels),
+                agent_count=len(crew_agent_ids),
+                external_count=len(all_externals),
+                crew_name=crew_name if crew_name != "(default)" else "",
+            ))
+
     results.sort(key=lambda br: (br.agent_count, br.external_count), reverse=True)
     return results
 

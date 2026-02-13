@@ -122,6 +122,15 @@ def match_incidents(result) -> list[IncidentMatch]:
         if confidence < 0.5:
             continue
 
+        # Cap Slack AI confidence if no Slack data source (only Slack outbound)
+        if incident["id"] == "SLACK-AI-EXFIL-2024":
+            has_slack_source = any(
+                "slack" in (c.library or "").lower() and c.kind == "data_access"
+                for c in result.capabilities
+            )
+            if not has_slack_source:
+                confidence = min(confidence, 0.5)
+
         confidence = min(confidence, 1.0)
 
         match_reason = _generate_match_reason(incident, result, tool_matches)
@@ -152,22 +161,70 @@ def match_incidents(result) -> list[IncidentMatch]:
 def _generate_match_reason(
     incident: dict, result, tool_matches: list[str],
 ) -> str:
-    """Generate a human-readable explanation of WHY this incident pattern matched."""
+    """Generate a human-readable explanation of WHY this incident pattern matched.
+
+    For data_ingestion_to_outbound, finds the best-matching graph path whose
+    source/sink labels overlap with the incident's tool_signals — so EchoLeak
+    cites the Gmail path, not a generic FileReadTool → SerperDevTool pair.
+    """
     if incident["pattern"] == "data_ingestion_to_outbound":
+        # Try to find the best graph path that matches this incident's signals
+        graph = getattr(result, 'graph', None)
+        best_path = None
+        best_score = 0
+
+        if graph and hasattr(graph, 'uncontrolled_paths'):
+            for path in graph.uncontrolled_paths:
+                if not path.nodes:
+                    continue
+                src_node = graph.nodes.get(path.nodes[0])
+                sink_node = graph.nodes.get(path.nodes[-1])
+                if not src_node or not sink_node:
+                    continue
+                score = 0
+                src_lbl = src_node.label.lower()
+                sink_lbl = sink_node.label.lower()
+                for sig in incident["tool_signals"]:
+                    if sig in src_lbl:
+                        score += 2  # Source match is more important
+                    if sig in sink_lbl:
+                        score += 1
+                # Bonus for personal/financial data
+                if path.source_sensitivity in ("personal", "financial"):
+                    score += 1
+                if score > best_score:
+                    best_score = score
+                    best_path = path
+
+        if best_path and best_score > 0:
+            nodes = best_path.nodes
+            labels = [
+                graph.nodes[nid].label for nid in nodes if nid in graph.nodes
+            ]
+            source_label = labels[0] if labels else "data source"
+            sink_label = labels[-1] if labels else "external service"
+            path_str = " -> ".join(labels)
+            first_sentence = incident["attack_summary"].split(".")[0].lower()
+            return (
+                f"Your agent reads {source_label} and sends data to "
+                f"{sink_label} with no filter ({path_str}) -- the same "
+                f"data->external pattern that enabled {incident['name']}. "
+                f"In that incident, {first_sentence}."
+            )
+
+        # Fallback: use first data_access / outbound capability
         data_sources = [c for c in result.capabilities if c.kind == "data_access"]
         outbound_targets = [c for c in result.capabilities if c.kind == "outbound"]
-
         source_name = (
             data_sources[0].function_name.strip("[]") if data_sources else "data source"
         )
         target_name = (
             outbound_targets[0].function_name.strip("[]") if outbound_targets else "external service"
         )
-
         first_sentence = incident["attack_summary"].split(".")[0].lower()
         return (
             f"Your code reads data via {source_name} and sends it externally via "
-            f"{target_name} — the same data→external pattern that enabled "
+            f"{target_name} -- the same data->external pattern that enabled "
             f"{incident['name']}. In that incident, {first_sentence}."
         )
 
@@ -179,18 +236,40 @@ def _generate_match_reason(
         agent_name = agents_with_power[0].name if agents_with_power else "a high-privilege agent"
         return (
             f"Your agent architecture has cross-agent delegation where one agent can "
-            f"influence {agent_name}'s actions — similar to the {incident['name']} pattern "
+            f"influence {agent_name}'s actions -- similar to the {incident['name']} pattern "
             f"where a low-privilege agent tricked a high-privilege agent into exfiltrating data."
         )
 
     elif incident["pattern"] == "auto_tool_execution":
+        # Try graph paths for scrape/web patterns
+        graph = getattr(result, 'graph', None)
+        if graph and hasattr(graph, 'uncontrolled_paths'):
+            for path in graph.uncontrolled_paths:
+                if not path.nodes:
+                    continue
+                labels_lower = " ".join(
+                    graph.nodes[nid].label.lower()
+                    for nid in path.nodes if nid in graph.nodes
+                )
+                if any(sig in labels_lower for sig in incident["tool_signals"]):
+                    labels = [
+                        graph.nodes[nid].label
+                        for nid in path.nodes if nid in graph.nodes
+                    ]
+                    return (
+                        f"Your agent auto-executes {labels[0]} to fetch external content "
+                        f"({' -> '.join(labels)}) -- the same pattern as "
+                        f"{incident['name']}. In that incident, poisoned metadata "
+                        f"triggered tools to fetch attacker-controlled payloads."
+                    )
+
         http_tools = [
             c for c in result.capabilities
             if c.kind == "outbound" and c.library in ("requests", "httpx")
         ]
         tool_name = http_tools[0].function_name.strip("[]") if http_tools else "HTTP tools"
         return (
-            f"Your agent auto-executes {tool_name} to fetch external content — "
+            f"Your agent auto-executes {tool_name} to fetch external content -- "
             f"the same pattern as {incident['name']}. In that incident, "
             f"poisoned metadata triggered tools to fetch attacker-controlled payloads."
         )

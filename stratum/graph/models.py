@@ -108,6 +108,12 @@ class RiskSurface:
     outward_crossings: int = 0
     inward_crossings: int = 0
 
+    # Topology metrics (v0.2)
+    max_fan_out_per_crew: int = 0
+    max_chain_depth: int = 0
+    edge_density: float = 0.0
+    crew_count: int = 0
+
 
 @dataclass
 class RiskGraph:
@@ -152,5 +158,9 @@ class RiskGraph:
                 "regulatory_frameworks": self.risk_surface.regulatory_frameworks,
                 "trust_boundary_crossings": self.risk_surface.trust_boundary_crossings,
                 "downward_crossings": self.risk_surface.downward_crossings,
+                "max_fan_out_per_crew": self.risk_surface.max_fan_out_per_crew,
+                "max_chain_depth": self.risk_surface.max_chain_depth,
+                "edge_density": self.risk_surface.edge_density,
+                "crew_count": self.risk_surface.crew_count,
             },
         }

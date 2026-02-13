@@ -1,6 +1,6 @@
 {
-  "scan_id": "3865f6eb",
-  "timestamp": "2026-02-12T23:46:40.738837+00:00",
+  "scan_id": "7741aaf8",
+  "timestamp": "2026-02-13T00:41:41.456502+00:00",
   "directory": "C:\\stratum-cli\\crewAI-examples",
   "capabilities": [
     {
@@ -766,21 +766,42 @@
       "severity": "CRITICAL",
       "confidence": "confirmed",
       "category": "compounding",
-      "title": "Shared tool blast radius: SerperDevTool -> 9 agents",
-      "path": "SerperDevTool (shared tool)\n  |--> Activity Planner\n  |--> Candidate Outreach Strategist\n  |--> Chief Marketing Strategist\n  |--> Email Filter Agent\n  |--> Itinerary Compiler\n  |--> Job Candidate Researcher\n  |--> Lead Market Analyst\n  |--> Matcher\n  L--> Restaurant Scout",
-      "description": "SerperDevTool feeds 9 agents in crew 'MarketingPostsCrew' -- blast radius: 1 external services. If SerperDevTool returns poisoned data (prompt injection in scraped content), 9 agents are compromised simultaneously. Each has independent downstream actions, so a single point of compromise fans out to 1 external services.",
+      "title": "Shared tool blast radius: SerperDevTool -> 3 agents in crew 'SurpriseTravelCrew'",
+      "path": "SerperDevTool (shared tool in crew 'SurpriseTravelCrew')\n  |--> Activity Planner\n  |--> Itinerary Compiler\n  L--> Restaurant Scout",
+      "description": "SerperDevTool feeds 3 agents in crew 'SurpriseTravelCrew' -- blast radius: 1 external services. If SerperDevTool returns poisoned data (prompt injection in scraped content), 3 agents are compromised simultaneously within the same execution context. Each has independent downstream actions, so a single point of compromise fans out to 1 external services.",
       "evidence": [
-        "Shared by: Activity Planner, Candidate Outreach Strategist, Chief Marketing Strategist, Email Filter Agent, Itinerary Compiler, Job Candidate Researcher",
-        "Downstream: Serper API",
-        "Shared by: Email Action Agent, Email Response Writer, Lead Market Analyst",
-        "Downstream: Gmail outbound, Tavily API",
-        "Shared by: Financial Agent, Financial Analyst Agent, Investment Advisor Agent",
-        "Downstream: Crewai Tools",
-        "Shared by: CV Reader, Matcher"
+        "Crew: SurpriseTravelCrew",
+        "Shared by: Activity Planner, Itinerary Compiler, Restaurant Scout",
+        "Downstream: Serper API"
       ],
-      "scenario": "A single poisoned input to SerperDevTool would compromise your entire analysis pipeline: Activity Planner, Candidate Outreach Strategist, Chief Marketing Strategist, Email Filter Agent, Itinerary Compiler, Job Candidate Researcher.",
-      "business_context": "This finding can only exist because the graph traced the fan-out from one shared tool. No checklist produces it -- this is emergent risk from the agent architecture.",
+      "scenario": "A single poisoned input to SerperDevTool would compromise your SurpriseTravelCrew pipeline: Activity Planner, Itinerary Compiler, Restaurant Scout.",
+      "business_context": "This finding exists because the graph traced fan-out from one shared tool within a single execution context. No checklist produces it.",
       "remediation": "Option 1 -- Add input validation on the shared tool:\n  class ValidatedSerperDevTool(BaseTool):\n      def _run(self, input: str) -> str:\n          raw = SerperDevTool()._run(input)\n          if contains_injection_patterns(raw):\n              raise ValueError('Suspicious content detected')\n          return raw\n\nOption 2 -- Give each agent its own tool instance",
+      "effort": "med",
+      "references": [],
+      "owasp_id": "ASI01",
+      "owasp_name": "Agent Goal Hijacking",
+      "finding_class": "compounding",
+      "citation": null,
+      "quick_fix_type": "",
+      "graph_paths": []
+    },
+    {
+      "id": "STRATUM-CR05.1",
+      "severity": "CRITICAL",
+      "confidence": "confirmed",
+      "category": "compounding",
+      "title": "Shared tool blast radius: WebsiteSearchTool -> 3 agents in crew 'StockAnalysisCrew'",
+      "path": "WebsiteSearchTool (shared tool in crew 'StockAnalysisCrew')\n  |--> Financial Agent\n  |--> Financial Analyst Agent\n  L--> Investment Advisor Agent",
+      "description": "WebsiteSearchTool feeds 3 agents in crew 'StockAnalysisCrew' -- blast radius: 1 external services. If WebsiteSearchTool returns poisoned data (prompt injection in scraped content), 3 agents are compromised simultaneously within the same execution context. Each has independent downstream actions, so a single point of compromise fans out to 1 external services.",
+      "evidence": [
+        "Crew: StockAnalysisCrew",
+        "Shared by: Financial Agent, Financial Analyst Agent, Investment Advisor Agent",
+        "Downstream: Crewai Tools"
+      ],
+      "scenario": "A single poisoned input to WebsiteSearchTool would compromise your StockAnalysisCrew pipeline: Financial Agent, Financial Analyst Agent, Investment Advisor Agent.",
+      "business_context": "This finding exists because the graph traced fan-out from one shared tool within a single execution context. No checklist produces it.",
+      "remediation": "Option 1 -- Add input validation on the shared tool:\n  class ValidatedWebsiteSearchTool(BaseTool):\n      def _run(self, input: str) -> str:\n          raw = WebsiteSearchTool()._run(input)\n          if contains_injection_patterns(raw):\n              raise ValueError('Suspicious content detected')\n          return raw\n\nOption 2 -- Give each agent its own tool instance",
       "effort": "med",
       "references": [],
       "owasp_id": "ASI01",
@@ -803,7 +824,7 @@
       ],
       "scenario": "The agent interprets 'clean up old records' as a reason to call [FileManagementToolkit], deleting production data with no confirmation step.",
       "business_context": "",
-      "remediation": "graph.compile(interrupt_before=[\"[FileManagementToolkit]\"])",
+      "remediation": "Fix (CrewAI):\n  task = Task(\n      description=\"...\",\n+     human_input=True   # review before external calls\n  )",
       "effort": "low",
       "references": [],
       "owasp_id": "ASI09",
@@ -851,24 +872,46 @@
       "confidence": "confirmed",
       "category": "compounding",
       "title": "Shared tool 'SerperDevTool' bridges untrusted input to external action",
-      "path": "untrusted input \u2192 Matcher \u2192 [SerperDevTool] \u2192 Lead Market Analyst \u2192 external action",
-      "description": "Agent 'Matcher' processes external/untrusted input and shares 'SerperDevTool' with agent 'Lead Market Analyst', which performs external actions. A prompt injection in the input can propagate through the shared tool context to trigger unauthorized actions.",
+      "path": "untrusted input \u2192 Matcher \u2192 [SerperDevTool] \u2192 Job Candidate Researcher \u2192 external action",
+      "description": "Agent 'Matcher' processes external/untrusted input and shares 'SerperDevTool' with agent 'Job Candidate Researcher', which performs external actions. A prompt injection in the input can propagate through the shared tool context to trigger unauthorized actions.",
       "evidence": [
         "crews\\match_profile_to_positions\\src\\match_to_proposal\\config\\agents.yaml",
-        "crews\\marketing_strategy\\src\\marketing_posts\\config\\agents.yaml",
         "crews\\recruitment\\src\\recruitment\\config\\agents.yaml",
-        "crews\\surprise_trip\\src\\surprise_travel\\config\\agents.yaml",
-        "flows\\email_auto_responder_flow\\src\\email_auto_responder_flow\\crews\\email_filter_crew\\email_filter_crew.py",
-        "crews\\stock_analysis\\src\\stock_analysis\\crew.py",
-        "crews\\instagram_post\\agents.py"
+        "crews\\instagram_post\\agents.py",
+        "flows\\email_auto_responder_flow\\src\\email_auto_responder_flow\\crews\\email_filter_crew\\email_filter_crew.py"
       ],
-      "scenario": "A crafted email arrives. 'matcher' processes it and its context is now influenced by the injected instructions. 'lead_market_analyst' shares the same tool (SerperDevTool) and acts on the contaminated context \u2014 sending a response the attacker designed.",
+      "scenario": "A crafted email arrives. 'matcher' processes it and its context is now influenced by the injected instructions. 'researcher' shares the same tool (SerperDevTool) and acts on the contaminated context \u2014 sending a response the attacker designed.",
       "business_context": "This is the architectural pattern behind real-world AI exfiltration incidents. No individual agent is misconfigured \u2014 the risk emerges from the interaction.",
-      "remediation": "Isolate trust contexts between agents:\n  1. Use separate tool instances for matcher and lead_market_analyst\n  2. Add an output filter on matcher before passing to lead_market_analyst\n  3. Add human_input=True on lead_market_analyst's outbound tasks",
+      "remediation": "Isolate trust contexts between agents:\n  1. Use separate tool instances for matcher and researcher\n  2. Add an output filter on matcher before passing to researcher\n  3. Add human_input=True on researcher's outbound tasks",
       "effort": "med",
       "references": [
         "https://embracethered.com/blog/posts/2024/m365-copilot-echo-leak/"
       ],
+      "owasp_id": "ASI01",
+      "owasp_name": "Agent Goal Hijacking",
+      "finding_class": "compounding",
+      "citation": null,
+      "quick_fix_type": "",
+      "graph_paths": []
+    },
+    {
+      "id": "STRATUM-CR05.2",
+      "severity": "HIGH",
+      "confidence": "confirmed",
+      "category": "compounding",
+      "title": "Shared tool blast radius: GmailGetThread -> 2 agents in crew 'EmailFilterCrew'",
+      "path": "GmailGetThread (shared tool in crew 'EmailFilterCrew')\n  |--> Email Action Agent\n  L--> Email Response Writer",
+      "description": "GmailGetThread feeds 2 agents in crew 'EmailFilterCrew' -- blast radius: 2 external services. If GmailGetThread returns poisoned data (prompt injection in scraped content), 2 agents are compromised simultaneously within the same execution context. Each has independent downstream actions, so a single point of compromise fans out to 2 external services.",
+      "evidence": [
+        "Crew: EmailFilterCrew",
+        "Shared by: Email Action Agent, Email Response Writer",
+        "Downstream: Gmail outbound, Tavily API"
+      ],
+      "scenario": "A single poisoned input to GmailGetThread would compromise your EmailFilterCrew pipeline: Email Action Agent, Email Response Writer.",
+      "business_context": "This finding exists because the graph traced fan-out from one shared tool within a single execution context. No checklist produces it.",
+      "remediation": "Option 1 -- Add input validation on the shared tool:\n  class ValidatedGmailGetThread(BaseTool):\n      def _run(self, input: str) -> str:\n          raw = GmailGetThread()._run(input)\n          if contains_injection_patterns(raw):\n              raise ValueError('Suspicious content detected')\n          return raw\n\nOption 2 -- Give each agent its own tool instance",
+      "effort": "med",
+      "references": [],
       "owasp_id": "ASI01",
       "owasp_name": "Agent Goal Hijacking",
       "finding_class": "compounding",
@@ -886,13 +929,35 @@
       "description": "CV Reader is supposed to filter input from Crewai Tools, but Matcher reads Crewai Tools directly via the same tool. The filter agent doesn't sit on the data path -- it runs in parallel, not as a gate.",
       "evidence": [
         "Crew: MatchToProposalCrew",
-        "Shared source: Crewai Tools",
-        "Crew: EmailFilterCrew",
-        "Shared source: Gmail inbox"
+        "Shared source: Crewai Tools"
       ],
       "scenario": "Malicious content in Crewai Tools reaches Matcher unfiltered regardless of what CV Reader does. The filter is architecturally irrelevant.",
       "business_context": "The control exists but data flows around it. This is worse than no control -- it creates a false sense of security.",
       "remediation": "Route all Crewai Tools access through CV Reader:\n  1. Remove direct Crewai Tools access from Matcher\n  2. Pass filtered output from CV Reader to Matcher\n  3. Or add output_filter on Matcher's direct read",
+      "effort": "med",
+      "references": [],
+      "owasp_id": "ASI05",
+      "owasp_name": "Insufficient Sandboxing",
+      "finding_class": "compounding",
+      "citation": null,
+      "quick_fix_type": "",
+      "graph_paths": []
+    },
+    {
+      "id": "STRATUM-CR06.1",
+      "severity": "HIGH",
+      "confidence": "probable",
+      "category": "compounding",
+      "title": "'Email Response Writer' bypasses 'Email Action Agent' -- reads Gmail inbox directly",
+      "path": "Gmail inbox --> Email Action Agent (intended filter)\nGmail inbox --> Email Response Writer (direct access, bypassing filter)",
+      "description": "Email Action Agent is supposed to filter input from Gmail inbox, but Email Response Writer reads Gmail inbox directly via the same tool. The filter agent doesn't sit on the data path -- it runs in parallel, not as a gate.",
+      "evidence": [
+        "Crew: EmailFilterCrew",
+        "Shared source: Gmail inbox"
+      ],
+      "scenario": "Malicious content in Gmail inbox reaches Email Response Writer unfiltered regardless of what Email Action Agent does. The filter is architecturally irrelevant.",
+      "business_context": "The control exists but data flows around it. This is worse than no control -- it creates a false sense of security.",
+      "remediation": "Route all Gmail inbox access through Email Action Agent:\n  1. Remove direct Gmail inbox access from Email Response Writer\n  2. Pass filtered output from Email Action Agent to Email Response Writer\n  3. Or add output_filter on Email Response Writer's direct read",
       "effort": "med",
       "references": [],
       "owasp_id": "ASI05",
@@ -1139,7 +1204,7 @@
       "graph_paths": []
     }
   ],
-  "risk_score": 98,
+  "risk_score": 69,
   "total_capabilities": 30,
   "outbound_count": 18,
   "data_access_count": 11,
@@ -1909,6 +1974,33 @@
       },
       {
         "source": "cap_SerperDevTool_outbound",
+        "target": "guard_validation_108",
+        "type": "filtered_by",
+        "has_control": true,
+        "data_sensitivity": "unknown",
+        "trust_crossing": true,
+        "crossing_direction": "inward"
+      },
+      {
+        "source": "cap_SerperDevTool_outbound",
+        "target": "guard_validation_116",
+        "type": "filtered_by",
+        "has_control": true,
+        "data_sensitivity": "unknown",
+        "trust_crossing": true,
+        "crossing_direction": "inward"
+      },
+      {
+        "source": "cap_SerperDevTool_outbound",
+        "target": "guard_validation_124",
+        "type": "filtered_by",
+        "has_control": true,
+        "data_sensitivity": "unknown",
+        "trust_crossing": true,
+        "crossing_direction": "inward"
+      },
+      {
+        "source": "cap_SerperDevTool_outbound",
         "target": "agent_lead_market_analyst",
         "type": "tool_of",
         "has_control": false,
@@ -2232,24 +2324,6 @@
         "crossing_direction": ""
       },
       {
-        "source": "agent_researcher",
-        "target": "agent_matcher",
-        "type": "feeds_into",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_matcher",
-        "target": "agent_communicator",
-        "type": "feeds_into",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
         "source": "agent_communicator",
         "target": "agent_reporter",
         "type": "feeds_into",
@@ -2340,24 +2414,6 @@
         "crossing_direction": ""
       },
       {
-        "source": "agent_researcher",
-        "target": "agent_outliner",
-        "type": "feeds_into",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_researcher",
-        "target": "agent_writer",
-        "type": "feeds_into",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
         "source": "agent_research_agent",
         "target": "agent_writer_agent",
         "type": "shares_tool",
@@ -2394,132 +2450,6 @@
         "crossing_direction": ""
       },
       {
-        "source": "agent_lead_market_analyst",
-        "target": "agent_matcher",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_lead_market_analyst",
-        "target": "agent_researcher",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_lead_market_analyst",
-        "target": "agent_communicator",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_lead_market_analyst",
-        "target": "agent_personalized_activity_planner",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_lead_market_analyst",
-        "target": "agent_restaurant_scout",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_lead_market_analyst",
-        "target": "agent_itinerary_compiler",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_lead_market_analyst",
-        "target": "agent_email_filter_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_chief_marketing_strategist",
-        "target": "agent_matcher",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_chief_marketing_strategist",
-        "target": "agent_researcher",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_chief_marketing_strategist",
-        "target": "agent_communicator",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_chief_marketing_strategist",
-        "target": "agent_personalized_activity_planner",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_chief_marketing_strategist",
-        "target": "agent_restaurant_scout",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_chief_marketing_strategist",
-        "target": "agent_itinerary_compiler",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_chief_marketing_strategist",
-        "target": "agent_email_filter_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
         "source": "agent_matcher",
         "target": "agent_researcher",
         "type": "shares_tool",
@@ -2538,42 +2468,6 @@
         "crossing_direction": ""
       },
       {
-        "source": "agent_matcher",
-        "target": "agent_personalized_activity_planner",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_matcher",
-        "target": "agent_restaurant_scout",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_matcher",
-        "target": "agent_itinerary_compiler",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_matcher",
-        "target": "agent_email_filter_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
         "source": "agent_researcher",
         "target": "agent_communicator",
         "type": "shares_tool",
@@ -2583,78 +2477,6 @@
         "crossing_direction": ""
       },
       {
-        "source": "agent_researcher",
-        "target": "agent_personalized_activity_planner",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_researcher",
-        "target": "agent_restaurant_scout",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_researcher",
-        "target": "agent_itinerary_compiler",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_researcher",
-        "target": "agent_email_filter_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_communicator",
-        "target": "agent_personalized_activity_planner",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_communicator",
-        "target": "agent_restaurant_scout",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_communicator",
-        "target": "agent_itinerary_compiler",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_communicator",
-        "target": "agent_email_filter_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
         "source": "agent_personalized_activity_planner",
         "target": "agent_restaurant_scout",
         "type": "shares_tool",
@@ -2673,287 +2495,8 @@
         "crossing_direction": ""
       },
       {
-        "source": "agent_personalized_activity_planner",
-        "target": "agent_email_filter_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
         "source": "agent_restaurant_scout",
         "target": "agent_itinerary_compiler",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_restaurant_scout",
-        "target": "agent_email_filter_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_itinerary_compiler",
-        "target": "agent_email_filter_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_lead_market_analyst",
-        "target": "agent_financial_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_lead_market_analyst",
-        "target": "agent_research_analyst_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_lead_market_analyst",
-        "target": "agent_financial_analyst_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_lead_market_analyst",
-        "target": "agent_investment_advisor_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_chief_marketing_strategist",
-        "target": "agent_financial_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_chief_marketing_strategist",
-        "target": "agent_research_analyst_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_chief_marketing_strategist",
-        "target": "agent_financial_analyst_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_chief_marketing_strategist",
-        "target": "agent_investment_advisor_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_matcher",
-        "target": "agent_financial_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_matcher",
-        "target": "agent_research_analyst_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_matcher",
-        "target": "agent_financial_analyst_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_matcher",
-        "target": "agent_investment_advisor_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_researcher",
-        "target": "agent_financial_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_researcher",
-        "target": "agent_research_analyst_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_researcher",
-        "target": "agent_financial_analyst_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_researcher",
-        "target": "agent_investment_advisor_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_communicator",
-        "target": "agent_financial_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_communicator",
-        "target": "agent_research_analyst_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_communicator",
-        "target": "agent_financial_analyst_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_communicator",
-        "target": "agent_investment_advisor_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_personalized_activity_planner",
-        "target": "agent_financial_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_personalized_activity_planner",
-        "target": "agent_research_analyst_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_personalized_activity_planner",
-        "target": "agent_financial_analyst_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_personalized_activity_planner",
-        "target": "agent_investment_advisor_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_restaurant_scout",
-        "target": "agent_financial_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_restaurant_scout",
-        "target": "agent_research_analyst_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_restaurant_scout",
-        "target": "agent_financial_analyst_agent",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_restaurant_scout",
-        "target": "agent_investment_advisor_agent",
         "type": "shares_tool",
         "has_control": false,
         "data_sensitivity": "unknown",
@@ -3017,15 +2560,6 @@
       {
         "source": "agent_cv_reader",
         "target": "agent_matcher",
-        "type": "shares_tool",
-        "has_control": false,
-        "data_sensitivity": "unknown",
-        "trust_crossing": false,
-        "crossing_direction": ""
-      },
-      {
-        "source": "agent_shakespearean_bard",
-        "target": "agent_x_post_verifier",
         "type": "shares_tool",
         "has_control": false,
         "data_sensitivity": "unknown",
@@ -3116,7 +2650,7 @@
     ],
     "risk_surface": {
       "total_nodes": 89,
-      "total_edges": 148,
+      "total_edges": 89,
       "uncontrolled_path_count": 2,
       "max_path_hops": 3,
       "sensitive_data_types": [
@@ -3130,12 +2664,16 @@
         "GDPR Art. 35",
         "NIST AI RMF MAP 1.5"
       ],
-      "trust_boundary_crossings": 31,
-      "downward_crossings": 8
+      "trust_boundary_crossings": 34,
+      "downward_crossings": 8,
+      "max_fan_out_per_crew": 3,
+      "max_chain_depth": 4,
+      "edge_density": 0.0114,
+      "crew_count": 29
     }
   },
   "diff": {
-    "previous_risk_score": 98,
+    "previous_risk_score": 69,
     "risk_score_delta": 0,
     "new_finding_ids": [],
     "resolved_finding_ids": []
@@ -3556,104 +3094,6 @@
       "source_file": ""
     },
     {
-      "source_agent": "lead_market_analyst",
-      "target_agent": "matcher",
-      "relationship_type": "shares_tool",
-      "shared_resource": "SerperDevTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "lead_market_analyst",
-      "target_agent": "researcher",
-      "relationship_type": "shares_tool",
-      "shared_resource": "SerperDevTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "lead_market_analyst",
-      "target_agent": "communicator",
-      "relationship_type": "shares_tool",
-      "shared_resource": "SerperDevTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "lead_market_analyst",
-      "target_agent": "personalized_activity_planner",
-      "relationship_type": "shares_tool",
-      "shared_resource": "SerperDevTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "lead_market_analyst",
-      "target_agent": "restaurant_scout",
-      "relationship_type": "shares_tool",
-      "shared_resource": "SerperDevTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "lead_market_analyst",
-      "target_agent": "itinerary_compiler",
-      "relationship_type": "shares_tool",
-      "shared_resource": "SerperDevTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "lead_market_analyst",
-      "target_agent": "email_filter_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "SerperDevTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "chief_marketing_strategist",
-      "target_agent": "matcher",
-      "relationship_type": "shares_tool",
-      "shared_resource": "SerperDevTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "chief_marketing_strategist",
-      "target_agent": "researcher",
-      "relationship_type": "shares_tool",
-      "shared_resource": "SerperDevTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "chief_marketing_strategist",
-      "target_agent": "communicator",
-      "relationship_type": "shares_tool",
-      "shared_resource": "SerperDevTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "chief_marketing_strategist",
-      "target_agent": "personalized_activity_planner",
-      "relationship_type": "shares_tool",
-      "shared_resource": "SerperDevTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "chief_marketing_strategist",
-      "target_agent": "restaurant_scout",
-      "relationship_type": "shares_tool",
-      "shared_resource": "SerperDevTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "chief_marketing_strategist",
-      "target_agent": "itinerary_compiler",
-      "relationship_type": "shares_tool",
-      "shared_resource": "SerperDevTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "chief_marketing_strategist",
-      "target_agent": "email_filter_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "SerperDevTool",
-      "source_file": ""
-    },
-    {
       "source_agent": "matcher",
       "target_agent": "researcher",
       "relationship_type": "shares_tool",
@@ -3668,34 +3108,6 @@
       "source_file": ""
     },
     {
-      "source_agent": "matcher",
-      "target_agent": "personalized_activity_planner",
-      "relationship_type": "shares_tool",
-      "shared_resource": "SerperDevTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "matcher",
-      "target_agent": "restaurant_scout",
-      "relationship_type": "shares_tool",
-      "shared_resource": "SerperDevTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "matcher",
-      "target_agent": "itinerary_compiler",
-      "relationship_type": "shares_tool",
-      "shared_resource": "SerperDevTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "matcher",
-      "target_agent": "email_filter_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "SerperDevTool",
-      "source_file": ""
-    },
-    {
       "source_agent": "researcher",
       "target_agent": "communicator",
       "relationship_type": "shares_tool",
@@ -3703,62 +3115,6 @@
       "source_file": ""
     },
     {
-      "source_agent": "researcher",
-      "target_agent": "personalized_activity_planner",
-      "relationship_type": "shares_tool",
-      "shared_resource": "SerperDevTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "researcher",
-      "target_agent": "restaurant_scout",
-      "relationship_type": "shares_tool",
-      "shared_resource": "SerperDevTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "researcher",
-      "target_agent": "itinerary_compiler",
-      "relationship_type": "shares_tool",
-      "shared_resource": "SerperDevTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "researcher",
-      "target_agent": "email_filter_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "SerperDevTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "communicator",
-      "target_agent": "personalized_activity_planner",
-      "relationship_type": "shares_tool",
-      "shared_resource": "SerperDevTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "communicator",
-      "target_agent": "restaurant_scout",
-      "relationship_type": "shares_tool",
-      "shared_resource": "SerperDevTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "communicator",
-      "target_agent": "itinerary_compiler",
-      "relationship_type": "shares_tool",
-      "shared_resource": "SerperDevTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "communicator",
-      "target_agent": "email_filter_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "SerperDevTool",
-      "source_file": ""
-    },
-    {
       "source_agent": "personalized_activity_planner",
       "target_agent": "restaurant_scout",
       "relationship_type": "shares_tool",
@@ -3768,13 +3124,6 @@
     {
       "source_agent": "personalized_activity_planner",
       "target_agent": "itinerary_compiler",
-      "relationship_type": "shares_tool",
-      "shared_resource": "SerperDevTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "personalized_activity_planner",
-      "target_agent": "email_filter_agent",
       "relationship_type": "shares_tool",
       "shared_resource": "SerperDevTool",
       "source_file": ""
@@ -3782,20 +3131,6 @@
     {
       "source_agent": "restaurant_scout",
       "target_agent": "itinerary_compiler",
-      "relationship_type": "shares_tool",
-      "shared_resource": "SerperDevTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "restaurant_scout",
-      "target_agent": "email_filter_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "SerperDevTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "itinerary_compiler",
-      "target_agent": "email_filter_agent",
       "relationship_type": "shares_tool",
       "shared_resource": "SerperDevTool",
       "source_file": ""
@@ -3808,132 +3143,6 @@
       "source_file": ""
     },
     {
-      "source_agent": "lead_market_analyst",
-      "target_agent": "matcher",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "lead_market_analyst",
-      "target_agent": "researcher",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "lead_market_analyst",
-      "target_agent": "communicator",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "lead_market_analyst",
-      "target_agent": "personalized_activity_planner",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "lead_market_analyst",
-      "target_agent": "restaurant_scout",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "lead_market_analyst",
-      "target_agent": "financial_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "lead_market_analyst",
-      "target_agent": "research_analyst_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "lead_market_analyst",
-      "target_agent": "financial_analyst_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "lead_market_analyst",
-      "target_agent": "investment_advisor_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "chief_marketing_strategist",
-      "target_agent": "matcher",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "chief_marketing_strategist",
-      "target_agent": "researcher",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "chief_marketing_strategist",
-      "target_agent": "communicator",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "chief_marketing_strategist",
-      "target_agent": "personalized_activity_planner",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "chief_marketing_strategist",
-      "target_agent": "restaurant_scout",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "chief_marketing_strategist",
-      "target_agent": "financial_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "chief_marketing_strategist",
-      "target_agent": "research_analyst_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "chief_marketing_strategist",
-      "target_agent": "financial_analyst_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "chief_marketing_strategist",
-      "target_agent": "investment_advisor_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
       "source_agent": "matcher",
       "target_agent": "researcher",
       "relationship_type": "shares_tool",
@@ -3948,48 +3157,6 @@
       "source_file": ""
     },
     {
-      "source_agent": "matcher",
-      "target_agent": "personalized_activity_planner",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "matcher",
-      "target_agent": "restaurant_scout",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "matcher",
-      "target_agent": "financial_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "matcher",
-      "target_agent": "research_analyst_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "matcher",
-      "target_agent": "financial_analyst_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "matcher",
-      "target_agent": "investment_advisor_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
       "source_agent": "researcher",
       "target_agent": "communicator",
       "relationship_type": "shares_tool",
@@ -3997,148 +3164,8 @@
       "source_file": ""
     },
     {
-      "source_agent": "researcher",
-      "target_agent": "personalized_activity_planner",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "researcher",
-      "target_agent": "restaurant_scout",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "researcher",
-      "target_agent": "financial_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "researcher",
-      "target_agent": "research_analyst_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "researcher",
-      "target_agent": "financial_analyst_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "researcher",
-      "target_agent": "investment_advisor_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "communicator",
-      "target_agent": "personalized_activity_planner",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "communicator",
-      "target_agent": "restaurant_scout",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "communicator",
-      "target_agent": "financial_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "communicator",
-      "target_agent": "research_analyst_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "communicator",
-      "target_agent": "financial_analyst_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "communicator",
-      "target_agent": "investment_advisor_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
       "source_agent": "personalized_activity_planner",
       "target_agent": "restaurant_scout",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "personalized_activity_planner",
-      "target_agent": "financial_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "personalized_activity_planner",
-      "target_agent": "research_analyst_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "personalized_activity_planner",
-      "target_agent": "financial_analyst_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "personalized_activity_planner",
-      "target_agent": "investment_advisor_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "restaurant_scout",
-      "target_agent": "financial_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "restaurant_scout",
-      "target_agent": "research_analyst_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "restaurant_scout",
-      "target_agent": "financial_analyst_agent",
-      "relationship_type": "shares_tool",
-      "shared_resource": "ScrapeWebsiteTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "restaurant_scout",
-      "target_agent": "investment_advisor_agent",
       "relationship_type": "shares_tool",
       "shared_resource": "ScrapeWebsiteTool",
       "source_file": ""
@@ -4190,13 +3217,6 @@
       "target_agent": "matcher",
       "relationship_type": "shares_tool",
       "shared_resource": "FileReadTool",
-      "source_file": ""
-    },
-    {
-      "source_agent": "shakespearean_bard",
-      "target_agent": "x_post_verifier",
-      "relationship_type": "shares_tool",
-      "shared_resource": "CharacterCounterTool",
       "source_file": ""
     },
     {
@@ -4331,25 +3351,13 @@
       "source_node_id": "cap_SerperDevTool_outbound",
       "source_label": "SerperDevTool",
       "affected_agent_ids": [
-        "agent_lead_market_analyst",
-        "agent_chief_marketing_strategist",
-        "agent_matcher",
-        "agent_researcher",
-        "agent_communicator",
         "agent_personalized_activity_planner",
         "agent_restaurant_scout",
-        "agent_itinerary_compiler",
-        "agent_email_filter_agent"
+        "agent_itinerary_compiler"
       ],
       "affected_agent_labels": [
         "Activity Planner",
-        "Candidate Outreach Strategist",
-        "Chief Marketing Strategist",
-        "Email Filter Agent",
         "Itinerary Compiler",
-        "Job Candidate Researcher",
-        "Lead Market Analyst",
-        "Matcher",
         "Restaurant Scout"
       ],
       "downstream_external_ids": [
@@ -4358,109 +3366,9 @@
       "downstream_external_labels": [
         "Serper API"
       ],
-      "agent_count": 9,
+      "agent_count": 3,
       "external_count": 1,
-      "crew_name": "MarketingPostsCrew"
-    },
-    {
-      "source_node_id": "cap_GmailGetThread_data_access",
-      "source_label": "GmailGetThread",
-      "affected_agent_ids": [
-        "agent_agent",
-        "agent_email_action_agent",
-        "agent_email_response_writer"
-      ],
-      "affected_agent_labels": [
-        "Email Action Agent",
-        "Email Response Writer",
-        "Lead Market Analyst"
-      ],
-      "downstream_external_ids": [
-        "ext_gmail_outbound",
-        "ext_tavily_api"
-      ],
-      "downstream_external_labels": [
-        "Gmail outbound",
-        "Tavily API"
-      ],
-      "agent_count": 3,
-      "external_count": 2,
-      "crew_name": "EmailFilterCrew"
-    },
-    {
-      "source_node_id": "cap_TavilySearchResults_outbound",
-      "source_label": "TavilySearchResults",
-      "affected_agent_ids": [
-        "agent_agent",
-        "agent_email_action_agent",
-        "agent_email_response_writer"
-      ],
-      "affected_agent_labels": [
-        "Email Action Agent",
-        "Email Response Writer",
-        "Lead Market Analyst"
-      ],
-      "downstream_external_ids": [
-        "ext_gmail_outbound",
-        "ext_tavily_api"
-      ],
-      "downstream_external_labels": [
-        "Gmail outbound",
-        "Tavily API"
-      ],
-      "agent_count": 3,
-      "external_count": 2,
-      "crew_name": "EmailFilterCrew"
-    },
-    {
-      "source_node_id": "cap_GmailToolkit_data_access",
-      "source_label": "GmailToolkit",
-      "affected_agent_ids": [
-        "agent_agent",
-        "agent_email_action_agent",
-        "agent_email_response_writer"
-      ],
-      "affected_agent_labels": [
-        "Email Action Agent",
-        "Email Response Writer",
-        "Lead Market Analyst"
-      ],
-      "downstream_external_ids": [
-        "ext_gmail_outbound",
-        "ext_tavily_api"
-      ],
-      "downstream_external_labels": [
-        "Gmail outbound",
-        "Tavily API"
-      ],
-      "agent_count": 3,
-      "external_count": 2,
-      "crew_name": "EmailFilterCrew"
-    },
-    {
-      "source_node_id": "cap_GmailToolkit_outbound",
-      "source_label": "GmailToolkit",
-      "affected_agent_ids": [
-        "agent_agent",
-        "agent_email_action_agent",
-        "agent_email_response_writer"
-      ],
-      "affected_agent_labels": [
-        "Email Action Agent",
-        "Email Response Writer",
-        "Lead Market Analyst"
-      ],
-      "downstream_external_ids": [
-        "ext_gmail_outbound",
-        "ext_tavily_api"
-      ],
-      "downstream_external_labels": [
-        "Gmail outbound",
-        "Tavily API"
-      ],
-      "agent_count": 3,
-      "external_count": 2,
-      "crew_name": "EmailFilterCrew"
+      "crew_name": "SurpriseTravelCrew"
     },
     {
       "source_node_id": "cap_WebsiteSearchTool_outbound",
@@ -4486,14 +3394,127 @@
       "crew_name": "StockAnalysisCrew"
     },
     {
-      "source_node_id": "cap_FileReadTool_data_access",
-      "source_label": "FileReadTool",
+      "source_node_id": "cap_GmailGetThread_data_access",
+      "source_label": "GmailGetThread",
       "affected_agent_ids": [
-        "agent_cv_reader",
-        "agent_matcher"
+        "agent_email_action_agent",
+        "agent_email_response_writer"
       ],
       "affected_agent_labels": [
-        "CV Reader",
+        "Email Action Agent",
+        "Email Response Writer"
+      ],
+      "downstream_external_ids": [
+        "ext_gmail_outbound",
+        "ext_tavily_api"
+      ],
+      "downstream_external_labels": [
+        "Gmail outbound",
+        "Tavily API"
+      ],
+      "agent_count": 2,
+      "external_count": 2,
+      "crew_name": "EmailFilterCrew"
+    },
+    {
+      "source_node_id": "cap_TavilySearchResults_outbound",
+      "source_label": "TavilySearchResults",
+      "affected_agent_ids": [
+        "agent_email_action_agent",
+        "agent_email_response_writer"
+      ],
+      "affected_agent_labels": [
+        "Email Action Agent",
+        "Email Response Writer"
+      ],
+      "downstream_external_ids": [
+        "ext_gmail_outbound",
+        "ext_tavily_api"
+      ],
+      "downstream_external_labels": [
+        "Gmail outbound",
+        "Tavily API"
+      ],
+      "agent_count": 2,
+      "external_count": 2,
+      "crew_name": "EmailFilterCrew"
+    },
+    {
+      "source_node_id": "cap_GmailToolkit_data_access",
+      "source_label": "GmailToolkit",
+      "affected_agent_ids": [
+        "agent_email_action_agent",
+        "agent_email_response_writer"
+      ],
+      "affected_agent_labels": [
+        "Email Action Agent",
+        "Email Response Writer"
+      ],
+      "downstream_external_ids": [
+        "ext_gmail_outbound",
+        "ext_tavily_api"
+      ],
+      "downstream_external_labels": [
+        "Gmail outbound",
+        "Tavily API"
+      ],
+      "agent_count": 2,
+      "external_count": 2,
+      "crew_name": "EmailFilterCrew"
+    },
+    {
+      "source_node_id": "cap_GmailToolkit_outbound",
+      "source_label": "GmailToolkit",
+      "affected_agent_ids": [
+        "agent_email_action_agent",
+        "agent_email_response_writer"
+      ],
+      "affected_agent_labels": [
+        "Email Action Agent",
+        "Email Response Writer"
+      ],
+      "downstream_external_ids": [
+        "ext_gmail_outbound",
+        "ext_tavily_api"
+      ],
+      "downstream_external_labels": [
+        "Gmail outbound",
+        "Tavily API"
+      ],
+      "agent_count": 2,
+      "external_count": 2,
+      "crew_name": "EmailFilterCrew"
+    },
+    {
+      "source_node_id": "cap_SerperDevTool_outbound",
+      "source_label": "SerperDevTool",
+      "affected_agent_ids": [
+        "agent_lead_market_analyst",
+        "agent_chief_marketing_strategist"
+      ],
+      "affected_agent_labels": [
+        "Chief Marketing Strategist",
+        "Lead Market Analyst"
+      ],
+      "downstream_external_ids": [
+        "ext_serper_api"
+      ],
+      "downstream_external_labels": [
+        "Serper API"
+      ],
+      "agent_count": 2,
+      "external_count": 1,
+      "crew_name": "MarketingPostsCrew"
+    },
+    {
+      "source_node_id": "cap_SerperDevTool_outbound",
+      "source_label": "SerperDevTool",
+      "affected_agent_ids": [
+        "agent_matcher",
+        "agent_communicator"
+      ],
+      "affected_agent_labels": [
+        "Candidate Outreach Strategist",
         "Matcher"
       ],
       "downstream_external_ids": [
@@ -4504,7 +3525,7 @@
       ],
       "agent_count": 2,
       "external_count": 1,
-      "crew_name": "MatchToProposalCrew"
+      "crew_name": "RecruitmentCrew"
     }
   ],
   "agent_definitions": [
@@ -4965,31 +3986,7 @@
       "confidence": 1.0,
       "attack_summary": "Zero-click prompt injection via email. Copilot ingested crafted email, extracted data from OneDrive/SharePoint/Teams, and exfiltrated it through trusted Microsoft domains.",
       "source_url": "https://embracethered.com/blog/posts/2024/m365-copilot-echo-leak/",
-      "match_reason": "Your code reads data via FileReadTool and sends it externally via SerperDevTool \u2014 the same data\u2192external pattern that enabled Microsoft Copilot EchoLeak. In that incident, zero-click prompt injection via email.",
-      "matching_capabilities": [
-        "[SerperDevTool]",
-        "[FileReadTool]",
-        "[FileManagementToolkit]",
-        "[SerperDevTool]",
-        "[CSVSearchTool]"
-      ],
-      "matching_files": [
-        "crews\\job-posting\\src\\job_posting\\crew.py",
-        "crews\\landing_page_generator\\src\\landing_page_generator\\crew.py",
-        "crews\\marketing_strategy\\src\\marketing_posts\\crew.py",
-        "crews\\match_profile_to_positions\\src\\match_to_proposal\\crew.py",
-        "crews\\recruitment\\src\\recruitment\\crew.py"
-      ]
-    },
-    {
-      "incident_id": "SLACK-AI-EXFIL-2024",
-      "name": "Slack AI Data Exfiltration",
-      "date": "2024-H2",
-      "impact": "Private channel data leaked via crafted message links",
-      "confidence": 1.0,
-      "attack_summary": "Hidden instructions in Slack messages caused AI assistant to insert malicious link. Clicking it sent private channel data to attacker's server.",
-      "source_url": "https://promptarmor.substack.com/p/data-exfiltration-from-slack-ai-via",
-      "match_reason": "Your code reads data via FileReadTool and sends it externally via SerperDevTool \u2014 the same data\u2192external pattern that enabled Slack AI Data Exfiltration. In that incident, hidden instructions in slack messages caused ai assistant to insert malicious link.",
+      "match_reason": "Your agent reads Gmail inbox and sends data to Gmail outbound with no filter (Gmail inbox -> GmailGetThread -> GmailToolkit -> Gmail outbound) -- the same data->external pattern that enabled Microsoft Copilot EchoLeak. In that incident, zero-click prompt injection via email.",
       "matching_capabilities": [
         "[SerperDevTool]",
         "[FileReadTool]",
@@ -5013,7 +4010,7 @@
       "confidence": 0.75,
       "attack_summary": "Prompt injection via crafted Docker Hub repository metadata. AI assistant auto-executed tools to fetch payloads from attacker-controlled servers without user consent.",
       "source_url": "https://www.docker.com/blog/docker-security-advisory-ask-gordon/",
-      "match_reason": "Your agent auto-executes get_10k_url_content to fetch external content \u2014 the same pattern as Docker Ask Gordon Prompt Injection. In that incident, poisoned metadata triggered tools to fetch attacker-controlled payloads.",
+      "match_reason": "Your agent auto-executes Gmail inbox to fetch external content (Gmail inbox -> GmailGetThread -> TavilySearchResults -> Tavily API) -- the same pattern as Docker Ask Gordon Prompt Injection. In that incident, poisoned metadata triggered tools to fetch attacker-controlled payloads.",
       "matching_capabilities": [
         "[SerperDevTool]",
         "[SerperDevTool]",
@@ -5030,6 +4027,30 @@
       ]
     },
     {
+      "incident_id": "SLACK-AI-EXFIL-2024",
+      "name": "Slack AI Data Exfiltration",
+      "date": "2024-H2",
+      "impact": "Private channel data leaked via crafted message links",
+      "confidence": 0.5,
+      "attack_summary": "Hidden instructions in Slack messages caused AI assistant to insert malicious link. Clicking it sent private channel data to attacker's server.",
+      "source_url": "https://promptarmor.substack.com/p/data-exfiltration-from-slack-ai-via",
+      "match_reason": "Your agent reads Gmail inbox and sends data to Gmail outbound with no filter (Gmail inbox -> GmailGetThread -> GmailToolkit -> Gmail outbound) -- the same data->external pattern that enabled Slack AI Data Exfiltration. In that incident, hidden instructions in slack messages caused ai assistant to insert malicious link.",
+      "matching_capabilities": [
+        "[SerperDevTool]",
+        "[FileReadTool]",
+        "[FileManagementToolkit]",
+        "[SerperDevTool]",
+        "[CSVSearchTool]"
+      ],
+      "matching_files": [
+        "crews\\job-posting\\src\\job_posting\\crew.py",
+        "crews\\landing_page_generator\\src\\landing_page_generator\\crew.py",
+        "crews\\marketing_strategy\\src\\marketing_posts\\crew.py",
+        "crews\\match_profile_to_positions\\src\\match_to_proposal\\crew.py",
+        "crews\\recruitment\\src\\recruitment\\crew.py"
+      ]
+    },
+    {
       "incident_id": "SERVICENOW-NOWASSIST-2025",
       "name": "ServiceNow Now Assist Privilege Escalation",
       "date": "2025-H2",
@@ -5037,7 +4058,7 @@
       "confidence": 0.5,
       "attack_summary": "Second-order prompt injection: low-privilege agent tricks high-privilege agent into exporting case files to external URL.",
       "source_url": "https://sombrainc.com/blog/llm-security-risks-2026",
-      "match_reason": "Your agent architecture has cross-agent delegation where one agent can influence lead_market_analyst's actions \u2014 similar to the ServiceNow Now Assist Privilege Escalation pattern where a low-privilege agent tricked a high-privilege agent into exfiltrating data.",
+      "match_reason": "Your agent architecture has cross-agent delegation where one agent can influence lead_market_analyst's actions -- similar to the ServiceNow Now Assist Privilege Escalation pattern where a low-privilege agent tricked a high-privilege agent into exfiltrating data.",
       "matching_capabilities": [
         "[SerperDevTool]",
         "[FileReadTool]",
@@ -5075,11 +4096,11 @@
     },
     "agent_count": 53,
     "crew_count": 29,
-    "shared_tool_pairs": 118,
-    "trust_boundary_crossings": 31,
+    "shared_tool_pairs": 44,
+    "trust_boundary_crossings": 34,
     "control_coverage_pct": 0.0,
-    "max_blast_radius": 9,
-    "blast_radius_count": 7,
+    "max_blast_radius": 3,
+    "blast_radius_count": 8,
     "control_bypass_count": 2
   }
 }

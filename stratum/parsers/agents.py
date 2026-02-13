@@ -25,8 +25,23 @@ def extract_crew_definitions(
     return crews
 
 
-def detect_shared_tools(agent_profiles: list) -> list[AgentRelationship]:
-    """Find agents that share the same tool — a compounding risk signal."""
+def detect_shared_tools(
+    agent_profiles: list,
+    crew_definitions: list[CrewDefinition] | None = None,
+) -> list[AgentRelationship]:
+    """Find agents that share the same tool — a compounding risk signal.
+
+    When *crew_definitions* is provided, only pairs of agents that belong to
+    the **same crew** are reported.  Agents not in any crew are allowed to
+    match with any other agent (backward-compat for non-crew projects).
+    """
+    # Build agent → set-of-crews lookup
+    agent_crews: dict[str, set[str]] = {}
+    if crew_definitions:
+        for crew in crew_definitions:
+            for name in crew.agent_names:
+                agent_crews.setdefault(name, set()).add(crew.name)
+
     tool_to_agents: dict[str, list[str]] = {}
     for agent in agent_profiles:
         for tool in agent.tool_names:
@@ -37,6 +52,13 @@ def detect_shared_tools(agent_profiles: list) -> list[AgentRelationship]:
         if len(agents) > 1:
             for i, a in enumerate(agents):
                 for b in agents[i + 1:]:
+                    # Skip cross-crew pairs when crew info is available
+                    if crew_definitions:
+                        a_crews = agent_crews.get(a, set())
+                        b_crews = agent_crews.get(b, set())
+                        # Both have crew assignments → must share at least one
+                        if a_crews and b_crews and not (a_crews & b_crews):
+                            continue
                     relationships.append(AgentRelationship(
                         source_agent=a,
                         target_agent=b,

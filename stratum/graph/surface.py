@@ -14,7 +14,11 @@ TRUST_RANK: dict[str, int] = {
 }
 
 
-def compute_risk_surface(graph: RiskGraph) -> RiskSurface:
+def compute_risk_surface(
+    graph: RiskGraph,
+    blast_radii: list | None = None,
+    crews: list | None = None,
+) -> RiskSurface:
     """Compute aggregate risk surface from the graph."""
     surface = RiskSurface(
         total_nodes=len(graph.nodes),
@@ -60,6 +64,36 @@ def compute_risk_surface(graph: RiskGraph) -> RiskSurface:
                 surface.downward_crossings += 1
             elif edge.crossing_direction == "inward":
                 surface.inward_crossings += 1
+
+    # Topology metrics (v0.2)
+    n = surface.total_nodes
+    if n > 1:
+        surface.edge_density = round(surface.total_edges / (n * (n - 1)), 4)
+
+    if blast_radii:
+        surface.max_fan_out_per_crew = max(
+            (br.agent_count for br in blast_radii), default=0
+        )
+
+    if crews:
+        surface.crew_count = len(crews)
+
+    # max_chain_depth: longest chain of FEEDS_INTO edges
+    feeds_into = [e for e in graph.edges if e.edge_type == EdgeType.FEEDS_INTO]
+    if feeds_into:
+        adj: dict[str, list[str]] = {}
+        for e in feeds_into:
+            adj.setdefault(e.source, []).append(e.target)
+        longest = 0
+        for start in adj:
+            stack = [(start, 1)]
+            while stack:
+                node, depth = stack.pop()
+                longest = max(longest, depth)
+                for nxt in adj.get(node, []):
+                    if depth < 10:  # safety bound
+                        stack.append((nxt, depth + 1))
+        surface.max_chain_depth = longest
 
     return surface
 

@@ -426,6 +426,21 @@ TRUST_RANK = {
 }
 
 
+def _same_project_dir(graph: RiskGraph, agent_id_a: str, agent_id_b: str) -> bool:
+    """Two agents are in the same project if their source_file first 2 path parts match."""
+    node_a = graph.nodes.get(agent_id_a)
+    node_b = graph.nodes.get(agent_id_b)
+    if not node_a or not node_b:
+        return True
+    fa, fb = node_a.source_file or "", node_b.source_file or ""
+    if not fa or not fb:
+        return True
+    from pathlib import PurePosixPath
+    parts_a = PurePosixPath(fa).parts[:2]
+    parts_b = PurePosixPath(fb).parts[:2]
+    return parts_a == parts_b
+
+
 def _add_agent_relationship_edges(graph: RiskGraph, result: ScanResult) -> None:
     """Add FEEDS_INTO, DELEGATES_TO, SHARES_TOOL edges from crew/relationship data."""
     # FEEDS_INTO edges from sequential crew definitions
@@ -435,10 +450,11 @@ def _add_agent_relationship_edges(graph: RiskGraph, result: ScanResult) -> None:
                 src = f"agent_{crew.agent_names[i].lower().replace(' ', '_')}"
                 tgt = f"agent_{crew.agent_names[i + 1].lower().replace(' ', '_')}"
                 if src in graph.nodes and tgt in graph.nodes:
-                    graph.edges.append(GraphEdge(
-                        source=src, target=tgt,
-                        edge_type=EdgeType.FEEDS_INTO, has_control=False,
-                    ))
+                    if _same_project_dir(graph, src, tgt):
+                        graph.edges.append(GraphEdge(
+                            source=src, target=tgt,
+                            edge_type=EdgeType.FEEDS_INTO, has_control=False,
+                        ))
 
         # Hierarchical: manager delegates to all agents
         if crew.process_type == "hierarchical" and crew.has_manager:
@@ -523,10 +539,10 @@ def _connect_guardrail(
     if guard.kind in ("output_filter", "input_filter"):
         for edge in graph.edges:
             if edge.edge_type in (EdgeType.SENDS_TO, EdgeType.CALLS):
-                # Check if this guard covers the relevant tools
                 if _guard_covers_edge(guard, edge, graph):
                     edge.has_control = True
                     edge.control_type = guard.kind
+                    _add_guardrail_edge(graph, edge.source, guard_node, EdgeType.FILTERED_BY, guard.kind)
 
     elif guard.kind == "hitl":
         for edge in graph.edges:
@@ -535,14 +551,46 @@ def _connect_guardrail(
                 if _guard_covers_edge(guard, edge, graph):
                     edge.has_control = True
                     edge.control_type = "hitl"
+                    _add_guardrail_edge(graph, edge.source, guard_node, EdgeType.GATED_BY, "hitl")
 
     elif guard.kind == "validation":
         for edge in graph.edges:
             if edge.edge_type == EdgeType.SENDS_TO:
+                src = graph.nodes.get(edge.source)
+                if not src:
+                    continue
+                # Validation guardrails: require same-file scope or explicit covers_tools
+                if guard.covers_tools:
+                    if src.node_type != NodeType.CAPABILITY or src.label not in guard.covers_tools:
+                        continue
+                elif guard.source_file and src.source_file:
+                    if guard.source_file != src.source_file:
+                        continue
                 tgt = graph.nodes.get(edge.target)
                 if tgt and tgt.data_sensitivity == "financial":
                     edge.has_control = True
                     edge.control_type = "validation"
+                _add_guardrail_edge(graph, edge.source, guard_node, EdgeType.FILTERED_BY, "validation")
+
+
+def _add_guardrail_edge(
+    graph: RiskGraph,
+    cap_node_id: str,
+    guard_node: GraphNode,
+    edge_type: EdgeType,
+    control_type: str,
+) -> None:
+    """Add an explicit guardrail edge (GATED_BY or FILTERED_BY) if not duplicate."""
+    for e in graph.edges:
+        if e.source == cap_node_id and e.target == guard_node.id and e.edge_type == edge_type:
+            return  # Already exists
+    graph.edges.append(GraphEdge(
+        source=cap_node_id,
+        target=guard_node.id,
+        edge_type=edge_type,
+        has_control=True,
+        control_type=control_type,
+    ))
 
 
 def _guard_covers_edge(

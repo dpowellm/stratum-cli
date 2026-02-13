@@ -33,6 +33,12 @@ def _check_shared_tool_different_trust(result: ScanResult) -> list[Finding]:
     """
     findings: list[Finding] = []
 
+    # Build agent → crew map for same-crew filtering
+    agent_crews: dict[str, set[str]] = {}
+    for crew in getattr(result, 'crew_definitions', []):
+        for name in crew.agent_names:
+            agent_crews.setdefault(name, set()).add(crew.name)
+
     # Group agents by shared tools
     tool_agents: dict[str, list] = {}
     for agent in result.agent_definitions:
@@ -49,6 +55,12 @@ def _check_shared_tool_different_trust(result: ScanResult) -> list[Finding]:
         for ingest in ingestion_agents:
             for actor in action_agents:
                 if ingest.name == actor.name:
+                    continue
+
+                # Only emit if both agents are in the same crew (or crew-less)
+                i_crews = agent_crews.get(ingest.name, set())
+                a_crews = agent_crews.get(actor.name, set())
+                if i_crews and a_crews and not (i_crews & a_crews):
                     continue
 
                 findings.append(Finding(

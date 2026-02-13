@@ -160,7 +160,7 @@ def scan(path: str) -> ScanResult:
             pass
 
     crew_definitions = extract_crew_definitions(py_files_with_ast)
-    shared_tool_rels = detect_shared_tools(all_agent_defs)
+    shared_tool_rels = detect_shared_tools(all_agent_defs, crew_definitions)
     cross_crew_rels = detect_cross_crew_flows(
         crew_definitions, [(os.path.relpath(fp, abs_path), c) for fp, c in py_files],
     )
@@ -210,17 +210,26 @@ def scan(path: str) -> ScanResult:
     # Post-process findings with framework-aware remediation
     fw_list = sorted(all_frameworks)
     for f in top_paths + signals:
-        if f.id == "STRATUM-008":
+        if f.id == "STRATUM-002":
+            f.remediation = framework_remediation(
+                "STRATUM-002", fw_list, [], None,
+            )
+        elif f.id == "STRATUM-008":
             f.remediation = framework_remediation_008(fw_list)
         elif f.id == "STRATUM-010":
             f.remediation = framework_remediation_010(fw_list)
 
     # Calculate risk score
     all_findings = top_paths + signals
-    score = _calculate_risk_score(
+    score_result = _calculate_risk_score(
         all_findings, all_capabilities, all_guardrails, all_mcp_servers,
-        governance_context,
+        governance_context, crew_definitions,
     )
+    per_crew_scores: dict[str, int] | None = None
+    if isinstance(score_result, tuple):
+        score, per_crew_scores = score_result
+    else:
+        score = score_result
 
     # Count capabilities
     has_any_guardrails = len(all_guardrails) > 0
@@ -278,12 +287,22 @@ def scan(path: str) -> ScanResult:
         agent_relationships=all_agent_relationships,
     )
 
+    # Store per-crew scores if computed
+    if per_crew_scores:
+        result._per_crew_scores = per_crew_scores
+
     # Build risk graph
     result.graph = build_graph(result)
 
     # Compute blast radii and control bypasses
     result.blast_radii = find_blast_radii(result.graph, crew_definitions)
     result._control_bypasses = find_control_bypasses(result.graph, crew_definitions)
+
+    # Re-compute risk surface with blast_radii and crew data
+    from stratum.graph.surface import compute_risk_surface
+    result.graph.risk_surface = compute_risk_surface(
+        result.graph, blast_radii=result.blast_radii, crews=crew_definitions,
+    )
 
     # Replace pairwise STRATUM-001 findings with graph-derived findings
     if result.graph and result.graph.uncontrolled_paths:
@@ -398,8 +417,13 @@ def _calculate_risk_score(
     guardrails: list[GuardrailSignal],
     mcp_servers: list[MCPServer],
     governance_context: dict | None = None,
-) -> int:
-    """Calculate the risk score from findings and context."""
+    crew_definitions: list | None = None,
+) -> int | tuple[int, dict[str, int]]:
+    """Calculate the risk score from findings and context.
+
+    When crew_definitions has >5 crews (monorepo), returns (global_score, per_crew_scores).
+    Otherwise returns just the global score.
+    """
     score = 0
 
     # Per finding
@@ -494,6 +518,33 @@ def _calculate_risk_score(
         all_have_identity = identity_ctx.get("all_have_identity", True)
         if agent_count > 1 and not all_have_identity:
             score += 8
+
+    # Monorepo calibration: when >5 crews, compute per-crew scores
+    # and use max_crew + log bonus instead of raw sum
+    crews = crew_definitions or []
+    if len(crews) > 5:
+        import math
+        # Assign findings to crews by evidence file paths
+        crew_scores: dict[str, int] = {}
+        for crew in crews:
+            crew_finding_score = 0
+            for f in all_findings:
+                # Check if finding evidence overlaps with crew's source file
+                crew_source = crew.source_file or ""
+                if any(crew_source and crew_source in ev for ev in f.evidence):
+                    sev_pts = {Severity.CRITICAL: 25, Severity.HIGH: 15, Severity.MEDIUM: 8, Severity.LOW: 3}
+                    crew_finding_score += sev_pts.get(f.severity, 0)
+            crew_scores[crew.name] = min(crew_finding_score, 100)
+
+        if crew_scores:
+            sorted_scores = sorted(crew_scores.values(), reverse=True)
+            max_crew = sorted_scores[0]
+            others_sum = sum(sorted_scores[1:])
+            # Logarithmic bonus from other crews: prevents 98/100 for monorepos
+            log_bonus = int(10 * math.log2(1 + others_sum / 50)) if others_sum > 0 else 0
+            calibrated = max_crew + log_bonus
+            score = min(calibrated, score)  # Never increase the raw score
+            return (min(score, 100), crew_scores)
 
     return min(score, 100)
 
@@ -690,6 +741,7 @@ def _graph_finding_for_path(
         owasp_name=owasp_name,
         finding_class="security",
         quick_fix_type="add_hitl",
+        graph_paths=[risk_path],
     )
 
 
@@ -762,13 +814,12 @@ def _consolidate_graph_findings(findings: list[Finding]) -> list[Finding]:
 # ---------------------------------------------------------------------------
 
 def _generate_blast_radius_findings(result: ScanResult) -> list[Finding]:
-    """Generate STRATUM-CR05 findings from blast radius analysis."""
+    """Generate STRATUM-CR05 findings from blast radius analysis — one per (tool, crew)."""
     findings: list[Finding] = []
     for br in result.blast_radii:
         if br.agent_count < 2:
             continue
 
-        # Severity: CRITICAL if fan-out >= 3 with external downstream, HIGH if >= 2
         if br.agent_count >= 3 and br.external_count >= 1:
             severity = Severity.CRITICAL
         elif br.agent_count >= 2:
@@ -780,8 +831,7 @@ def _generate_blast_radius_findings(result: ScanResult) -> list[Finding]:
         ext_list = ", ".join(br.downstream_external_labels[:4])
         crew_context = f" in crew '{br.crew_name}'" if br.crew_name else ""
 
-        # Build fan-out diagram
-        fan_lines = [f"{br.source_label} (shared tool)"]
+        fan_lines = [f"{br.source_label} (shared tool{crew_context})"]
         for i, alabel in enumerate(br.affected_agent_labels):
             prefix = "  L--> " if i == len(br.affected_agent_labels) - 1 else "  |--> "
             fan_lines.append(f"{prefix}{alabel}")
@@ -792,28 +842,31 @@ def _generate_blast_radius_findings(result: ScanResult) -> list[Finding]:
             severity=severity,
             confidence=Confidence.CONFIRMED,
             category=RiskCategory.COMPOUNDING,
-            title=f"Shared tool blast radius: {br.source_label} -> {br.agent_count} agents",
+            title=(
+                f"Shared tool blast radius: {br.source_label} -> "
+                f"{br.agent_count} agents{crew_context}"
+            ),
             path=fan_diagram,
             description=(
                 f"{br.source_label} feeds {br.agent_count} agents{crew_context} -- "
                 f"blast radius: {br.external_count} external services. "
                 f"If {br.source_label} returns poisoned data (prompt injection in scraped "
-                f"content), {br.agent_count} agents are compromised simultaneously. "
-                f"Each has independent downstream actions, so a single point of compromise "
-                f"fans out to {br.external_count} external services."
+                f"content), {br.agent_count} agents are compromised simultaneously within "
+                f"the same execution context. Each has independent downstream actions, so a "
+                f"single point of compromise fans out to {br.external_count} external services."
             ),
             evidence=[
+                f"Crew: {br.crew_name}" if br.crew_name else "(no crew)",
                 f"Shared by: {agent_list}",
                 f"Downstream: {ext_list}" if ext_list else "(no external services)",
             ],
             scenario=(
                 f"A single poisoned input to {br.source_label} would compromise your "
-                f"entire analysis pipeline: {agent_list}."
+                f"{br.crew_name + ' pipeline' if br.crew_name else 'pipeline'}: {agent_list}."
             ),
             business_context=(
-                "This finding can only exist because the graph traced the fan-out from "
-                "one shared tool. No checklist produces it -- this is emergent risk from "
-                "the agent architecture."
+                "This finding exists because the graph traced fan-out from one shared tool "
+                "within a single execution context. No checklist produces it."
             ),
             remediation=(
                 f"Option 1 -- Add input validation on the shared tool:\n"
@@ -831,21 +884,14 @@ def _generate_blast_radius_findings(result: ScanResult) -> list[Finding]:
             owasp_name="Agent Goal Hijacking",
         ))
 
-    # Consolidate: keep only the most severe blast radius finding
-    if len(findings) > 1:
-        findings.sort(
-            key=lambda f: (f.severity == Severity.CRITICAL, f.severity == Severity.HIGH),
-            reverse=True,
-        )
-        primary = findings[0]
-        # Merge evidence from others
-        for f in findings[1:]:
-            for ev in f.evidence:
-                if ev not in primary.evidence:
-                    primary.evidence.append(ev)
-        findings = [primary]
+    # Sort by severity (CRITICAL first), then agent count
+    findings.sort(key=lambda f: (f.severity != Severity.CRITICAL, -len(f.evidence)), reverse=False)
 
-    return findings
+    # Assign sub-IDs: STRATUM-CR05, STRATUM-CR05.1, STRATUM-CR05.2
+    for i, f in enumerate(findings):
+        f.id = f"STRATUM-CR05{'.' + str(i) if i > 0 else ''}"
+
+    return findings[:3]  # Cap at 3 per-crew findings
 
 
 def _generate_bypass_findings(result: ScanResult) -> list[Finding]:
@@ -907,13 +953,8 @@ def _generate_bypass_findings(result: ScanResult) -> list[Finding]:
             owasp_name="Insufficient Sandboxing",
         ))
 
-    # Consolidate: max 1 bypass finding
-    if len(findings) > 1:
-        primary = findings[0]
-        for f in findings[1:]:
-            for ev in f.evidence:
-                if ev not in primary.evidence:
-                    primary.evidence.append(ev)
-        findings = [primary]
+    # Assign sub-IDs: STRATUM-CR06, STRATUM-CR06.1, etc.
+    for i, f in enumerate(findings):
+        f.id = f"STRATUM-CR06{'.' + str(i) if i > 0 else ''}"
 
-    return findings
+    return findings[:3]  # Cap at 3 per-crew findings

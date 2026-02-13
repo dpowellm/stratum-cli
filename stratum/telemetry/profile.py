@@ -226,6 +226,25 @@ def build_profile(result: ScanResult) -> TelemetryProfile:
             default=0,
         ),
         external_sink_count=graph_node_type_dist.get("external", 0),
+        # v0.2 enrichment
+        findings_by_category={
+            cat: sum(1 for f in all_findings if f.category.value == cat)
+            for cat in {f.category.value for f in all_findings}
+        },
+        blast_radius_distribution=sorted(
+            [br.agent_count for br in getattr(result, 'blast_radii', [])],
+            reverse=True,
+        ),
+        guardrail_linked_count=sum(
+            1 for e in (result.graph.edges if result.graph else [])
+            if e.edge_type.value in ("gated_by", "filtered_by")
+        ),
+        regulatory_surface=sorted({
+            flag
+            for p in (result.graph.uncontrolled_paths if result.graph else [])
+            for flag in p.regulatory_flags
+        }),
+        schema_version="0.2",
     )
 
     return _validate_profile(profile)
