@@ -1,6 +1,6 @@
 {
-  "scan_id": "7741aaf8",
-  "timestamp": "2026-02-13T00:41:41.456502+00:00",
+  "scan_id": "582cc1c9",
+  "timestamp": "2026-02-13T01:37:24.646171+00:00",
   "directory": "C:\\stratum-cli\\crewAI-examples",
   "capabilities": [
     {
@@ -4081,26 +4081,441 @@
   "telemetry_destinations": [],
   "has_eval_conflict": false,
   "telemetry_profile": {
+    "scan_id": "582cc1c9",
     "topology_signature": "f9e0f129986fd183",
+    "schema_version": "2.0",
+    "scan_timestamp": "2026-02-13T01:37:24.646171+00:00",
+    "scanner_version": "0.2.0",
     "archetype": "multi_agent_orchestrator",
     "archetype_confidence": 0.9,
-    "framework_fingerprint": [
+    "frameworks": [
       "CrewAI",
       "LangChain"
     ],
-    "capability_fingerprint": {
+    "framework_versions": {},
+    "agent_count": 53,
+    "crew_count": 29,
+    "files_scanned": 116,
+    "is_monorepo": true,
+    "crew_sizes": [
+      4,
+      4,
+      4,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "crew_process_types": {
+      "sequential": 29
+    },
+    "max_chain_depth": 4,
+    "avg_crew_size": 2.2,
+    "has_hierarchical_crew": false,
+    "has_delegation": false,
+    "tool_names": [
+      "CSVSearchTool",
+      "CalculatorTool",
+      "CharacterCounterTool",
+      "FileReadTool",
+      "GmailGetThread",
+      "LinkedInTool",
+      "SEC10KTool",
+      "SEC10QTool",
+      "ScrapeWebsiteTool",
+      "SerperDevTool",
+      "TavilySearchResults",
+      "WebsiteSearchTool",
+      "file_read_tool",
+      "markdown_validation_tool",
+      "seper_dev_tool",
+      "web_search_tool"
+    ],
+    "tool_count": 16,
+    "tool_categories": {
+      "search": 5,
+      "financial": 3,
+      "social": 1,
+      "file": 2,
+      "data": 1,
+      "email": 1,
+      "scraping": 1,
+      "validation": 2
+    },
+    "libraries": [
+      "crewai_tools",
+      "langchain_community.agent_toolkits",
+      "langchain_community.agent_toolkits.file_management.toolkit",
+      "langchain_community.tools.gmail.get_thread",
+      "langchain_community.tools.tavily_search",
+      "requests",
+      "slack_sdk"
+    ],
+    "capability_counts": {
       "outbound": 18,
       "data_access": 11,
       "code_exec": 0,
-      "destructive": 1
+      "destructive": 1,
+      "financial": 0
     },
-    "agent_count": 53,
-    "crew_count": 29,
-    "shared_tool_pairs": 44,
-    "trust_boundary_crossings": 34,
-    "control_coverage_pct": 0.0,
-    "max_blast_radius": 3,
+    "outbound_to_data_ratio": 1.64,
+    "tool_reuse_ratio": 0.3,
+    "max_tool_sharing": 4,
+    "tools_shared_by_3_plus": 10,
+    "external_services": [
+      "Crewai Tools",
+      "Gmail outbound",
+      "HTTP endpoint",
+      "Serper API",
+      "Slack",
+      "Tavily API"
+    ],
+    "external_service_count": 6,
+    "data_sources": [
+      "Crewai Tools",
+      "Gmail inbox",
+      "Toolkit",
+      "toolkit store"
+    ],
+    "data_source_count": 4,
+    "has_email_integration": true,
+    "has_messaging_integration": true,
+    "has_web_scraping": true,
+    "has_database_integration": false,
+    "has_file_system_access": true,
+    "has_financial_tools": true,
+    "has_code_execution": false,
+    "risk_score": 69,
+    "risk_score_breakdown": {},
+    "risk_scores_per_crew": [
+      23,
+      23,
+      23,
+      23,
+      8,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "finding_ids": [
+      "CONTEXT-001",
+      "STRATUM-001",
+      "STRATUM-002",
+      "STRATUM-008",
+      "STRATUM-009",
+      "STRATUM-010",
+      "STRATUM-BR01",
+      "STRATUM-BR03",
+      "STRATUM-BR04",
+      "STRATUM-CR01",
+      "STRATUM-CR02",
+      "STRATUM-CR05",
+      "STRATUM-CR05.1",
+      "STRATUM-CR05.2",
+      "STRATUM-CR06",
+      "STRATUM-CR06.1",
+      "STRATUM-OP02",
+      "TELEMETRY-003"
+    ],
+    "finding_count": 18,
+    "findings_by_severity": {
+      "critical": 3,
+      "high": 6,
+      "medium": 8,
+      "low": 1
+    },
+    "findings_by_category": {
+      "security": 2,
+      "compounding": 7,
+      "business": 3,
+      "operational": 5,
+      "compliance": 1
+    },
+    "has_unguarded_data_external": true,
+    "has_destructive_no_gate": true,
+    "has_blast_radius_3_plus": true,
+    "has_control_bypass": true,
+    "has_unvalidated_chain": true,
+    "has_shared_tool_bridge": true,
+    "has_no_error_handling": true,
+    "has_no_timeout": true,
+    "has_no_checkpointing": true,
+    "has_no_audit_trail": true,
+    "has_unreviewed_external_comms": true,
+    "has_no_cost_controls": true,
+    "incident_matches": [
+      {
+        "id": "ECHOLEAK-2025",
+        "confidence": 1.0
+      },
+      {
+        "id": "DOCKER-GORDON-2025",
+        "confidence": 0.75
+      },
+      {
+        "id": "SLACK-AI-EXFIL-2024",
+        "confidence": 0.5
+      },
+      {
+        "id": "SERVICENOW-NOWASSIST-2025",
+        "confidence": 0.5
+      }
+    ],
+    "incident_match_count": 4,
+    "matches_echoleak": true,
+    "matches_any_breach": true,
+    "blast_radii": [
+      {
+        "tool": "SerperDevTool",
+        "tool_category": "search",
+        "agent_count": 3,
+        "external_count": 1,
+        "crew_hash": "c1a1743b"
+      },
+      {
+        "tool": "WebsiteSearchTool",
+        "tool_category": "search",
+        "agent_count": 3,
+        "external_count": 1,
+        "crew_hash": "d606b8f4"
+      },
+      {
+        "tool": "GmailGetThread",
+        "tool_category": "email",
+        "agent_count": 2,
+        "external_count": 2,
+        "crew_hash": "5444ccdf"
+      },
+      {
+        "tool": "TavilySearchResults",
+        "tool_category": "search",
+        "agent_count": 2,
+        "external_count": 2,
+        "crew_hash": "5444ccdf"
+      },
+      {
+        "tool": "GmailToolkit",
+        "tool_category": "email",
+        "agent_count": 2,
+        "external_count": 2,
+        "crew_hash": "5444ccdf"
+      },
+      {
+        "tool": "GmailToolkit",
+        "tool_category": "email",
+        "agent_count": 2,
+        "external_count": 2,
+        "crew_hash": "5444ccdf"
+      },
+      {
+        "tool": "SerperDevTool",
+        "tool_category": "search",
+        "agent_count": 2,
+        "external_count": 1,
+        "crew_hash": "f54ef421"
+      },
+      {
+        "tool": "SerperDevTool",
+        "tool_category": "search",
+        "agent_count": 2,
+        "external_count": 1,
+        "crew_hash": "2c993e81"
+      }
+    ],
     "blast_radius_count": 8,
-    "control_bypass_count": 2
+    "max_blast_radius": 3,
+    "total_blast_surface": 18,
+    "blast_radius_distribution": {
+      "2": 6,
+      "3": 2
+    },
+    "guardrail_count": 13,
+    "guardrail_types": {
+      "validation": 13
+    },
+    "guardrail_linked_count": 4,
+    "guardrail_coverage_ratio": 0.31,
+    "control_coverage_pct": 0.0,
+    "has_hitl": false,
+    "has_structured_output": true,
+    "has_checkpointing": false,
+    "checkpoint_type": "none",
+    "has_observability": false,
+    "has_rate_limiting": false,
+    "has_error_handling": true,
+    "error_handling_ratio": 0.07,
+    "has_input_validation": false,
+    "has_output_filtering": false,
+    "maturity_score": 27,
+    "maturity_level": "basic",
+    "sensitive_data_types": [
+      "personal"
+    ],
+    "has_pii_flow": true,
+    "has_financial_flow": false,
+    "has_credential_flow": false,
+    "uncontrolled_path_count": 2,
+    "max_path_hops": 3,
+    "trust_boundary_crossings": 34,
+    "downward_crossings": 8,
+    "has_inbox_to_outbound": true,
+    "has_scrape_to_action": false,
+    "has_db_to_external": false,
+    "has_file_to_external": true,
+    "applicable_regulations": [
+      "EU_AI_ACT",
+      "GDPR",
+      "NIST_AI_RMF"
+    ],
+    "eu_ai_act_risk_level": "high",
+    "eu_ai_act_articles": [
+      "Art.9",
+      "Art.14",
+      "Art.15",
+      "Art.13",
+      "Art.12"
+    ],
+    "eu_ai_act_gap_count": 4,
+    "gdpr_relevant": true,
+    "gdpr_articles": [
+      "Art.35",
+      "Art.22"
+    ],
+    "nist_ai_rmf_functions": [
+      "MANAGE",
+      "MAP"
+    ],
+    "compliance_gap_count": 6,
+    "node_count": 89,
+    "edge_count": 89,
+    "edge_density": 0.0114,
+    "agent_to_agent_edges": 19,
+    "guardrail_edges": 3,
+    "avg_node_degree": 3.02,
+    "max_node_degree": 15,
+    "isolated_agent_count": 21,
+    "has_previous_scan": true,
+    "previous_risk_score": 69,
+    "risk_score_delta": 0,
+    "new_finding_ids": [],
+    "resolved_finding_ids": [],
+    "new_finding_count": 0,
+    "resolved_finding_count": 0,
+    "maturity_score_delta": 0,
+    "what_if_controls": [
+      {
+        "control": "shared_tool_validation",
+        "description": "Add input validation on tools shared by 3+ agents",
+        "findings_suppressed": [
+          "STRATUM-CR05",
+          "STRATUM-CR05.1",
+          "STRATUM-CR01",
+          "STRATUM-CR05.2"
+        ],
+        "severity_suppressed": {
+          "critical": 2,
+          "high": 2
+        },
+        "score_reduction": 80,
+        "effort": "med"
+      },
+      {
+        "control": "hitl_on_outbound",
+        "description": "Add human_input=True on tasks with outbound external actions",
+        "findings_suppressed": [
+          "STRATUM-001",
+          "STRATUM-002",
+          "STRATUM-BR01"
+        ],
+        "severity_suppressed": {
+          "critical": 1,
+          "high": 2
+        },
+        "score_reduction": 55,
+        "effort": "low"
+      },
+      {
+        "control": "structured_output_validation",
+        "description": "Add output_pydantic validation on tasks in sequential chains",
+        "findings_suppressed": [
+          "STRATUM-CR02",
+          "STRATUM-BR04"
+        ],
+        "severity_suppressed": {
+          "medium": 2
+        },
+        "score_reduction": 16,
+        "effort": "low"
+      },
+      {
+        "control": "observability",
+        "description": "Add Langfuse, LangSmith, or OpenTelemetry tracing",
+        "findings_suppressed": [
+          "TELEMETRY-003",
+          "STRATUM-BR03"
+        ],
+        "severity_suppressed": {
+          "low": 1,
+          "medium": 1
+        },
+        "score_reduction": 11,
+        "effort": "low"
+      },
+      {
+        "control": "error_handling",
+        "description": "Add try/except with graceful degradation on external calls",
+        "findings_suppressed": [
+          "STRATUM-008"
+        ],
+        "severity_suppressed": {
+          "medium": 1
+        },
+        "score_reduction": 8,
+        "effort": "med"
+      }
+    ],
+    "top_recommendation": "shared_tool_validation",
+    "top_recommendation_impact": 80
   }
 }
