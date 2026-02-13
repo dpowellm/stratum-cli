@@ -40,13 +40,22 @@ def compute_risk_surface(
         if n.node_type in (NodeType.EXTERNAL_SERVICE, NodeType.MCP_SERVER)
     ])
 
-    # Control coverage
+    # Control coverage — check both has_control flag AND guardrail edges
+    # Build set of nodes that have guardrail coverage (GATED_BY/FILTERED_BY)
+    guarded_nodes: set[str] = set()
+    for e in graph.edges:
+        if e.edge_type in (EdgeType.GATED_BY, EdgeType.FILTERED_BY):
+            guarded_nodes.add(e.source)  # The capability being guarded
+
     needs_control = [e for e in graph.edges if _edge_needs_control(e, graph)]
-    has_control = [e for e in needs_control if e.has_control]
+    has_control_count = sum(
+        1 for e in needs_control
+        if e.has_control or e.source in guarded_nodes or e.target in guarded_nodes
+    )
     surface.edges_needing_controls = len(needs_control)
-    surface.edges_with_controls = len(has_control)
+    surface.edges_with_controls = has_control_count
     surface.control_coverage_pct = (
-        len(has_control) / len(needs_control) * 100
+        has_control_count / len(needs_control) * 100
     ) if needs_control else 100.0
 
     # Regulatory

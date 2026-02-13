@@ -19,12 +19,16 @@ def render_all_crew_maps(
     blast_radii: list[BlastRadius],
     control_bypasses: list[dict],
     incident_matches: list[IncidentMatch],
+    scan_result=None,
 ) -> str:
     """Render flow maps for crews that have findings. Max 4 crews."""
     if not crews or graph is None:
         return ""
 
-    ranked = _rank_crews_by_severity(crews, findings)
+    per_crew_scores = getattr(scan_result, '_per_crew_scores', {}) if scan_result else {}
+    agent_defs = getattr(scan_result, 'agent_definitions', []) if scan_result else []
+
+    ranked = _select_display_crews(crews, findings, per_crew_scores)
     if not ranked:
         return ""
 
@@ -32,11 +36,18 @@ def render_all_crew_maps(
     for crew in ranked[:4]:
         m = render_crew_flow_map(
             crew, graph, blast_radii, control_bypasses, incident_matches,
+            findings=findings, per_crew_scores=per_crew_scores,
+            agent_defs=agent_defs,
         )
         if m:
             maps.append(m)
 
-    return "\n\n".join(maps)
+    remaining = len(crews) - len(ranked[:4])
+    result = "\n\n".join(maps)
+    if remaining > 0:
+        result += f"\n\n +{remaining} more crew{'s' if remaining != 1 else ''} (stratum scan . --verbose to see all)"
+
+    return result
 
 
 def render_crew_flow_map(
@@ -46,6 +57,9 @@ def render_crew_flow_map(
     control_bypasses: list[dict],
     incident_matches: list[IncidentMatch],
     max_width: int = MAX_WIDTH,
+    findings: list[Finding] | None = None,
+    per_crew_scores: dict[str, int] | None = None,
+    agent_defs: list | None = None,
 ) -> str:
     """Render a single crew's flow diagram in a bordered box."""
     lines: list[str] = []
@@ -53,8 +67,10 @@ def render_crew_flow_map(
     agent_names = crew.agent_names
     process_type = crew.process_type or "sequential"
 
-    # Header
-    header = f"{crew_name} ({len(agent_names)} agents, {process_type})"
+    # Header with per-crew score (v4)
+    crew_score = (per_crew_scores or {}).get(crew_name, 0)
+    score_str = f"  {crew_score}/100" if per_crew_scores else ""
+    header = f"{crew_name} ({len(agent_names)} agents, {process_type}){score_str}"
     lines.append(f" {header}")
     lines.append(f" \u250c{'\u2500' * (max_width - 3)}\u2510")
     lines.append(_pad("", max_width))
@@ -83,7 +99,28 @@ def render_crew_flow_map(
         indent = "      " + "     " * pos
         lines.append(_pad(f"{indent}\u251c\u2500\u2500\u25b6 {sink['label']}  {control_marker}", max_width))
 
+    # Tool trees: show outbound/data tools per agent (v4 rich flow maps)
+    if agent_defs:
+        agent_tools = _get_agent_tool_trees(agent_defs, agent_names)
+        for agent_name, tools in agent_tools:
+            if tools:
+                tool_str = ", ".join(tools[:3])
+                if len(tools) > 3:
+                    tool_str += f" (+{len(tools) - 3})"
+                lines.append(_pad(f"    {agent_name}: {tool_str}", max_width))
+
     lines.append(_pad("", max_width))
+
+    # Crew-specific finding warnings (v4)
+    if findings:
+        crew_warnings = [
+            f for f in findings
+            if f.crew_id == crew_name
+            and f.severity in (Severity.CRITICAL, Severity.HIGH)
+        ]
+        for w in crew_warnings[:3]:
+            sev = "\u2622" if w.severity == Severity.CRITICAL else "\u26a0"
+            lines.append(_pad(f"  {sev} {w.id}: {w.title[:50]}", max_width))
 
     # Crew-specific bypasses
     crew_bypasses = [
@@ -299,15 +336,60 @@ def _get_crew_incidents(
     return results
 
 
-def _rank_crews_by_severity(
-    crews: list[CrewDefinition], findings: list[Finding],
+def _get_agent_tool_trees(
+    agent_defs: list, agent_names: list[str],
+) -> list[tuple[str, list[str]]]:
+    """Get outbound/data tools per agent for display in flow maps.
+
+    Returns list of (agent_name, [tool_names]) for agents with relevant tools.
+    """
+    result: list[tuple[str, list[str]]] = []
+    agent_names_lower = {n.lower() for n in agent_names}
+
+    for agent in agent_defs:
+        name = getattr(agent, "name", "")
+        if name.lower() not in agent_names_lower:
+            continue
+        tools = getattr(agent, "tool_names", [])
+        if tools:
+            result.append((name, list(tools)))
+
+    return result
+
+
+def _select_display_crews(
+    crews: list[CrewDefinition],
+    findings: list[Finding],
+    per_crew_scores: dict[str, int],
+    max_display: int = 4,
 ) -> list[CrewDefinition]:
-    """Return crews sorted by severity of findings associated with them."""
+    """Select top crews to display, ranked by per-crew risk score.
+
+    Falls back to severity-based ranking if per_crew_scores is empty.
+    Always returns at least 1 crew if any exist.
+    """
+    if not crews:
+        return []
+
+    if per_crew_scores:
+        # Sort by per-crew score descending
+        scored = sorted(
+            crews,
+            key=lambda c: per_crew_scores.get(c.name, 0),
+            reverse=True,
+        )
+        # Include crews with score > 0, or at least the first one
+        result = [c for c in scored if per_crew_scores.get(c.name, 0) > 0]
+        if not result:
+            result = scored[:1]
+        return result[:max_display]
+
+    # Fallback: rank by finding severity
     severity_scores = {
         Severity.CRITICAL: 100, Severity.HIGH: 50,
         Severity.MEDIUM: 10, Severity.LOW: 1,
     }
-    scored: list[tuple[CrewDefinition, int]] = []
+    scored_list: list[tuple[CrewDefinition, int]] = []
     for crew in crews:
         score = 0
         for f in findings:
@@ -315,8 +397,10 @@ def _rank_crews_by_severity(
                     or crew.name in f.title
                     or any(a in f.title for a in crew.agent_names)):
                 score += severity_scores.get(f.severity, 0)
-        if score > 0:
-            scored.append((crew, score))
+        scored_list.append((crew, score))
 
-    scored.sort(key=lambda x: -x[1])
-    return [c for c, _ in scored]
+    scored_list.sort(key=lambda x: -x[1])
+    result = [c for c, s in scored_list if s > 0]
+    if not result:
+        result = [scored_list[0][0]] if scored_list else []
+    return result[:max_display]

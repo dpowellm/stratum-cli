@@ -423,6 +423,7 @@ KNOWN_TOOLS: dict[str, ToolProfile] = {
 AGENT_FRAMEWORK_IMPORTS: dict[str, str] = {
     "crewai": "CrewAI",
     "crewai_tools": "CrewAI",
+    "langgraph": "LangGraph",
     "langchain": "LangChain",
     "langchain_community": "LangChain",
     "langchain_core": "LangChain",

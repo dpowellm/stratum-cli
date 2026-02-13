@@ -14,17 +14,88 @@ from stratum.parsers import capabilities as cap_parser
 from stratum.parsers import mcp as mcp_parser
 from stratum.parsers import env as env_parser
 from stratum.parsers.capabilities import detect_framework
+from stratum.parsers.langgraph_parser import parse_langgraph
+from stratum.parsers.langchain_parser import parse_langchain_agents
+from stratum.parsers.surfaces import detect_llm_models, detect_env_var_names, detect_vector_stores
 from stratum.rules.engine import Engine
 from stratum.graph.builder import build_graph
 from stratum.graph.models import NodeType, RiskPath
 from stratum.graph.traversal import find_blast_radii, find_control_bypasses
 from stratum.graph.remediation import framework_remediation, framework_remediation_008, framework_remediation_010
+from stratum.rules.helpers import limit_evidence
 from stratum.graph.agents import extract_agents_from_yaml, extract_agents_from_python
 
 logger = logging.getLogger(__name__)
 
 SKIP_DIRS = {".git", "node_modules", ".venv", "__pycache__", ".stratum"}
 SKIP_EXTENSIONS = {".pyc"}
+
+# ---------------------------------------------------------------------------
+# Finding classification and score calibration (v4)
+# ---------------------------------------------------------------------------
+
+FINDING_CLASS: dict[str, str] = {
+    # Architecture — specific to this project's code structure
+    "STRATUM-001": "architecture",
+    "STRATUM-002": "architecture",
+    "STRATUM-003": "architecture",
+    "STRATUM-CR01": "architecture",
+    "STRATUM-CR02": "architecture",
+    "STRATUM-CR05": "architecture",
+    "STRATUM-CR06": "architecture",
+    "STRATUM-BR01": "architecture",
+    "STRATUM-BR02": "architecture",
+    # Operational — code-specific but lower urgency
+    "STRATUM-007": "operational",
+    "STRATUM-008": "operational",
+    "STRATUM-009": "operational",
+    "STRATUM-010": "operational",
+    "STRATUM-BR03": "operational",
+    "STRATUM-BR04": "operational",
+    "STRATUM-OP01": "operational",
+    "STRATUM-OP02": "operational",
+    # Hygiene — fire on almost every project
+    "ENV-001": "hygiene",
+    "ENV-002": "hygiene",
+    "CONTEXT-001": "hygiene",
+    "CONTEXT-002": "hygiene",
+    "TELEMETRY-003": "hygiene",
+    "IDENTITY-001": "hygiene",
+    "IDENTITY-002": "hygiene",
+    # Meta — scanner observations, not risks
+    "EVAL-001": "meta",
+    "EVAL-002": "meta",
+    "LEARNING-001": "meta",
+    "PORTABILITY-001": "meta",
+}
+
+# Severity weights by finding class — architecture gets full weight, hygiene minimal
+SCORE_WEIGHTS: dict[tuple[str, str], int] = {
+    ("CRITICAL", "architecture"): 12,
+    ("HIGH", "architecture"): 8,
+    ("MEDIUM", "architecture"): 5,
+    ("LOW", "architecture"): 2,
+    ("CRITICAL", "operational"): 8,
+    ("HIGH", "operational"): 5,
+    ("MEDIUM", "operational"): 3,
+    ("LOW", "operational"): 1,
+    ("CRITICAL", "hygiene"): 3,
+    ("HIGH", "hygiene"): 2,
+    ("MEDIUM", "hygiene"): 1,
+    ("LOW", "hygiene"): 0,
+    ("CRITICAL", "meta"): 0,
+    ("HIGH", "meta"): 0,
+    ("MEDIUM", "meta"): 0,
+    ("LOW", "meta"): 0,
+}
+
+# Per-crew severity weights
+CREW_SEVERITY_WEIGHT = {
+    Severity.CRITICAL: 15,
+    Severity.HIGH: 10,
+    Severity.MEDIUM: 5,
+    Severity.LOW: 2,
+}
 
 
 def scan(path: str) -> ScanResult:
@@ -121,6 +192,31 @@ def scan(path: str) -> ScanResult:
     yaml_caps = _scan_yaml_configs(yaml_files)
     all_capabilities.extend(yaml_caps)
 
+    # ── Step 4: Framework-specific parsing (dispatcher) ──────────
+    # Build (file_path, content, ast_tree) triples and AST dict for parsers
+    py_files_with_ast: list[tuple[str, str, ast.Module]] = []
+    ast_dict: dict[str, ast.Module] = {}
+    for file_path, content in py_files:
+        rel = os.path.relpath(file_path, abs_path)
+        try:
+            tree = ast.parse(content)
+            py_files_with_ast.append((rel, content, tree))
+            ast_dict[rel] = tree
+        except SyntaxError:
+            pass
+
+    # Collect all file paths (absolute) for surface detectors
+    all_file_paths: list[str] = [fp for fp, _ in py_files]
+    _surface_names = {".env.example", ".env.template", ".env.sample"}
+    for root, dirs, files in os.walk(abs_path):
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+        for fname in files:
+            full = os.path.join(root, fname)
+            _, ext = os.path.splitext(fname)
+            if ext in (".yaml", ".yml") or fname in _surface_names:
+                if full not in all_file_paths:
+                    all_file_paths.append(full)
+
     # Extract agent definitions from YAML files
     all_agent_defs = []
     for file_path, content in yaml_files:
@@ -139,32 +235,55 @@ def scan(path: str) -> ScanResult:
             agent_dedup[key] = ad
         else:
             existing = agent_dedup[key]
-            # Merge tools from duplicate
             for t in ad.tool_names:
                 if t not in existing.tool_names:
                     existing.tool_names.append(t)
     all_agent_defs = list(agent_dedup.values())
 
-    # Extract crew definitions and agent relationships
+    # ── Framework dispatch: CrewAI ──
     from stratum.parsers.agents import (
         extract_crew_definitions, detect_shared_tools, detect_cross_crew_flows,
     )
-    # Build (file_path, content, ast_tree) triples for crew extraction
-    py_files_with_ast: list[tuple[str, str, ast.Module]] = []
-    for file_path, content in py_files:
-        rel = os.path.relpath(file_path, abs_path)
-        try:
-            tree = ast.parse(content)
-            py_files_with_ast.append((rel, content, tree))
-        except SyntaxError:
-            pass
+    crew_definitions = []
+    all_agent_relationships = []
 
-    crew_definitions = extract_crew_definitions(py_files_with_ast)
-    shared_tool_rels = detect_shared_tools(all_agent_defs, crew_definitions)
-    cross_crew_rels = detect_cross_crew_flows(
-        crew_definitions, [(os.path.relpath(fp, abs_path), c) for fp, c in py_files],
-    )
-    all_agent_relationships = shared_tool_rels + cross_crew_rels
+    if "CrewAI" in all_frameworks:
+        crewai_crews = extract_crew_definitions(py_files_with_ast)
+        crew_definitions.extend(crewai_crews)
+        shared_tool_rels = detect_shared_tools(all_agent_defs, crewai_crews)
+        cross_crew_rels = detect_cross_crew_flows(
+            crewai_crews, [(os.path.relpath(fp, abs_path), c) for fp, c in py_files],
+        )
+        all_agent_relationships.extend(shared_tool_rels + cross_crew_rels)
+
+    # ── Framework dispatch: LangGraph ──
+    if "LangGraph" in all_frameworks:
+        lg_crews, lg_agents, lg_rels = parse_langgraph(ast_dict, all_file_paths)
+        crew_definitions.extend(lg_crews)
+        all_agent_defs.extend(lg_agents)
+        all_agent_relationships.extend(lg_rels)
+
+    # ── Framework dispatch: LangChain ──
+    if "LangChain" in all_frameworks:
+        lc_crews, lc_agents, lc_rels = parse_langchain_agents(ast_dict, all_file_paths)
+        crew_definitions.extend(lc_crews)
+        all_agent_defs.extend(lc_agents)
+        all_agent_relationships.extend(lc_rels)
+
+    # ── Connectable surfaces: detect during same AST walk ──
+    llm_models = detect_llm_models(ast_dict, all_file_paths)
+    detected_env_var_names = detect_env_var_names(ast_dict, all_file_paths)
+    detected_vector_stores = detect_vector_stores(ast_dict)
+
+    # ── Determine parse quality ──
+    if crew_definitions:
+        framework_parse_quality = "full"
+    elif all_agent_defs:
+        framework_parse_quality = "partial"
+    elif all_capabilities:
+        framework_parse_quality = "tools_only"
+    else:
+        framework_parse_quality = "empty"
 
     # Resolve guardrail covers_tools
     from stratum.parsers.capabilities import resolve_guardrail_coverage
@@ -285,6 +404,11 @@ def scan(path: str) -> ScanResult:
         agent_definitions=all_agent_defs,
         crew_definitions=crew_definitions,
         agent_relationships=all_agent_relationships,
+        # Connectable surfaces
+        llm_models=llm_models,
+        env_var_names_detected=detected_env_var_names,
+        vector_stores_detected=detected_vector_stores,
+        framework_parse_quality=framework_parse_quality,
     )
 
     # Store per-crew scores if computed
@@ -295,7 +419,7 @@ def scan(path: str) -> ScanResult:
     result.graph = build_graph(result)
 
     # Compute blast radii and control bypasses
-    result.blast_radii = find_blast_radii(result.graph, crew_definitions)
+    result.blast_radii = find_blast_radii(result.graph, crew_definitions, all_agent_defs)
     result._control_bypasses = find_control_bypasses(result.graph, crew_definitions)
 
     # Re-compute risk surface with blast_radii and crew data
@@ -304,12 +428,20 @@ def scan(path: str) -> ScanResult:
         result.graph, blast_radii=result.blast_radii, crews=crew_definitions,
     )
 
+    # Filter uncontrolled paths by guardrail coverage (v4)
+    # Paths covered by HITL guardrails (human_input=True, interrupt_before) are excluded
+    uncontrolled_paths = _filter_guarded_paths(
+        result.graph.uncontrolled_paths if result.graph else [],
+        all_guardrails, result.graph,
+    )
+
     # Replace pairwise STRATUM-001 findings with graph-derived findings
-    if result.graph and result.graph.uncontrolled_paths:
+    if result.graph and uncontrolled_paths:
         graph_findings = []
-        for risk_path in result.graph.uncontrolled_paths:
+        for risk_path in uncontrolled_paths:
             finding = _graph_finding_for_path(
                 risk_path, result.graph, result.detected_frameworks,
+                crew_definitions=result.crew_definitions,
             )
             if finding:
                 graph_findings.append(finding)
@@ -371,6 +503,10 @@ def scan(path: str) -> ScanResult:
                 if ev not in existing.evidence:
                     existing.evidence.append(ev)
 
+    # Limit evidence to 3 items max after merging
+    for f in consolidated_new:
+        f.evidence = limit_evidence(f.evidence)
+
     # Route into top_paths or signals
     severity_rank = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
     for f in consolidated_new:
@@ -389,8 +525,17 @@ def scan(path: str) -> ScanResult:
         reverse=True,
     )
 
-    # Recalculate risk score with compounding bonuses
+    # Tag finding_class on all findings from FINDING_CLASS mapping (v4)
     all_findings_final = result.top_paths + result.signals
+    for f in all_findings_final:
+        base_id = f.id.split(".")[0]
+        if base_id in FINDING_CLASS:
+            f.finding_class = FINDING_CLASS[base_id]
+
+    # Recalculate risk score with class-weighted scoring (v4 calibration)
+    class_score = _calculate_class_weighted_score(all_findings_final)
+
+    # Add compounding bonuses
     compounding_bonus = 0
     if any(f.id == "STRATUM-CR01" for f in all_findings_final):
         compounding_bonus += 10
@@ -402,7 +547,18 @@ def scan(path: str) -> ScanResult:
         compounding_bonus += 10  # Blast radius with 3+ agents
     if any(f.id == "STRATUM-CR06" for f in all_findings_final):
         compounding_bonus += 8   # Architectural control bypass
-    result.risk_score = min(result.risk_score + compounding_bonus, 100)
+
+    # Apply score floor (prevents score=0 when findings exist)
+    result.risk_score = _finalize_score(
+        class_score + compounding_bonus, all_findings_final,
+    )
+
+    # Compute per-crew scores using crew_id on findings (v4)
+    per_crew_scores_map: dict[str, int] = {}
+    for crew in crew_definitions:
+        per_crew_scores_map[crew.name] = _score_crew(crew.name, all_findings_final)
+    if per_crew_scores_map:
+        result._per_crew_scores = per_crew_scores_map
 
     # Match against known real-world incidents
     from stratum.intelligence.incidents import match_incidents
@@ -549,6 +705,91 @@ def _calculate_risk_score(
     return min(score, 100)
 
 
+def _score_crew(crew_name: str, all_findings: list[Finding]) -> int:
+    """Compute risk score for a single crew based on its tagged findings."""
+    crew_findings = [f for f in all_findings if getattr(f, 'crew_id', '') == crew_name]
+    raw = sum(CREW_SEVERITY_WEIGHT.get(f.severity, 0) for f in crew_findings)
+    return min(raw, 100)
+
+
+def _finalize_score(raw_score: int, all_findings: list[Finding]) -> int:
+    """Enforce a score floor when real findings exist.
+
+    Prevents score=0 when there are actual findings.
+    Floor = max(8, non_info_count * 2), capped at 100.
+    """
+    non_info_findings = [
+        f for f in all_findings
+        if f.severity in (Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM, Severity.LOW)
+    ]
+    if non_info_findings:
+        floor = max(8, len(non_info_findings) * 2)
+        return max(floor, min(raw_score, 100))
+    return max(0, min(raw_score, 100))
+
+
+def _filter_guarded_paths(
+    uncontrolled_paths: list,
+    guardrails: list[GuardrailSignal],
+    graph,
+) -> list:
+    """Filter out paths covered by HITL guardrails.
+
+    A path is "guarded" if any agent on the path has a HITL guardrail
+    (human_input=True on its Task, or interrupt_before containing its node name).
+    """
+    if not uncontrolled_paths or not guardrails:
+        return list(uncontrolled_paths)
+
+    # Build set of agent names/tools that have HITL coverage
+    hitl_covered: set[str] = set()
+    for g in guardrails:
+        if g.kind == "hitl":
+            if g.covers_tools:
+                hitl_covered.update(t.lower() for t in g.covers_tools)
+            # Also include detail as a signal
+            detail = (g.detail or "").lower()
+            if "human_input" in detail or "interrupt_before" in detail:
+                hitl_covered.add(g.source_file)
+
+    if not hitl_covered:
+        return list(uncontrolled_paths)
+
+    unguarded = []
+    for path in uncontrolled_paths:
+        path_guarded = False
+        for nid in path.nodes:
+            node = graph.nodes.get(nid) if graph else None
+            if node and node.node_type == NodeType.AGENT:
+                label_lower = node.label.lower().replace(" ", "_").replace("-", "_")
+                if label_lower in hitl_covered or node.label.lower() in hitl_covered:
+                    path_guarded = True
+                    break
+        if not path_guarded:
+            unguarded.append(path)
+
+    return unguarded
+
+
+def _calculate_class_weighted_score(all_findings: list[Finding]) -> int:
+    """Calculate risk score using class-weighted severity (v4 calibration).
+
+    Architecture findings get full weight. Hygiene findings that fire on every
+    project contribute minimally. This spreads the score distribution and makes
+    the fleet report credible.
+    """
+    raw = 0
+    for f in all_findings:
+        sev = f.severity.value if hasattr(f.severity, 'value') else str(f.severity)
+        fc = getattr(f, 'finding_class', 'security')
+        # Normalize: 'security' and 'compounding' map to 'architecture' for weights
+        if fc in ('security', 'compounding'):
+            fc = 'architecture'
+        weight = SCORE_WEIGHTS.get((sev, fc), SCORE_WEIGHTS.get((sev, 'architecture'), 0))
+        raw += weight
+    return raw
+
+
 def _load_gitignore(directory: str) -> list[str]:
     """Load .gitignore patterns from directory."""
     gitignore_path = os.path.join(directory, ".gitignore")
@@ -689,6 +930,7 @@ def _graph_finding_for_path(
     risk_path: RiskPath,
     graph,
     detected_frameworks: list[str],
+    crew_definitions: list | None = None,
 ) -> Finding | None:
     """Convert a RiskPath from the graph traversal into a Finding.
 
@@ -698,6 +940,23 @@ def _graph_finding_for_path(
 
     finding_id = "STRATUM-001"
     title = "Unguarded data-to-external path"
+
+    # Resolve crew for this path
+    crew_name = ""
+    if crew_definitions:
+        agent_node_ids = [
+            nid for nid in risk_path.nodes
+            if graph.nodes.get(nid) and graph.nodes[nid].node_type == NodeType.AGENT
+        ]
+        for crew in crew_definitions:
+            crew_agent_ids = set()
+            for name in crew.agent_names:
+                crew_agent_ids.add(f"agent_{name.lower().replace(' ', '_').replace('-', '_')}")
+                crew_agent_ids.add(name)
+            agent_labels = {graph.nodes[aid].label for aid in agent_node_ids if aid in graph.nodes}
+            if agent_labels & crew_agent_ids or any(aid in crew_agent_ids for aid in agent_node_ids):
+                crew_name = crew.name
+                break
 
     # Path display: friendly labels joined by arrow
     path_display = " \u2192 ".join(n.label for n in nodes)
@@ -742,6 +1001,7 @@ def _graph_finding_for_path(
         finding_class="security",
         quick_fix_type="add_hitl",
         graph_paths=[risk_path],
+        crew_id=crew_name,
     )
 
 
@@ -813,6 +1073,54 @@ def _consolidate_graph_findings(findings: list[Finding]) -> list[Finding]:
 # Blast radius + control bypass findings
 # ---------------------------------------------------------------------------
 
+def _to_var_name(agent_name: str) -> str:
+    """Convert agent name to a Python variable name."""
+    return agent_name.lower().replace(" ", "_").replace("'", "").replace("-", "_")
+
+
+def _cr06_code_remediation(bp: dict) -> str:
+    """Build code-based remediation for CR06 bypass findings."""
+    downstream_var = _to_var_name(bp["downstream_agent"])
+    return (
+        f"Fix — Remove direct data access from downstream agent:\n"
+        f"  {downstream_var} = Agent(\n"
+        f"      role=\"{bp['downstream_agent']}\",\n"
+        f"-     tools=[{bp['data_source']}, ...],\n"
+        f"+     tools=[...],  # remove direct {bp['data_source']} access\n"
+        f"  )\n\n"
+        f"Or — add validation on the direct read:\n"
+        f"  task = Task(\n"
+        f"      agent={downstream_var},\n"
+        f"+     output_pydantic=ValidatedInput,\n"
+        f"  )"
+    )
+
+
+def _build_cr05_evidence(br, agent_list: str, ext_list: str, result: ScanResult) -> list[str]:
+    """Build CR05 evidence with file paths for developer navigation."""
+    evidence = [
+        f"Crew: {br.crew_name}" if br.crew_name else "(no crew)",
+        f"Shared by: {agent_list}",
+    ]
+    # Add file paths early so they survive evidence limiting
+    added_files: set[str] = set()
+    crew_obj = next((c for c in result.crew_definitions if c.name == br.crew_name), None)
+    if crew_obj and crew_obj.source_file:
+        evidence.append(crew_obj.source_file)
+        added_files.add(crew_obj.source_file)
+    # Match agents by name or role (labels come from graph node roles)
+    label_set = set(br.affected_agent_labels)
+    for agent_def in result.agent_definitions:
+        if (agent_def.name in label_set or agent_def.role in label_set) and agent_def.source_file:
+            if agent_def.source_file not in added_files:
+                evidence.append(agent_def.source_file)
+                added_files.add(agent_def.source_file)
+                break
+    if ext_list:
+        evidence.append(f"Downstream: {ext_list}")
+    return evidence
+
+
 def _generate_blast_radius_findings(result: ScanResult) -> list[Finding]:
     """Generate STRATUM-CR05 findings from blast radius analysis — one per (tool, crew)."""
     findings: list[Finding] = []
@@ -855,11 +1163,7 @@ def _generate_blast_radius_findings(result: ScanResult) -> list[Finding]:
                 f"the same execution context. Each has independent downstream actions, so a "
                 f"single point of compromise fans out to {br.external_count} external services."
             ),
-            evidence=[
-                f"Crew: {br.crew_name}" if br.crew_name else "(no crew)",
-                f"Shared by: {agent_list}",
-                f"Downstream: {ext_list}" if ext_list else "(no external services)",
-            ],
+            evidence=_build_cr05_evidence(br, agent_list, ext_list, result),
             scenario=(
                 f"A single poisoned input to {br.source_label} would compromise your "
                 f"{br.crew_name + ' pipeline' if br.crew_name else 'pipeline'}: {agent_list}."
@@ -882,6 +1186,7 @@ def _generate_blast_radius_findings(result: ScanResult) -> list[Finding]:
             finding_class="compounding",
             owasp_id="ASI01",
             owasp_name="Agent Goal Hijacking",
+            crew_id=br.crew_name,
         ))
 
     # Sort by severity (CRITICAL first), then agent count
@@ -941,16 +1246,12 @@ def _generate_bypass_findings(result: ScanResult) -> list[Finding]:
                 "The control exists but data flows around it. This is worse than no "
                 "control -- it creates a false sense of security."
             ),
-            remediation=(
-                f"Route all {bp['data_source']} access through {bp['upstream_agent']}:\n"
-                f"  1. Remove direct {bp['data_source']} access from {bp['downstream_agent']}\n"
-                f"  2. Pass filtered output from {bp['upstream_agent']} to {bp['downstream_agent']}\n"
-                f"  3. Or add output_filter on {bp['downstream_agent']}'s direct read"
-            ),
+            remediation=_cr06_code_remediation(bp),
             effort="med",
             finding_class="compounding",
             owasp_id="ASI05",
             owasp_name="Insufficient Sandboxing",
+            crew_id=bp.get("crew_name", ""),
         ))
 
     # Assign sub-IDs: STRATUM-CR06, STRATUM-CR06.1, etc.

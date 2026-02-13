@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
+import subprocess
 from collections import Counter
 
 from stratum.models import (
@@ -231,6 +233,11 @@ def build_profile(result: ScanResult) -> TelemetryProfile:
             default=0,
         ),
         external_sink_count=graph_node_type_dist.get("external", 0),
+        # v4: findings by class
+        findings_by_class={
+            fc: sum(1 for f in all_findings if getattr(f, 'finding_class', 'security') == fc)
+            for fc in {getattr(f, 'finding_class', 'security') for f in all_findings}
+        },
         # v0.2 enrichment
         findings_by_category={
             cat: sum(1 for f in all_findings if f.category.value == cat)
@@ -510,6 +517,7 @@ def build_scan_profile(
     p.archetype = _compute_archetype_class(result.capabilities, result)
     p.archetype_confidence = 0.9
     p.frameworks = list(result.detected_frameworks)
+    p.framework_versions = _detect_framework_versions(result.directory)
     p.agent_count = len(agents)
     p.crew_count = len(crews)
     p.files_scanned = result.files_scanned
@@ -562,10 +570,14 @@ def build_scan_profile(
         len(all_tools) / max(tool_assignments, 1), 2
     )
 
-    # Per-crew tool sharing
+    # Per-crew tool sharing (dedup crews to avoid double-counting)
     max_sharing = 0
     tools_shared_3 = 0
+    seen_crew_names: set[str] = set()
     for crew in crews:
+        if crew.name in seen_crew_names:
+            continue
+        seen_crew_names.add(crew.name)
         crew_agents = set(crew.agent_names)
         tool_agent_count: dict[str, int] = {}
         for a in agents:
@@ -618,11 +630,10 @@ def build_scan_profile(
 
     # ── Risk profile ──
     p.risk_score = result.risk_score
-    per_crew = getattr(result, "_per_crew_scores", {})
-    if isinstance(per_crew, dict):
-        p.risk_scores_per_crew = sorted(per_crew.values(), reverse=True)
-    else:
-        p.risk_scores_per_crew = sorted(per_crew, reverse=True) if per_crew else []
+    p.risk_scores_per_crew = _compute_per_crew_scores(all_findings, crews)
+    p.risk_score_breakdown = _compute_risk_score_breakdown(
+        result.top_paths, result.signals, result.guardrails,
+    )
 
     p.finding_ids = sorted(set(f.id for f in all_findings))
     p.finding_count = len(all_findings)
@@ -635,6 +646,13 @@ def build_scan_profile(
         cat_counts[cv] = cat_counts.get(cv, 0) + 1
     p.findings_by_severity = sev_counts
     p.findings_by_category = cat_counts
+
+    # v4: findings by class
+    class_counts: dict[str, int] = {}
+    for f in all_findings:
+        fc = getattr(f, 'finding_class', 'security')
+        class_counts[fc] = class_counts.get(fc, 0) + 1
+    p.findings_by_class = class_counts
 
     # Anti-pattern flags
     p.has_unguarded_data_external = "STRATUM-001" in finding_id_set
@@ -773,12 +791,15 @@ def build_scan_profile(
             p.has_email_integration
             and any("gmail" in lbl or "email" in lbl for lbl in ext_labels)
         )
+        _scrape_terms = ("scrape", "website")
         p.has_scrape_to_action = (
             p.has_web_scraping
+            and p.external_service_count > 0
             and any(
-                e.edge_type == EdgeType.SENDS_TO
-                and "scrape" in graph.nodes.get(e.source, GraphNode_stub).label.lower()
+                any(t in graph.nodes.get(e.source, GraphNode_stub).label.lower()
+                    for t in _scrape_terms)
                 for e in graph.edges
+                if e.edge_type in (EdgeType.SENDS_TO, EdgeType.TOOL_OF)
             )
         )
         p.has_db_to_external = (
@@ -845,18 +866,62 @@ def build_scan_profile(
             )
             p.max_node_degree = max(degrees.values())
 
-        # Isolated agents
+        # Isolated agents — only count data-flow edges, not tool_of
         agent_node_ids = set(
             nid for nid, node in graph.nodes.items()
             if node.node_type == NodeType.AGENT
         )
+        data_flow_types = {
+            EdgeType.FEEDS_INTO, EdgeType.SHARES_TOOL, EdgeType.SHARES_WITH,
+            EdgeType.READS_FROM, EdgeType.SENDS_TO, EdgeType.WRITES_TO,
+            EdgeType.GATED_BY, EdgeType.FILTERED_BY, EdgeType.DELEGATES_TO,
+        }
         connected_agents: set[str] = set()
         for e in graph.edges:
-            if e.source in agent_node_ids:
-                connected_agents.add(e.source)
-            if e.target in agent_node_ids:
-                connected_agents.add(e.target)
+            if e.edge_type in data_flow_types:
+                if e.source in agent_node_ids:
+                    connected_agents.add(e.source)
+                if e.target in agent_node_ids:
+                    connected_agents.add(e.target)
         p.isolated_agent_count = len(agent_node_ids - connected_agents)
+
+    # ── Project identity + connectable surfaces ──
+    p.project_name = os.path.basename(os.path.abspath(result.directory))
+    p.project_hash = _compute_project_hash(result.directory)
+    p.framework_parse_quality = getattr(result, "framework_parse_quality", "unknown")
+    p.scan_source = "cli"
+
+    # Git context (best-effort)
+    git_remote = _detect_git_remote(result.directory)
+    if git_remote:
+        p.repo_url = git_remote
+        # org_id from remote: github.com/org/repo → org
+        parts = git_remote.rstrip("/").replace(".git", "").split("/")
+        if len(parts) >= 2:
+            p.org_id = parts[-2]
+    git_branch, git_sha = _detect_git_ref(result.directory)
+    p.branch = git_branch
+    p.commit_sha = git_sha
+
+    # LLM models
+    llm_models = getattr(result, "llm_models", [])
+    p.llm_models = llm_models
+    providers = sorted(set(m["provider"] for m in llm_models))
+    p.llm_providers = providers
+    p.llm_model_count = len(llm_models)
+    p.has_multiple_providers = len(providers) > 1
+
+    # Env var names
+    env_detected = getattr(result, "env_var_names_detected", [])
+    p.env_var_names = env_detected
+    p.env_var_names_specific = [
+        e for e in env_detected if e.get("specificity") == "specific"
+    ]
+
+    # Vector stores
+    vs = getattr(result, "vector_stores_detected", [])
+    p.vector_stores = vs
+    p.has_vector_store = len(vs) > 0
 
     # ── Delta ──
     if previous_profile is not None:
@@ -882,9 +947,287 @@ def build_scan_profile(
     return p
 
 
+# ---------------------------------------------------------------------------
+# Helpers for telemetry fixes (10/10 patch)
+# ---------------------------------------------------------------------------
+
+def _build_crew_directory_map(crews: list) -> dict[str, str]:
+    """Map directory prefixes (first 2 path components) to crew names.
+
+    ``flows/email_auto_responder_flow`` → ``EmailFilterCrew``
+    ``crews/stock_analysis`` → ``StockAnalysisCrew``
+    """
+    crew_dirs: dict[str, str] = {}
+    for crew in crews:
+        sf = getattr(crew, "source_file", "") or ""
+        if not sf:
+            continue
+        parts = sf.replace("\\", "/").split("/")
+        if len(parts) >= 2:
+            root = "/".join(parts[:2]).lower()
+            crew_dirs[root] = crew.name
+    return crew_dirs
+
+
+def _compute_per_crew_scores(all_findings: list, crews: list) -> list[int]:
+    """Attribute findings to crews by directory matching, return sorted scores."""
+    crew_dir_map = _build_crew_directory_map(crews)
+    crew_names = set(c.name for c in crews)
+    sev_weights = {"CRITICAL": 25, "HIGH": 15, "MEDIUM": 8, "LOW": 3}
+    crew_scores: dict[str, int] = {}
+
+    for f in all_findings:
+        crew_name = ""
+        evidence = f.evidence if hasattr(f, "evidence") else []
+        title = f.title if hasattr(f, "title") else ""
+
+        # Strategy 1: crew name in evidence strings
+        evidence_str = str(evidence)
+        for name in crew_names:
+            if name in evidence_str:
+                crew_name = name
+                break
+
+        # Strategy 2: file path directory match
+        if not crew_name:
+            for ev in evidence:
+                ev_clean = ev.replace("\\", "/").lower()
+                parts = ev_clean.split("/")
+                if len(parts) >= 2:
+                    ev_root = "/".join(parts[:2])
+                    if ev_root in crew_dir_map:
+                        crew_name = crew_dir_map[ev_root]
+                        break
+
+        # Strategy 3: crew name in title
+        if not crew_name:
+            for name in crew_names:
+                if name in title:
+                    crew_name = name
+                    break
+
+        if crew_name:
+            sev_val = f.severity.value if hasattr(f.severity, "value") else str(f.severity)
+            w = sev_weights.get(sev_val, 0)
+            crew_scores[crew_name] = crew_scores.get(crew_name, 0) + w
+
+    return sorted([min(s, 100) for s in crew_scores.values()], reverse=True)
+
+
+def _compute_risk_score_breakdown(
+    findings: list, signals: list, guardrails: list,
+) -> dict[str, int]:
+    """Decompose the risk score into component parts."""
+    sev_map = {"CRITICAL": 25, "HIGH": 15, "MEDIUM": 8, "LOW": 3}
+
+    base = 0
+    for f in findings:
+        sv = f.severity.value if hasattr(f.severity, "value") else str(f.severity)
+        base += sev_map.get(sv, 0)
+
+    signal_score = 0
+    for s in signals:
+        sv = s.severity.value if hasattr(s.severity, "value") else str(s.severity)
+        signal_score += sev_map.get(sv, 0)
+
+    # Bonus: no real guardrails
+    guardrail_kinds = set(
+        getattr(g, "kind", "") or "" for g in guardrails
+    )
+    bonus_no_guardrails = 10 if guardrail_kinds <= {"validation", ""} else 0
+
+    # Bonus: no HITL
+    bonus_no_hitl = 5 if "hitl" not in guardrail_kinds else 0
+
+    raw = base + signal_score + bonus_no_guardrails + bonus_no_hitl
+    final = max(0, min(raw, 100))
+
+    return {
+        "base_severity": base,
+        "signal_severity": signal_score,
+        "bonus_no_real_guardrails": bonus_no_guardrails,
+        "bonus_no_hitl": bonus_no_hitl,
+        "raw_total": raw,
+        "final_capped": final,
+    }
+
+
+def _detect_framework_versions(directory: str) -> dict[str, str]:
+    """Parse requirements.txt and pyproject.toml for framework versions."""
+    import os
+    import re
+
+    versions: dict[str, str] = {}
+    target_packages = {
+        "crewai", "langchain", "langchain-core", "langchain-community",
+        "langgraph", "autogen", "openai", "anthropic",
+    }
+
+    # Find requirements files (limit depth to avoid scanning too deep)
+    req_files: list[str] = []
+    for root, dirs, files in os.walk(directory):
+        # Limit depth to 3 levels
+        depth = root.replace(directory, "").count(os.sep)
+        if depth > 3:
+            dirs.clear()
+            continue
+        for fname in files:
+            if fname in ("requirements.txt", "pyproject.toml"):
+                req_files.append(os.path.join(root, fname))
+
+    for req_file in req_files:
+        try:
+            with open(req_file, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            if req_file.endswith("requirements.txt"):
+                for line in content.splitlines():
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    for sep in ("==", ">=", "~=", "<=", ">", "<"):
+                        if sep in line:
+                            name, version = line.split(sep, 1)
+                            name = name.strip().lower()
+                            version = version.strip().split(",")[0].strip()
+                            if name in target_packages and name not in versions:
+                                versions[name] = version
+                            break
+
+            elif req_file.endswith("pyproject.toml"):
+                for pkg in target_packages:
+                    if pkg in versions:
+                        continue
+                    patterns = [
+                        rf'"{re.escape(pkg)}[><=~!]*([0-9][0-9.]*)"',
+                        rf"'{re.escape(pkg)}[><=~!]*([0-9][0-9.]*)'",
+                        rf'{re.escape(pkg)}\s*=\s*"[><=~!]*([0-9][0-9.]*)"',
+                    ]
+                    for pattern in patterns:
+                        match = re.search(pattern, content, re.IGNORECASE)
+                        if match:
+                            versions[pkg] = match.group(1)
+                            break
+        except (OSError, UnicodeDecodeError):
+            continue
+
+    return versions
+
+
 class _GraphNodeStub:
     """Fallback for missing graph node lookups."""
     label = ""
 
 
 GraphNode_stub = _GraphNodeStub()
+
+
+# ---------------------------------------------------------------------------
+# Project identity helpers (Sprint 1: CHAIN-PATCH)
+# ---------------------------------------------------------------------------
+
+def _compute_project_hash(directory: str) -> str:
+    """Stable identifier for a project. Does NOT change when code changes.
+
+    Based on git remote URL (preferred) or directory name (fallback).
+    """
+    remote_url = _detect_git_remote(directory)
+    if remote_url:
+        # Normalize: strip .git suffix, lowercase
+        remote_url = remote_url.lower().rstrip("/")
+        if remote_url.endswith(".git"):
+            remote_url = remote_url[:-4]
+        return hashlib.sha256(remote_url.encode()).hexdigest()[:16]
+
+    # Fallback: directory name only (less reliable)
+    dir_name = os.path.basename(os.path.abspath(directory))
+    return hashlib.sha256(dir_name.encode()).hexdigest()[:16]
+
+
+def _detect_git_remote(directory: str) -> str:
+    """Detect git remote origin URL from .git/config or git CLI."""
+    # Try reading .git/config directly (fast, no subprocess)
+    git_config = os.path.join(directory, ".git", "config")
+    if os.path.isfile(git_config):
+        try:
+            with open(git_config, encoding="utf-8", errors="ignore") as f:
+                content = f.read()
+            in_remote_origin = False
+            for line in content.splitlines():
+                stripped = line.strip()
+                if stripped == '[remote "origin"]':
+                    in_remote_origin = True
+                    continue
+                if in_remote_origin:
+                    if stripped.startswith("["):
+                        break
+                    if stripped.startswith("url ="):
+                        return stripped.split("=", 1)[1].strip()
+        except OSError:
+            pass
+
+    # Fallback: try git CLI
+    try:
+        result = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            cwd=directory, capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        pass
+
+    return ""
+
+
+def _detect_git_ref(directory: str) -> tuple[str, str]:
+    """Detect current git branch and commit SHA.
+
+    Returns (branch, commit_sha). Both may be empty strings on failure.
+    """
+    branch = ""
+    sha = ""
+
+    # Try .git/HEAD for branch
+    head_file = os.path.join(directory, ".git", "HEAD")
+    if os.path.isfile(head_file):
+        try:
+            with open(head_file, encoding="utf-8") as f:
+                content = f.read().strip()
+            if content.startswith("ref: refs/heads/"):
+                branch = content[len("ref: refs/heads/"):]
+                # Try to resolve the SHA
+                ref_file = os.path.join(directory, ".git", content[5:])
+                if os.path.isfile(ref_file):
+                    with open(ref_file, encoding="utf-8") as f:
+                        sha = f.read().strip()[:12]
+            elif len(content) >= 12:
+                # Detached HEAD
+                sha = content[:12]
+        except OSError:
+            pass
+
+    # Fallback: try git CLI
+    if not branch:
+        try:
+            result = subprocess.run(
+                ["git", "branch", "--show-current"],
+                cwd=directory, capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0:
+                branch = result.stdout.strip()
+        except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+            pass
+
+    if not sha:
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--short=12", "HEAD"],
+                cwd=directory, capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0:
+                sha = result.stdout.strip()
+        except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+            pass
+
+    return branch, sha

@@ -295,12 +295,17 @@ def _deduplicate_paths(paths: list[RiskPath]) -> list[RiskPath]:
 # Blast radius computation
 # ---------------------------------------------------------------------------
 
-def find_blast_radii(graph: RiskGraph, crews: list) -> list[BlastRadius]:
+def find_blast_radii(
+    graph: RiskGraph, crews: list, agents: list | None = None,
+) -> list[BlastRadius]:
     """Find shared tools that fan out to multiple agents, **per-crew**.
 
     For each (tool, crew) pair where 2+ agents in that crew share the tool,
     compute the blast radius within that crew only.  No more cross-crew
     inflation (e.g. "SerperDevTool → 9 agents" across 5 independent crews).
+
+    Uses both graph TOOL_OF edges and agent definitions to catch tools that
+    don't have capability nodes in the graph (e.g. ScrapeWebsiteTool).
     """
     # Build tool -> agents map from TOOL_OF edges
     tool_agents: dict[str, list[str]] = {}
@@ -373,8 +378,70 @@ def find_blast_radii(graph: RiskGraph, crews: list) -> list[BlastRadius]:
                 crew_name=crew_name if crew_name != "(default)" else "",
             ))
 
-    results.sort(key=lambda br: (br.agent_count, br.external_count), reverse=True)
-    return results
+    # Second pass: find tools from agent definitions that aren't in the graph
+    # This catches tools like ScrapeWebsiteTool that don't have capability nodes
+    if agents:
+        # Collect (tool, crew) pairs already found
+        found_pairs: set[tuple[str, str]] = set()
+        for br in results:
+            found_pairs.add((br.source_label, br.crew_name))
+
+        for crew in crews:
+            crew_agent_names = set(crew.agent_names)
+            tool_to_agents: dict[str, list[str]] = {}
+            for agent_def in agents:
+                if agent_def.name in crew_agent_names:
+                    for tool in agent_def.tool_names:
+                        tool_to_agents.setdefault(tool, []).append(agent_def.name)
+
+            for tool_name, sharing_agents in tool_to_agents.items():
+                if len(sharing_agents) < 2:
+                    continue
+                if (tool_name, crew.name) in found_pairs:
+                    continue
+
+                # Resolve agent IDs and labels
+                agent_ids_list = []
+                agent_labels = []
+                for aname in sharing_agents:
+                    aid = f"agent_{aname.lower().replace(' ', '_')}"
+                    agent_ids_list.append(aid)
+                    anode = graph.nodes.get(aid)
+                    agent_labels.append(anode.label if anode else aname)
+
+                # Collect downstream externals
+                all_ext: set[str] = set()
+                ext_labels = []
+                for aid in agent_ids_list:
+                    all_ext.update(agent_externals.get(aid, set()))
+                for eid in all_ext:
+                    enode = graph.nodes.get(eid)
+                    if enode:
+                        ext_labels.append(enode.label)
+
+                results.append(BlastRadius(
+                    source_node_id=f"cap_{tool_name}",
+                    source_label=tool_name,
+                    affected_agent_ids=agent_ids_list,
+                    affected_agent_labels=sorted(agent_labels),
+                    downstream_external_ids=sorted(all_ext),
+                    downstream_external_labels=sorted(ext_labels),
+                    agent_count=len(sharing_agents),
+                    external_count=len(all_ext),
+                    crew_name=crew.name,
+                ))
+
+    # Dedup by (tool_label, crew_name) to prevent duplicate entries
+    seen: set[tuple[str, str]] = set()
+    deduped: list[BlastRadius] = []
+    for br in results:
+        key = (br.source_label, br.crew_name)
+        if key not in seen:
+            seen.add(key)
+            deduped.append(br)
+
+    deduped.sort(key=lambda br: (br.agent_count, br.external_count), reverse=True)
+    return deduped
 
 
 # ---------------------------------------------------------------------------

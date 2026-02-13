@@ -166,6 +166,7 @@ def group_findings_into_actions(
     incident_matches: list[IncidentMatch],
     detected_frameworks: list[str],
     blast_radii: list[BlastRadius],
+    scan_result=None,
 ) -> list[ActionGroup]:
     """Takes raw findings and returns prioritized ActionGroups.
 
@@ -233,7 +234,7 @@ def group_findings_into_actions(
             matching.sort(key=lambda f: severity_order.get(f.severity, 99))
             narrative_finding = matching[0]
 
-        group.narrative = _build_narrative(narrative_finding, matching, blast_radii)
+        group.narrative = _build_narrative(narrative_finding, matching, blast_radii, scan_result)
 
         # Code fix — pick the right framework
         if defn.get("code_fix"):
@@ -284,10 +285,27 @@ def _build_narrative(
     primary_finding: Finding,
     all_findings: list[Finding],
     blast_radii: list[BlastRadius],
+    scan_result=None,
 ) -> str:
-    """Build a 2-3 sentence narrative explaining WHY this matters."""
+    """Build a 2-3 sentence narrative explaining WHY this matters.
+
+    Uses attack scenario narratives when available, with project-specific
+    context from the scan result.
+    """
     fid = primary_finding.id
 
+    # Try attack scenario narratives first (project-specific)
+    if scan_result:
+        try:
+            from stratum.research.narratives import render_narrative, build_narrative_context
+            ctx = build_narrative_context(primary_finding, scan_result)
+            narrative = render_narrative(fid, ctx)
+            if narrative and "{" not in narrative:
+                return narrative
+        except Exception:
+            pass
+
+    # Hardcoded fallbacks for specific finding types
     if fid == "STRATUM-001":
         return (
             "Your agents send emails and take actions with no human check. "

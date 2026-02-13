@@ -115,6 +115,7 @@ class Finding:
     citation: dict | None = None  # For JSON output: {stat, source, url}
     quick_fix_type: str = ""  # Key into remediation TEMPLATES dict
     graph_paths: list = field(default_factory=list)  # list[RiskPath] from graph
+    crew_id: str = ""  # Which crew this finding belongs to, or "" for project-level
 
 
 # ── Agent Relationship Models ────────────────────────────────
@@ -224,6 +225,12 @@ class ScanResult:
     has_shared_context: bool = False
     telemetry_destinations: list[str] = field(default_factory=list)
     has_eval_conflict: bool = False
+
+    # Connectable surfaces (Sprint 1: CHAIN-PATCH)
+    llm_models: list = field(default_factory=list)
+    env_var_names_detected: list = field(default_factory=list)
+    vector_stores_detected: list[str] = field(default_factory=list)
+    framework_parse_quality: str = "unknown"
 
 
 @dataclass
@@ -351,6 +358,9 @@ class TelemetryProfile:
     shared_tool_max_agents: int = 0                                         # [structural]
     external_sink_count: int = 0                                            # [scale]
 
+    # === Finding class distribution (v4) ===
+    findings_by_class: dict[str, int] = field(default_factory=dict)          # [structural]
+
     # === v0.2 enrichment ===
     findings_by_category: dict[str, int] = field(default_factory=dict)       # [scale]
     blast_radius_distribution: list[int] = field(default_factory=list)       # [scale]
@@ -380,6 +390,18 @@ class ScanProfile:
     schema_version: str = "2.0"
     scan_timestamp: str = ""
     scanner_version: str = ""
+
+    # ─── PROJECT IDENTITY (Sprint 1: CHAIN-PATCH) ────────────────
+    project_name: str = ""
+    repo_url: str = ""
+    org_id: str = ""
+    branch: str = ""
+    commit_sha: str = ""
+    scan_source: str = "cli"
+    project_hash: str = ""
+
+    # ─── PARSE QUALITY ───────────────────────────────────────────
+    framework_parse_quality: str = "unknown"
 
     # ─── ARCHITECTURE ───────────────────────────────────────────
     archetype: str = ""
@@ -438,6 +460,7 @@ class ScanProfile:
     finding_count: int = 0
     findings_by_severity: dict[str, int] = field(default_factory=dict)
     findings_by_category: dict[str, int] = field(default_factory=dict)
+    findings_by_class: dict[str, int] = field(default_factory=dict)
 
     # Anti-pattern flags
     has_unguarded_data_external: bool = False
@@ -517,6 +540,18 @@ class ScanProfile:
     nist_ai_rmf_functions: list[str] = field(default_factory=list)
 
     compliance_gap_count: int = 0
+
+    # ─── CONNECTABLE SURFACES (Sprint 1: CHAIN-PATCH) ──────────
+    llm_models: list = field(default_factory=list)
+    llm_providers: list[str] = field(default_factory=list)
+    llm_model_count: int = 0
+    has_multiple_providers: bool = False
+
+    env_var_names: list = field(default_factory=list)
+    env_var_names_specific: list = field(default_factory=list)
+
+    vector_stores: list[str] = field(default_factory=list)
+    has_vector_store: bool = False
 
     # ─── GRAPH TOPOLOGY ─────────────────────────────────────────
     node_count: int = 0

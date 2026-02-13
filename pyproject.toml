@@ -4,16 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stratum-cli"
-version = "0.1.0"
-description = "Agent Risk Profiler - scan AI agent projects for risk paths"
+version = "0.3.0"
+description = "AI agent security scanner"
+readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.10"
 dependencies = [
     "click>=8.0",
+    "pyyaml>=6.0",
     "rich>=13.0",
 ]
-
-[project.optional-dependencies]
-yaml = ["pyyaml>=6.0"]
 
 [project.scripts]
 stratum = "stratum.cli:main"

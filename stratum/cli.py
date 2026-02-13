@@ -39,18 +39,26 @@ def cli() -> None:
 @click.option("--format", "output_format", type=click.Choice(["terminal", "json", "sarif"]),
               default="terminal", help="Output format")
 @click.option("--fix", "apply_fix", is_flag=True,
-              help="Auto-apply safe fixes (human_input, memory) to source files")
+              help="Auto-apply safe fixes (human_input, memory, timeout) to source files")
+@click.option("--patch-output", type=click.Path(),
+              help="Generate a .patch file with fixes instead of applying them")
 @click.option("--badge", "generate_badge", is_flag=True,
               help="Generate stratum-badge.svg in the scanned directory")
 @click.option("--profile-output", type=click.Path(),
               help="Write ScanProfile as standalone JSON to this path")
 @click.option("--quiet", is_flag=True,
               help="Minimal output: score + top 3 actions")
+@click.option("--upload", is_flag=True,
+              help="Upload profile to Stratum dashboard (requires --token)")
+@click.option("--token", "api_token", type=str, default=None,
+              help="Stratum API token for --upload")
 def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
              no_telemetry: bool, offline: bool, fail_above: int | None,
              security_mode: bool, output_format: str, apply_fix: bool,
-             generate_badge: bool, profile_output: str | None,
-             quiet: bool = False) -> None:
+             patch_output: str | None, generate_badge: bool,
+             profile_output: str | None,
+             quiet: bool = False,
+             upload: bool = False, api_token: str | None = None) -> None:
     """Run a security audit on an AI agent project."""
     # --ci implies --security ordering
     if ci:
@@ -84,6 +92,10 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
         and not offline                    # not in offline mode
         and env_override != "off"          # not suppressed by env var
     )
+
+    # Track scan timing
+    import time as _time
+    _scan_start = _time.monotonic()
 
     # Run scan
     result = scan(path)
@@ -130,9 +142,46 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
     submission_success = False
     if telemetry_enabled and profile is not None:
         import dataclasses
-        from stratum.telemetry.share import submit_profile
+        from stratum.telemetry.share import submit_profile, build_usage_ping, submit_usage_ping
         profile_dict = dataclasses.asdict(profile)
         submission_success = submit_profile(profile_dict)
+
+        # Build and send lightweight usage ping (v3 telemetry)
+        _scan_duration = int((_time.monotonic() - _scan_start) * 1000)
+        _flags = []
+        if apply_fix: _flags.append("fix")
+        if patch_output: _flags.append("patch")
+        if generate_badge: _flags.append("badge")
+        if verbose: _flags.append("verbose")
+        if quiet: _flags.append("quiet")
+        if json_output: _flags.append("json")
+        if ci: _flags.append("ci")
+        _out_mode = "quiet" if quiet else ("json" if json_output or ci else ("verbose" if verbose else "default"))
+        _fix_ct = 0
+        if apply_fix or patch_output:
+            from stratum.fix import count_fixable_findings
+            _fix_ct = count_fixable_findings(result)
+        usage_ping = build_usage_ping(
+            result, scan_profile=scan_profile,
+            duration_ms=_scan_duration, flags_used=_flags,
+            fix_count=_fix_ct, output_mode=_out_mode,
+        )
+        submit_usage_ping(usage_ping)
+
+    # --upload: push profile to Stratum dashboard
+    if upload and scan_profile is not None:
+        import dataclasses as dc
+        token = api_token or os.environ.get("STRATUM_TOKEN", "")
+        if not token:
+            click.echo("  --upload requires --token or STRATUM_TOKEN env var", err=True)
+        else:
+            from stratum.api.upload import upload_profile
+            profile_dict_for_upload = dc.asdict(scan_profile)
+            ok, msg = upload_profile(profile_dict_for_upload, token)
+            if ok:
+                click.echo(f"  Profile uploaded to Stratum dashboard.")
+            else:
+                click.echo(f"  Upload failed: {msg}", err=True)
 
     # Populate citation field on findings for JSON output
     from stratum.research.citations import get_citation
@@ -209,8 +258,27 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
         if submission_success:
             print_comparison_url(result.scan_id)
 
-    # --fix mode: apply auto-remediations
-    if apply_fix:
+    # --patch-output: generate a .patch file without modifying source
+    if patch_output:
+        from stratum.fix import generate_patch, write_patch_file
+        patches = generate_patch(result, abs_path)
+        if patches:
+            os.makedirs(os.path.dirname(os.path.abspath(patch_output)), exist_ok=True)
+            write_patch_file(patches, patch_output)
+            click.echo()
+            click.echo(f"  Generated {len(patches)} fix(es) in {patch_output}:")
+            click.echo()
+            for p in patches:
+                click.echo(f"    {p.file_path}")
+            click.echo()
+            click.echo(f"  To apply:  git apply {patch_output}")
+            click.echo(f"  To review: cat {patch_output}")
+        else:
+            click.echo()
+            click.echo("  No auto-fixable issues found.")
+
+    # --fix mode: apply auto-remediations in place
+    elif apply_fix:
         from stratum.fix import apply_fixes
         fixes = apply_fixes(result, abs_path)
         if fixes:
@@ -225,6 +293,14 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
         else:
             click.echo()
             click.echo("  No auto-fixable issues found.")
+
+    # Show fix CTA in terminal mode if there are fixable findings
+    elif output_format == "terminal" and not quiet:
+        from stratum.fix import count_fixable_findings
+        fixable = count_fixable_findings(result)
+        if fixable > 0:
+            click.echo(f"  Run 'stratum scan . --fix' to auto-fix {fixable} finding{'s' if fixable != 1 else ''}.")
+            click.echo()
 
     # --badge: generate SVG badge
     if generate_badge:

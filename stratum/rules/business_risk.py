@@ -7,6 +7,7 @@ from stratum.models import (
     Capability, Finding, ScanResult, Severity, Confidence, RiskCategory,
 )
 from stratum.knowledge.remediation import framework_remediation
+from stratum.rules.helpers import limit_evidence, scope_evidence_to_project
 
 
 def evaluate_business_risks(result: ScanResult) -> list[Finding]:
@@ -83,7 +84,13 @@ def _check_autonomous_external_comms(result: ScanResult) -> list[Finding]:
                 quick_fix_type="add_hitl",
             ))
 
-    return _deduplicate_findings(findings, "STRATUM-BR01")
+    deduped = _deduplicate_findings(findings, "STRATUM-BR01")
+    # Limit to 3 findings max and scope evidence to same project root
+    if deduped:
+        ref_file = deduped[0].evidence[0].split(":")[0] if deduped[0].evidence else ""
+        for f in deduped:
+            f.evidence = scope_evidence_to_project(f.evidence, ref_file)
+    return deduped[:3]
 
 
 # ---------------------------------------------------------------------------

@@ -10,6 +10,7 @@ from pathlib import Path
 from stratum.models import (
     Capability, Finding, ScanResult, Severity, Confidence, RiskCategory,
 )
+from stratum.rules.helpers import scope_evidence_to_project
 
 
 def evaluate_compounding_risks(result: ScanResult) -> list[Finding]:
@@ -83,7 +84,10 @@ def _check_shared_tool_different_trust(result: ScanResult) -> list[Finding]:
                         f"which performs external actions. A prompt injection in the input can "
                         f"propagate through the shared tool context to trigger unauthorized actions."
                     ),
-                    evidence=[ingest.source_file, actor.source_file],
+                    evidence=scope_evidence_to_project(
+                        [ingest.source_file, actor.source_file],
+                        ingest.source_file,
+                    ),
                     scenario=(
                         f"A crafted email arrives. '{ingest.name}' processes it and its context "
                         f"is now influenced by the injected instructions. '{actor.name}' shares "

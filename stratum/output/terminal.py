@@ -37,7 +37,17 @@ _CIRCLES = {1: "\u2460", 2: "\u2461", 3: "\u2462", 4: "\u2463", 5: "\u2464",
 
 def render(result: ScanResult, verbose: bool = False,
            security_mode: bool = False, quiet: bool = False) -> None:
-    """Render the scan result to the terminal."""
+    """Render the scan result to the terminal.
+
+    Layout (v4):
+    1. Header (project info)
+    2. Rescan delta (if applicable — score change, resolved/new findings)
+    3. Flow maps ("YOUR AGENT ARCHITECTURE" — the "oh" moment)
+    4. Risk bar (visual score)
+    5. "FIX THESE FIRST" (primary action groups)
+    6. "ALSO WORTH FIXING" (secondary)
+    7. Footer (class-separated counts, fix CTA)
+    """
     all_findings = result.top_paths + result.signals
 
     # Build action groups
@@ -48,6 +58,7 @@ def render(result: ScanResult, verbose: bool = False,
         incident_matches=getattr(result, "incident_matches", []),
         detected_frameworks=result.detected_frameworks,
         blast_radii=getattr(result, "blast_radii", []),
+        scan_result=result,
     )
     primary, secondary = split_primary_and_secondary(action_groups)
 
@@ -58,14 +69,11 @@ def render(result: ScanResult, verbose: bool = False,
 
     # Standard output
     _render_header(result)
-    _render_risk_bar_section(result, all_findings)
 
-    if primary:
-        _render_section_header("FIX THESE FIRST")
-        for i, group in enumerate(primary):
-            _render_primary_action(group, i + 1, result)
+    # Rescan delta (v4) — show resolved/new findings
+    _render_rescan_header(result)
 
-    # Flow maps
+    # Flow maps first (v4) — the hook that creates the "oh" moment
     crews = getattr(result, "crew_definitions", [])
     graph = getattr(result, "graph", None)
     blast_radii = getattr(result, "blast_radii", [])
@@ -73,11 +81,18 @@ def render(result: ScanResult, verbose: bool = False,
     if crews and graph:
         maps = render_all_crew_maps(
             crews, graph, result.top_paths, blast_radii,
-            control_bypasses, incidents,
+            control_bypasses, incidents, scan_result=result,
         )
         if maps:
-            _render_section_header("WHAT YOUR AGENTS LOOK LIKE")
+            _render_section_header("YOUR AGENT ARCHITECTURE")
             console.print(maps)
+
+    _render_risk_bar_section(result, all_findings)
+
+    if primary:
+        _render_section_header("FIX THESE FIRST")
+        for i, group in enumerate(primary):
+            _render_primary_action(group, i + 1, result)
 
     if secondary:
         _render_section_header("ALSO WORTH FIXING")
@@ -126,6 +141,67 @@ def _render_header(result: ScanResult) -> None:
     console.print(f" \u2551  {line2:<{inner}}\u2551")
     console.print(f" \u2551  {line3:<{inner}}\u2551")
     console.print(f" \u255a{'=' * (box_width - 2)}\u255d")
+
+
+# ── Rescan Delta (v4) ────────────────────────────────────────────────────────
+
+# Human-readable titles for finding IDs in rescan delta display
+_FINDING_TITLES: dict[str, str] = {
+    "STRATUM-001": "Unguarded data-to-external path",
+    "STRATUM-002": "Destructive tool with no gate",
+    "STRATUM-008": "No error handling on external calls",
+    "STRATUM-009": "No timeout on HTTP calls",
+    "STRATUM-010": "No checkpointing",
+    "STRATUM-BR01": "External messages without review",
+    "STRATUM-CR05": "Shared tool blast radius",
+    "STRATUM-CR06": "Control bypass",
+}
+
+
+def _render_rescan_header(result: ScanResult) -> None:
+    """Render score delta and resolved/new findings when rescanning."""
+    diff = getattr(result, 'diff', None)
+    if not diff:
+        return
+    if not diff.resolved_finding_ids and not diff.new_finding_ids and diff.risk_score_delta == 0:
+        return
+
+    console.print()
+    delta = diff.risk_score_delta
+    prev = diff.previous_risk_score
+
+    if delta < 0:
+        console.print(f" [green]\u2193{abs(delta)} points[/green] (was {prev})")
+    elif delta > 0:
+        console.print(f" [red]\u2191{delta} points[/red] (was {prev})")
+    else:
+        console.print(f" No change (score: {result.risk_score})")
+
+    # Resolved findings
+    if diff.resolved_finding_ids:
+        console.print()
+        console.print(f" \u2500\u2500\u2500 RESOLVED SINCE LAST SCAN \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500")
+        console.print()
+        for fid in diff.resolved_finding_ids:
+            title = _FINDING_TITLES.get(fid, fid)
+            console.print(f"  [green]\u2713[/green] {fid}  {title} \u2014 RESOLVED")
+
+    # New findings
+    if diff.new_finding_ids:
+        console.print()
+        console.print(f" \u2500\u2500\u2500 NEW SINCE LAST SCAN \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500")
+        console.print()
+        for fid in diff.new_finding_ids:
+            title = _FINDING_TITLES.get(fid, fid)
+            console.print(f"  [yellow]\u26a0[/yellow] {fid}  {title} \u2014 NEW")
+
+    # Summary
+    resolved_count = len(diff.resolved_finding_ids)
+    new_count = len(diff.new_finding_ids)
+    remaining = len(result.top_paths) + len(result.signals)
+    console.print()
+    console.print(f"  {resolved_count} resolved \u00b7 {new_count} new \u00b7 {remaining} remaining")
+    console.print()
 
 
 # ── Risk Bar ──────────────────────────────────────────────────────────────────
@@ -204,15 +280,52 @@ def _render_secondary_action(group) -> None:
 # ── Footer ────────────────────────────────────────────────────────────────────
 
 def _render_footer(result: ScanResult, all_findings: list) -> None:
-    """Render the footer with counts and pointer to --verbose."""
-    finding_count = len(result.top_paths)
-    signal_count = len(result.signals)
+    """Render the footer with class-separated counts, --fix CTA, and pointer to --verbose."""
+    # Count by finding class (v4)
+    class_counts: dict[str, int] = {}
+    for f in all_findings:
+        fc = getattr(f, 'finding_class', 'security')
+        class_counts[fc] = class_counts.get(fc, 0) + 1
+
+    parts: list[str] = []
+    arch_count = class_counts.get("architecture", 0) + class_counts.get("security", 0) + class_counts.get("compounding", 0)
+    oper_count = class_counts.get("operational", 0)
+    hyg_count = class_counts.get("hygiene", 0) + class_counts.get("meta", 0)
+    if arch_count:
+        parts.append(f"{arch_count} architecture risk{'s' if arch_count != 1 else ''}")
+    if oper_count:
+        parts.append(f"{oper_count} operational recommendation{'s' if oper_count != 1 else ''}")
+    if hyg_count:
+        parts.append(f"{hyg_count} hygiene item{'s' if hyg_count != 1 else ''}")
+    if not parts:
+        parts.append(f"{len(all_findings)} findings total")
+
     console.print()
     console.print(
-        f" \u2500\u2500\u2500 {finding_count} findings total \u00b7 "
-        f"{signal_count} signals \u00b7 "
+        f" \u2500\u2500\u2500 {' \u00b7 '.join(parts)} \u00b7 "
         f"Full details: [cyan]stratum scan . --verbose[/cyan]"
     )
+
+    # Auto-fix CTA — show "X of Y" for honesty (v4)
+    try:
+        from stratum.fix import count_fixable_findings
+        fixable = count_fixable_findings(result)
+        total = len(all_findings)
+        if fixable > 0:
+            console.print()
+            if fixable < total:
+                console.print(
+                    f" [bold green]\u2192[/bold green] Run [cyan]stratum scan . --fix[/cyan] "
+                    f"to auto-fix {fixable} of {total} findings"
+                )
+            else:
+                console.print(
+                    f" [bold green]\u2192[/bold green] Run [cyan]stratum scan . --fix[/cyan] "
+                    f"to auto-fix {fixable} finding{'s' if fixable != 1 else ''}"
+                )
+    except Exception:
+        pass
+
     console.print()
 
     # History file reference

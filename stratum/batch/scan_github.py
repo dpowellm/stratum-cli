@@ -22,6 +22,18 @@ import tempfile
 
 logger = logging.getLogger(__name__)
 
+SEED_ORGS = [
+    "crewAIInc",
+    "langchain-ai",
+    "microsoft",  # autogen
+    "run-llama",
+]
+
+EXAMPLE_KEYWORDS = {
+    "example", "demo", "tutorial", "starter", "template",
+    "quickstart", "sample", "boilerplate", "playground",
+}
+
 SEARCH_QUERIES = [
     # Framework-specific
     "crewai",
@@ -99,6 +111,7 @@ def scan_github(
                 entry = {
                     "scan_profile": dataclasses.asdict(scan_profile),
                     "repo_context": dataclasses.asdict(repo_context),
+                    "is_example": _is_example_repo(repo, result),
                 }
                 entry_path = os.path.join(output_dir, f"{repo_hash}.json")
                 with open(entry_path, "w", encoding="utf-8") as f:
@@ -167,6 +180,97 @@ def _clone_repo(repo: dict) -> str | None:
         logger.warning("Clone failed for %s: %s", repo.get("full_name"), e)
         shutil.rmtree(clone_dir, ignore_errors=True)
         return None
+
+
+def _is_example_repo(repo: dict, result=None) -> bool:
+    """Detect if a repo is an example/demo project.
+
+    Checks repo name/description for example keywords,
+    and optionally checks scan results for anomalous framework/finding counts.
+    """
+    name = (repo.get("name") or "").lower()
+    desc = (repo.get("description") or "").lower()
+    combined = f"{name} {desc}"
+
+    # Keyword match in name or description
+    if any(kw in combined for kw in EXAMPLE_KEYWORDS):
+        return True
+
+    if result is not None:
+        # 4+ frameworks detected suggests a kitchen-sink demo
+        if len(getattr(result, "detected_frameworks", [])) >= 4:
+            return True
+        # 80+ findings suggests an intentionally insecure example
+        all_findings = getattr(result, "top_paths", []) + getattr(result, "signals", [])
+        if len(all_findings) >= 80:
+            return True
+
+    return False
+
+
+def discover_clustered(
+    output_dir: str,
+    max_repos: int = 500,
+) -> None:
+    """Two-phase discovery: broad search then expand multi-repo orgs + seed orgs.
+
+    Phase 1: Standard broad search using SEARCH_QUERIES.
+    Phase 2: For orgs that appear 2+ times, fetch all their agent repos.
+             Also scan SEED_ORGS repos.
+    """
+    from stratum.scanner import scan as stratum_scan
+    from stratum.telemetry.profile import build_scan_profile
+    from stratum.batch.repo_context import build_repo_context
+
+    os.makedirs(output_dir, exist_ok=True)
+    scanned_hashes: set[str] = _load_scanned_hashes(output_dir)
+    total_scanned = 0
+    org_counts: dict[str, int] = {}
+
+    # Phase 1: Broad search
+    logger.info("Phase 1: Broad search")
+    for query in SEARCH_QUERIES:
+        if total_scanned >= max_repos // 2:
+            break
+        repos = _github_search(query, max_results=50)
+        for repo in repos:
+            if total_scanned >= max_repos // 2:
+                break
+            repo_hash = hashlib.sha256(
+                repo.get("full_name", "").encode()
+            ).hexdigest()[:16]
+            if repo_hash in scanned_hashes:
+                continue
+
+            # Track org
+            owner = repo.get("owner", {}).get("login", "")
+            if owner:
+                org_counts[owner] = org_counts.get(owner, 0) + 1
+
+            scanned_hashes.add(repo_hash)
+            total_scanned += 1
+
+    # Phase 2: Expand multi-repo orgs + seed orgs
+    expand_orgs = {org for org, count in org_counts.items() if count >= 2}
+    expand_orgs.update(SEED_ORGS)
+    logger.info("Phase 2: Expanding %d orgs", len(expand_orgs))
+
+    for org in expand_orgs:
+        if total_scanned >= max_repos:
+            break
+        repos = _github_search(f"org:{org} agent", max_results=20)
+        for repo in repos:
+            if total_scanned >= max_repos:
+                break
+            repo_hash = hashlib.sha256(
+                repo.get("full_name", "").encode()
+            ).hexdigest()[:16]
+            if repo_hash in scanned_hashes:
+                continue
+            scanned_hashes.add(repo_hash)
+            total_scanned += 1
+
+    logger.info("Discovery complete: %d repos identified", total_scanned)
 
 
 def _load_scanned_hashes(output_dir: str) -> set[str]:
