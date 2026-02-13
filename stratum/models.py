@@ -357,3 +357,243 @@ class TelemetryProfile:
     guardrail_linked_count: int = 0                                          # [scale]
     regulatory_surface: list[str] = field(default_factory=list)              # [structural]
     schema_version: str = "0.2"                                              # [structural]
+
+
+# ── ScanProfile (Enterprise Intelligence Schema) ──────────────────────
+
+@dataclass
+class ScanProfile:
+    """Complete anonymized scan profile for the intelligence database.
+    Every field exists because it powers a specific enterprise query.
+
+    Privacy contract:
+    - No file paths, function names, agent names, or code content
+    - Tool names and library names are included (open-source identifiers)
+    - External service names are included (Gmail, Slack — not secret)
+    - Crew names are hashed
+    - All counts, ratios, booleans, and categorical values
+    """
+
+    # ─── IDENTITY ───────────────────────────────────────────────
+    scan_id: str = ""
+    topology_signature: str = ""
+    schema_version: str = "2.0"
+    scan_timestamp: str = ""
+    scanner_version: str = ""
+
+    # ─── ARCHITECTURE ───────────────────────────────────────────
+    archetype: str = ""
+    archetype_confidence: float = 0.0
+
+    frameworks: list[str] = field(default_factory=list)
+    framework_versions: dict[str, str] = field(default_factory=dict)
+
+    agent_count: int = 0
+    crew_count: int = 0
+    files_scanned: int = 0
+    is_monorepo: bool = False
+
+    crew_sizes: list[int] = field(default_factory=list)
+    crew_process_types: dict[str, int] = field(default_factory=dict)
+    max_chain_depth: int = 0
+    avg_crew_size: float = 0.0
+    has_hierarchical_crew: bool = False
+    has_delegation: bool = False
+
+    # ─── TOOL INVENTORY ─────────────────────────────────────────
+    tool_names: list[str] = field(default_factory=list)
+    tool_count: int = 0
+    tool_categories: dict[str, int] = field(default_factory=dict)
+
+    libraries: list[str] = field(default_factory=list)
+
+    capability_counts: dict[str, int] = field(default_factory=dict)
+    outbound_to_data_ratio: float = 0.0
+
+    tool_reuse_ratio: float = 0.0
+    max_tool_sharing: int = 0
+    tools_shared_by_3_plus: int = 0
+
+    # ─── EXTERNAL SERVICES ──────────────────────────────────────
+    external_services: list[str] = field(default_factory=list)
+    external_service_count: int = 0
+
+    data_sources: list[str] = field(default_factory=list)
+    data_source_count: int = 0
+
+    has_email_integration: bool = False
+    has_messaging_integration: bool = False
+    has_web_scraping: bool = False
+    has_database_integration: bool = False
+    has_file_system_access: bool = False
+    has_financial_tools: bool = False
+    has_code_execution: bool = False
+
+    # ─── RISK PROFILE ───────────────────────────────────────────
+    risk_score: int = 0
+    risk_score_breakdown: dict[str, int] = field(default_factory=dict)
+    risk_scores_per_crew: list[int] = field(default_factory=list)
+
+    finding_ids: list[str] = field(default_factory=list)
+    finding_count: int = 0
+    findings_by_severity: dict[str, int] = field(default_factory=dict)
+    findings_by_category: dict[str, int] = field(default_factory=dict)
+
+    # Anti-pattern flags
+    has_unguarded_data_external: bool = False
+    has_destructive_no_gate: bool = False
+    has_blast_radius_3_plus: bool = False
+    has_control_bypass: bool = False
+    has_unvalidated_chain: bool = False
+    has_shared_tool_bridge: bool = False
+    has_no_error_handling: bool = False
+    has_no_timeout: bool = False
+    has_no_checkpointing: bool = False
+    has_no_audit_trail: bool = False
+    has_unreviewed_external_comms: bool = False
+    has_no_cost_controls: bool = False
+
+    # Incident pattern matching
+    incident_matches: list[dict] = field(default_factory=list)
+    incident_match_count: int = 0
+    matches_echoleak: bool = False
+    matches_any_breach: bool = False
+
+    # ─── BLAST RADIUS ───────────────────────────────────────────
+    blast_radii: list[dict] = field(default_factory=list)
+    blast_radius_count: int = 0
+    max_blast_radius: int = 0
+    total_blast_surface: int = 0
+    blast_radius_distribution: dict[str, int] = field(default_factory=dict)
+
+    # ─── CONTROL MATURITY ───────────────────────────────────────
+    guardrail_count: int = 0
+    guardrail_types: dict[str, int] = field(default_factory=dict)
+    guardrail_linked_count: int = 0
+    guardrail_coverage_ratio: float = 0.0
+
+    control_coverage_pct: float = 0.0
+
+    has_hitl: bool = False
+    has_structured_output: bool = False
+    has_checkpointing: bool = False
+    checkpoint_type: str = "none"
+    has_observability: bool = False
+    has_rate_limiting: bool = False
+    has_error_handling: bool = False
+    error_handling_ratio: float = 0.0
+    has_input_validation: bool = False
+    has_output_filtering: bool = False
+
+    maturity_score: int = 0
+    maturity_level: str = ""
+
+    # ─── DATA FLOW ──────────────────────────────────────────────
+    sensitive_data_types: list[str] = field(default_factory=list)
+    has_pii_flow: bool = False
+    has_financial_flow: bool = False
+    has_credential_flow: bool = False
+
+    uncontrolled_path_count: int = 0
+    max_path_hops: int = 0
+    trust_boundary_crossings: int = 0
+    downward_crossings: int = 0
+
+    has_inbox_to_outbound: bool = False
+    has_scrape_to_action: bool = False
+    has_db_to_external: bool = False
+    has_file_to_external: bool = False
+
+    # ─── REGULATORY EXPOSURE ────────────────────────────────────
+    applicable_regulations: list[str] = field(default_factory=list)
+
+    eu_ai_act_risk_level: str = ""
+    eu_ai_act_articles: list[str] = field(default_factory=list)
+    eu_ai_act_gap_count: int = 0
+
+    gdpr_relevant: bool = False
+    gdpr_articles: list[str] = field(default_factory=list)
+
+    nist_ai_rmf_functions: list[str] = field(default_factory=list)
+
+    compliance_gap_count: int = 0
+
+    # ─── GRAPH TOPOLOGY ─────────────────────────────────────────
+    node_count: int = 0
+    edge_count: int = 0
+    edge_density: float = 0.0
+    agent_to_agent_edges: int = 0
+    guardrail_edges: int = 0
+
+    avg_node_degree: float = 0.0
+    max_node_degree: int = 0
+    isolated_agent_count: int = 0
+
+    # ─── DELTA ──────────────────────────────────────────────────
+    has_previous_scan: bool = False
+    previous_risk_score: int = 0
+    risk_score_delta: int = 0
+    new_finding_ids: list[str] = field(default_factory=list)
+    resolved_finding_ids: list[str] = field(default_factory=list)
+    new_finding_count: int = 0
+    resolved_finding_count: int = 0
+    maturity_score_delta: int = 0
+
+    # ─── WHAT-IF SIGNALS ────────────────────────────────────────
+    what_if_controls: list[dict] = field(default_factory=list)
+    top_recommendation: str = ""
+    top_recommendation_impact: int = 0
+
+
+# ── RepoContext (GitHub batch pipeline) ───────────────────────────────
+
+@dataclass
+class RepoContext:
+    """Repository metadata from GitHub. NOT captured by the scanner.
+    Added by the batch scan pipeline for public repos.
+    Enterprise customers provide equivalent context through their own metadata.
+    """
+
+    # ─── REPO IDENTITY ──────────────────────────────────────────
+    repo_hash: str = ""
+    platform: str = "github"
+
+    # ─── POPULARITY ─────────────────────────────────────────────
+    stars: int = 0
+    forks: int = 0
+    watchers: int = 0
+    open_issues: int = 0
+
+    # ─── ACTIVITY ───────────────────────────────────────────────
+    created_at: str = ""
+    last_commit_at: str = ""
+    days_since_last_commit: int = 0
+    commit_count_90d: int = 0
+    contributor_count: int = 0
+    is_archived: bool = False
+    is_active: bool = False
+
+    # ─── STRUCTURE ──────────────────────────────────────────────
+    primary_language: str = ""
+    total_files: int = 0
+    total_lines: int = 0
+    has_tests: bool = False
+    has_ci: bool = False
+    has_dockerfile: bool = False
+    has_requirements_txt: bool = False
+    has_pyproject_toml: bool = False
+
+    # ─── DOMAIN INFERENCE ───────────────────────────────────────
+    domain_hint: str = ""
+    domain_confidence: float = 0.0
+    domain_signals: list[str] = field(default_factory=list)
+
+    # ─── DEPENDENCY VERSIONS ────────────────────────────────────
+    dependency_versions: dict[str, str] = field(default_factory=dict)
+    outdated_dependencies: int = 0
+
+    # ─── README ANALYSIS ────────────────────────────────────────
+    has_readme: bool = False
+    readme_mentions_security: bool = False
+    readme_mentions_production: bool = False
+    readme_length: int = 0

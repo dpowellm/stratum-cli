@@ -10,9 +10,14 @@ import logging
 from collections import Counter
 
 from stratum.models import (
-    Capability, Confidence, GuardrailSignal, ScanResult, TelemetryProfile, TrustLevel,
+    Capability, Confidence, GuardrailSignal, ScanProfile, ScanResult,
+    TelemetryProfile, TrustLevel,
 )
 from stratum.knowledge.db import HTTP_LIBRARIES
+from stratum.telemetry.tools import categorize_tools, categorize_single_tool
+from stratum.telemetry.maturity import compute_maturity_score
+from stratum.telemetry.regulatory import compute_regulatory_exposure
+from stratum.telemetry.what_if import compute_what_if_controls
 from stratum import __version__
 
 logger = logging.getLogger(__name__)
@@ -470,3 +475,416 @@ def _validate_profile(profile: TelemetryProfile) -> TelemetryProfile:
             logger.warning("String field %s contains path separator: %s", field_name, value)
 
     return profile
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ScanProfile builder (enterprise intelligence schema)
+# ═══════════════════════════════════════════════════════════════════════
+
+def build_scan_profile(
+    result: ScanResult,
+    previous_profile: ScanProfile | None = None,
+) -> ScanProfile:
+    """Build a full ScanProfile from a ScanResult.
+
+    This is the enterprise intelligence profile with ~120 fields.
+    Runs alongside build_profile() — does NOT replace it.
+    """
+    from stratum.graph.models import NodeType, EdgeType
+
+    p = ScanProfile()
+    graph = result.graph
+    all_findings = result.top_paths + result.signals
+    finding_id_set = set(f.id for f in all_findings)
+    agents = getattr(result, "agent_definitions", [])
+    crews = getattr(result, "crew_definitions", [])
+    blast_radii = getattr(result, "blast_radii", [])
+
+    # ── Identity ──
+    p.scan_id = result.scan_id
+    p.topology_signature = _compute_topology_hash(result)
+    p.scan_timestamp = result.timestamp
+    p.scanner_version = __version__
+
+    # ── Architecture ──
+    p.archetype = _compute_archetype_class(result.capabilities, result)
+    p.archetype_confidence = 0.9
+    p.frameworks = list(result.detected_frameworks)
+    p.agent_count = len(agents)
+    p.crew_count = len(crews)
+    p.files_scanned = result.files_scanned
+    p.is_monorepo = len(crews) > 3
+
+    p.crew_sizes = sorted(
+        [len(c.agent_names) for c in crews], reverse=True
+    )
+    crew_proc: dict[str, int] = {}
+    for c in crews:
+        pt = c.process_type or "unknown"
+        crew_proc[pt] = crew_proc.get(pt, 0) + 1
+    p.crew_process_types = crew_proc
+    p.avg_crew_size = (
+        round(sum(p.crew_sizes) / len(p.crew_sizes), 1)
+        if p.crew_sizes else 0.0
+    )
+    p.has_hierarchical_crew = any(
+        c.process_type == "hierarchical" for c in crews
+    )
+    p.has_delegation = any(
+        c.delegation_enabled or c.has_manager for c in crews
+    )
+    if graph is not None:
+        p.max_chain_depth = graph.risk_surface.max_chain_depth
+
+    # ── Tool inventory ──
+    all_tools: set[str] = set()
+    tool_assignments = 0
+    for a in agents:
+        for t in a.tool_names:
+            all_tools.add(t)
+            tool_assignments += 1
+
+    p.tool_names = sorted(all_tools)
+    p.tool_count = len(all_tools)
+    p.tool_categories = categorize_tools(list(all_tools))
+    p.libraries = sorted(set(c.library for c in result.capabilities if c.library))
+    p.capability_counts = {
+        "outbound": result.outbound_count,
+        "data_access": result.data_access_count,
+        "code_exec": result.code_exec_count,
+        "destructive": result.destructive_count,
+        "financial": result.financial_count,
+    }
+    p.outbound_to_data_ratio = round(
+        result.outbound_count / max(result.data_access_count, 1), 2
+    )
+    p.tool_reuse_ratio = round(
+        len(all_tools) / max(tool_assignments, 1), 2
+    )
+
+    # Per-crew tool sharing
+    max_sharing = 0
+    tools_shared_3 = 0
+    for crew in crews:
+        crew_agents = set(crew.agent_names)
+        tool_agent_count: dict[str, int] = {}
+        for a in agents:
+            if a.name in crew_agents:
+                for t in a.tool_names:
+                    tool_agent_count[t] = tool_agent_count.get(t, 0) + 1
+        for count in tool_agent_count.values():
+            max_sharing = max(max_sharing, count)
+            if count >= 3:
+                tools_shared_3 += 1
+    p.max_tool_sharing = max_sharing
+    p.tools_shared_by_3_plus = tools_shared_3
+
+    # ── External services ──
+    if graph is not None:
+        p.external_services = sorted(set(
+            n.label for n in graph.nodes.values()
+            if n.node_type == NodeType.EXTERNAL_SERVICE
+        ))
+        p.data_sources = sorted(set(
+            n.label for n in graph.nodes.values()
+            if n.node_type == NodeType.DATA_STORE
+        ))
+    p.external_service_count = len(p.external_services)
+    p.data_source_count = len(p.data_sources)
+
+    # Service pattern flags
+    all_tools_lower = {t.lower() for t in all_tools}
+    libs_lower = {lib.lower() for lib in p.libraries}
+    p.has_email_integration = any(
+        "gmail" in t or "outlook" in t for t in all_tools_lower
+    )
+    p.has_messaging_integration = any(
+        "slack" in l or "teams" in l for l in libs_lower
+    )
+    p.has_web_scraping = (
+        any("scrape" in t for t in all_tools_lower)
+        or "requests" in libs_lower
+    )
+    p.has_database_integration = any(
+        "pg" in t or "mongo" in t or "chroma" in t
+        for t in all_tools_lower
+    )
+    p.has_file_system_access = any("file" in t for t in all_tools_lower)
+    p.has_financial_tools = any(
+        "sec" in t or "calculator" in t or "finance" in t
+        for t in all_tools_lower
+    )
+    p.has_code_execution = result.code_exec_count > 0
+
+    # ── Risk profile ──
+    p.risk_score = result.risk_score
+    per_crew = getattr(result, "_per_crew_scores", {})
+    if isinstance(per_crew, dict):
+        p.risk_scores_per_crew = sorted(per_crew.values(), reverse=True)
+    else:
+        p.risk_scores_per_crew = sorted(per_crew, reverse=True) if per_crew else []
+
+    p.finding_ids = sorted(set(f.id for f in all_findings))
+    p.finding_count = len(all_findings)
+    sev_counts: dict[str, int] = {}
+    cat_counts: dict[str, int] = {}
+    for f in all_findings:
+        sv = f.severity.value.lower()
+        sev_counts[sv] = sev_counts.get(sv, 0) + 1
+        cv = f.category.value.lower()
+        cat_counts[cv] = cat_counts.get(cv, 0) + 1
+    p.findings_by_severity = sev_counts
+    p.findings_by_category = cat_counts
+
+    # Anti-pattern flags
+    p.has_unguarded_data_external = "STRATUM-001" in finding_id_set
+    p.has_destructive_no_gate = "STRATUM-002" in finding_id_set
+    p.has_blast_radius_3_plus = any(
+        fid.startswith("STRATUM-CR05") for fid in finding_id_set
+    )
+    p.has_control_bypass = any(
+        fid.startswith("STRATUM-CR06") for fid in finding_id_set
+    )
+    p.has_unvalidated_chain = "STRATUM-CR02" in finding_id_set
+    p.has_shared_tool_bridge = "STRATUM-CR01" in finding_id_set
+    p.has_no_error_handling = "STRATUM-008" in finding_id_set
+    p.has_no_timeout = "STRATUM-009" in finding_id_set
+    p.has_no_checkpointing = "STRATUM-010" in finding_id_set
+    p.has_no_audit_trail = "STRATUM-BR03" in finding_id_set
+    p.has_unreviewed_external_comms = "STRATUM-BR01" in finding_id_set
+    p.has_no_cost_controls = "STRATUM-OP02" in finding_id_set
+
+    # Incident matching
+    incidents = getattr(result, "incident_matches", [])
+    p.incident_matches = [
+        {"id": m.incident_id, "confidence": m.confidence}
+        for m in incidents
+    ]
+    p.incident_match_count = len(p.incident_matches)
+    p.matches_echoleak = any(
+        m.incident_id == "ECHOLEAK-2025" and m.confidence >= 0.75
+        for m in incidents
+    )
+    p.matches_any_breach = any(m.confidence >= 0.75 for m in incidents)
+
+    # ── Blast radius ──
+    p.blast_radii = [
+        {
+            "tool": br.source_label,
+            "tool_category": categorize_single_tool(br.source_label),
+            "agent_count": br.agent_count,
+            "external_count": br.external_count,
+            "crew_hash": (
+                hashlib.sha256(br.crew_name.encode()).hexdigest()[:8]
+                if br.crew_name else ""
+            ),
+        }
+        for br in blast_radii
+    ]
+    p.blast_radius_count = len(blast_radii)
+    p.max_blast_radius = max(
+        (br.agent_count for br in blast_radii), default=0
+    )
+    p.total_blast_surface = sum(br.agent_count for br in blast_radii)
+    br_counts = [br.agent_count for br in blast_radii]
+    p.blast_radius_distribution = (
+        {str(k): br_counts.count(k) for k in set(br_counts)}
+        if br_counts else {}
+    )
+
+    # ── Control maturity ──
+    p.guardrail_count = len(result.guardrails)
+    guard_kind_counts: dict[str, int] = {}
+    for g in result.guardrails:
+        guard_kind_counts[g.kind] = guard_kind_counts.get(g.kind, 0) + 1
+    p.guardrail_types = guard_kind_counts
+    p.guardrail_linked_count = sum(
+        1 for g in result.guardrails if g.covers_tools
+    )
+    p.guardrail_coverage_ratio = round(
+        p.guardrail_linked_count / max(p.guardrail_count, 1), 2
+    )
+
+    if graph is not None:
+        p.control_coverage_pct = round(
+            graph.risk_surface.control_coverage_pct, 1
+        )
+
+    p.has_hitl = any(g.kind == "hitl" for g in result.guardrails)
+    p.has_structured_output = any(
+        "output_pydantic" in g.detail for g in result.guardrails
+    )
+    p.has_checkpointing = result.checkpoint_type != "none"
+    p.checkpoint_type = result.checkpoint_type
+    p.has_observability = "TELEMETRY-003" not in finding_id_set
+    p.has_rate_limiting = "STRATUM-OP02" not in finding_id_set
+    p.has_error_handling = any(
+        c.has_error_handling for c in result.capabilities
+    )
+    handled = sum(1 for c in result.capabilities if c.has_error_handling)
+    p.error_handling_ratio = round(
+        handled / max(len(result.capabilities), 1), 2
+    )
+    p.has_input_validation = any(
+        c.has_input_validation for c in result.capabilities
+    )
+    p.has_output_filtering = any(
+        g.kind == "output_filter" for g in result.guardrails
+    )
+
+    p.maturity_score, p.maturity_level = compute_maturity_score(
+        has_hitl=p.has_hitl,
+        has_structured_output=p.has_structured_output,
+        has_observability=p.has_observability,
+        has_error_handling=p.has_error_handling,
+        error_handling_ratio=p.error_handling_ratio,
+        checkpoint_type=p.checkpoint_type,
+        has_checkpointing=p.has_checkpointing,
+        has_input_validation=p.has_input_validation,
+        has_rate_limiting=p.has_rate_limiting,
+        has_output_filtering=p.has_output_filtering,
+        guardrail_coverage_ratio=p.guardrail_coverage_ratio,
+    )
+
+    # ── Data flow ──
+    if graph is not None:
+        surface = graph.risk_surface
+        p.sensitive_data_types = list(surface.sensitive_data_types)
+        p.uncontrolled_path_count = surface.uncontrolled_path_count
+        p.max_path_hops = surface.max_path_hops
+        p.trust_boundary_crossings = surface.trust_boundary_crossings
+        p.downward_crossings = surface.downward_crossings
+
+    p.has_pii_flow = (
+        "personal" in p.sensitive_data_types
+        and p.uncontrolled_path_count > 0
+    )
+    p.has_financial_flow = "financial" in p.sensitive_data_types
+    p.has_credential_flow = "credentials" in p.sensitive_data_types
+
+    # Path pattern flags
+    if graph is not None:
+        ext_labels = {
+            n.label.lower()
+            for n in graph.nodes.values()
+            if n.node_type == NodeType.EXTERNAL_SERVICE
+        }
+        p.has_inbox_to_outbound = (
+            p.has_email_integration
+            and any("gmail" in lbl or "email" in lbl for lbl in ext_labels)
+        )
+        p.has_scrape_to_action = (
+            p.has_web_scraping
+            and any(
+                e.edge_type == EdgeType.SENDS_TO
+                and "scrape" in graph.nodes.get(e.source, GraphNode_stub).label.lower()
+                for e in graph.edges
+            )
+        )
+        p.has_db_to_external = (
+            p.has_database_integration and p.uncontrolled_path_count > 0
+        )
+        p.has_file_to_external = (
+            p.has_file_system_access
+            and any(
+                "file" in graph.nodes.get(e.source, GraphNode_stub).label.lower()
+                and e.edge_type == EdgeType.SHARES_WITH
+                for e in graph.edges
+            )
+        )
+
+    # ── Regulatory ──
+    reg = compute_regulatory_exposure(
+        has_financial_tools=p.has_financial_tools,
+        has_credential_flow=p.has_credential_flow,
+        has_pii_flow=p.has_pii_flow,
+        has_observability=p.has_observability,
+        has_structured_output=p.has_structured_output,
+        has_hitl=p.has_hitl,
+        has_no_error_handling=p.has_no_error_handling,
+        has_input_validation=p.has_input_validation,
+        has_no_audit_trail=p.has_no_audit_trail,
+        uncontrolled_path_count=p.uncontrolled_path_count,
+        maturity_score=p.maturity_score,
+    )
+    p.applicable_regulations = reg["applicable_regulations"]
+    p.eu_ai_act_risk_level = reg["eu_ai_act_risk_level"]
+    p.eu_ai_act_articles = reg["eu_ai_act_articles"]
+    p.eu_ai_act_gap_count = reg["eu_ai_act_gap_count"]
+    p.gdpr_relevant = reg["gdpr_relevant"]
+    p.gdpr_articles = reg["gdpr_articles"]
+    p.nist_ai_rmf_functions = reg["nist_ai_rmf_functions"]
+    p.compliance_gap_count = reg["compliance_gap_count"]
+
+    # ── Graph topology ──
+    if graph is not None:
+        p.node_count = len(graph.nodes)
+        p.edge_count = len(graph.edges)
+        n = p.node_count
+        p.edge_density = round(
+            p.edge_count / (n * (n - 1)), 4
+        ) if n > 1 else 0.0
+
+        p.agent_to_agent_edges = sum(
+            1 for e in graph.edges
+            if e.edge_type in (EdgeType.FEEDS_INTO, EdgeType.DELEGATES_TO)
+        )
+        p.guardrail_edges = sum(
+            1 for e in graph.edges
+            if e.edge_type in (EdgeType.GATED_BY, EdgeType.FILTERED_BY)
+        )
+
+        # Degree stats
+        degrees: dict[str, int] = {}
+        for e in graph.edges:
+            degrees[e.source] = degrees.get(e.source, 0) + 1
+            degrees[e.target] = degrees.get(e.target, 0) + 1
+        if degrees:
+            p.avg_node_degree = round(
+                sum(degrees.values()) / len(degrees), 2
+            )
+            p.max_node_degree = max(degrees.values())
+
+        # Isolated agents
+        agent_node_ids = set(
+            nid for nid, node in graph.nodes.items()
+            if node.node_type == NodeType.AGENT
+        )
+        connected_agents: set[str] = set()
+        for e in graph.edges:
+            if e.source in agent_node_ids:
+                connected_agents.add(e.source)
+            if e.target in agent_node_ids:
+                connected_agents.add(e.target)
+        p.isolated_agent_count = len(agent_node_ids - connected_agents)
+
+    # ── Delta ──
+    if previous_profile is not None:
+        p.has_previous_scan = True
+        p.previous_risk_score = previous_profile.risk_score
+        p.risk_score_delta = p.risk_score - previous_profile.risk_score
+        prev_ids = set(previous_profile.finding_ids)
+        curr_ids = set(p.finding_ids)
+        p.new_finding_ids = sorted(curr_ids - prev_ids)
+        p.resolved_finding_ids = sorted(prev_ids - curr_ids)
+        p.new_finding_count = len(p.new_finding_ids)
+        p.resolved_finding_count = len(p.resolved_finding_ids)
+        p.maturity_score_delta = p.maturity_score - previous_profile.maturity_score
+
+    # ── What-if ──
+    p.what_if_controls = compute_what_if_controls(
+        all_findings, result.capabilities, result.guardrails
+    )
+    if p.what_if_controls:
+        p.top_recommendation = p.what_if_controls[0]["control"]
+        p.top_recommendation_impact = p.what_if_controls[0]["score_reduction"]
+
+    return p
+
+
+class _GraphNodeStub:
+    """Fallback for missing graph node lookups."""
+    label = ""
+
+
+GraphNode_stub = _GraphNodeStub()

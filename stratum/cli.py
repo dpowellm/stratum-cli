@@ -12,7 +12,7 @@ from stratum import __version__
 from stratum.scanner import scan
 from stratum.output.terminal import render, print_first_run_notice, print_comparison_url
 from stratum.telemetry.history import load_last, save_history, compute_diff
-from stratum.telemetry.profile import build_profile
+from stratum.telemetry.profile import build_profile, build_scan_profile
 
 
 @click.group()
@@ -42,10 +42,12 @@ def cli() -> None:
               help="Auto-apply safe fixes (human_input, memory) to source files")
 @click.option("--badge", "generate_badge", is_flag=True,
               help="Generate stratum-badge.svg in the scanned directory")
+@click.option("--profile-output", type=click.Path(),
+              help="Write ScanProfile as standalone JSON to this path")
 def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
              no_telemetry: bool, offline: bool, fail_above: int | None,
              security_mode: bool, output_format: str, apply_fix: bool,
-             generate_badge: bool) -> None:
+             generate_badge: bool, profile_output: str | None) -> None:
     """Run a security audit on an AI agent project."""
     # --ci implies --security ordering
     if ci:
@@ -91,6 +93,7 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
 
     # Telemetry profile (save locally unless --offline)
     profile = None
+    scan_profile = None
     if not offline:
         profile = build_profile(result)
         profile_path = os.path.join(stratum_dir, "last-scan.json")
@@ -100,6 +103,21 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
                 json.dump(dataclasses.asdict(profile), f, indent=2)
         except OSError:
             pass
+
+        # ScanProfile (enterprise intelligence schema)
+        prev_profile = _load_previous_profile(stratum_dir)
+        scan_profile = build_scan_profile(result, previous_profile=prev_profile)
+        _save_scan_profile(scan_profile, stratum_dir)
+
+        # --profile-output: standalone JSON for batch pipeline
+        if profile_output:
+            try:
+                import dataclasses as dc
+                os.makedirs(os.path.dirname(os.path.abspath(profile_output)), exist_ok=True)
+                with open(profile_output, "w", encoding="utf-8") as f:
+                    json.dump(dc.asdict(scan_profile), f, indent=2)
+            except OSError as e:
+                click.echo(f"  Failed to write profile: {e}", err=True)
 
     # Set archetype on result for terminal display
     if profile is not None:
@@ -124,44 +142,11 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
     if json_output or ci:
         output_format = "json"
 
-    # Build telemetry profile fields for JSON output
+    # Build telemetry profile dict for JSON output
     telemetry_profile_dict = None
-    if profile is not None:
-        telemetry_profile_dict = {
-            "topology_signature": profile.topology_signature_hash,
-            "archetype": profile.archetype_class,
-            "archetype_confidence": 0.9,
-            "framework_fingerprint": result.detected_frameworks,
-            "capability_fingerprint": {
-                "outbound": result.outbound_count,
-                "data_access": result.data_access_count,
-                "code_exec": result.code_exec_count,
-                "destructive": result.destructive_count,
-            },
-            "agent_count": len(result.agent_definitions),
-            "crew_count": len(result.crew_definitions),
-            "shared_tool_pairs": sum(
-                1 for r in result.agent_relationships
-                if r.relationship_type == "shares_tool"
-            ),
-            "trust_boundary_crossings": (
-                result.graph.risk_surface.trust_boundary_crossings
-                if result.graph else 0
-            ),
-            "control_coverage_pct": (
-                result.graph.risk_surface.control_coverage_pct
-                if result.graph else 0.0
-            ),
-            "max_blast_radius": (
-                max((br.agent_count for br in result.blast_radii), default=0)
-            ),
-            "blast_radius_count": len([
-                br for br in result.blast_radii if br.agent_count >= 2
-            ]),
-            "control_bypass_count": len(
-                getattr(result, '_control_bypasses', [])
-            ),
-        }
+    if scan_profile is not None:
+        import dataclasses as dc
+        telemetry_profile_dict = dc.asdict(scan_profile)
 
     # Output
     if output_format == "sarif":
@@ -319,6 +304,36 @@ def config_get(key: str, path: str) -> None:
     else:
         click.echo(f"Unknown config key: {key}", err=True)
         sys.exit(1)
+
+
+def _load_previous_profile(stratum_dir: str):
+    """Load the previous ScanProfile from last-profile.json for delta tracking."""
+    from stratum.models import ScanProfile
+    profile_path = os.path.join(stratum_dir, "last-profile.json")
+    try:
+        if not os.path.exists(profile_path):
+            return None
+        with open(profile_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        p = ScanProfile()
+        for k, v in data.items():
+            if hasattr(p, k):
+                setattr(p, k, v)
+        return p
+    except (OSError, json.JSONDecodeError, TypeError):
+        return None
+
+
+def _save_scan_profile(scan_profile, stratum_dir: str) -> None:
+    """Save ScanProfile to last-profile.json for delta tracking."""
+    import dataclasses
+    profile_path = os.path.join(stratum_dir, "last-profile.json")
+    try:
+        os.makedirs(stratum_dir, exist_ok=True)
+        with open(profile_path, "w", encoding="utf-8") as f:
+            json.dump(dataclasses.asdict(scan_profile), f, indent=2)
+    except OSError:
+        pass
 
 
 def main() -> None:
