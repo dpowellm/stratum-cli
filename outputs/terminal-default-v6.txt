@@ -1,0 +1,169 @@
+  ┌──────────────────────────────────────────────────────────────┐
+  │  Stratum sends anonymized scan statistics to improve agent   │
+  │  security research. No source code, file paths, or secrets   │
+  │  are collected. See: docs/telemetry.md                       │
+  │                                                              │
+  │  Disable:  stratum config set telemetry off                  │
+  │  One-time: stratum scan . --no-telemetry                     │
+  └──────────────────────────────────────────────────────────────┘
+
+ ╔=================================================================╗
+ ║  STRATUM SCAN                                                   ║
+ ║  crewAI-examples · 116 files · 30 crews · 56 agents             ║
+ ║  Frameworks: CrewAI, LangChain, LangGraph                       ║
+ ║                                                                  ║
+ ║  Risk Score: 69/100                                              ║
+ ╚=================================================================╝
+
+ ─── YOUR AGENT ARCHITECTURE ─────────────────────────────────────
+
+ RecruitmentCrew (4 agents, sequential)  19/100
+ ┌───────────────────────────────────────────────────────────────────┐
+ │                                                                   │
+ │   researcher ──▶ matcher ──▶ communica.. ──▶ reporter             │
+ │     matcher: FileReadTool, CSVSearchTool, SerperDevTool (+1)      │
+ │     researcher: SerperDevTool, ScrapeWebsiteTool, LinkedInTool    │
+ │     communicator: SerperDevTool, ScrapeWebsiteTool                │
+ │                                                                   │
+ │   ☢ STRATUM-CR05.1: Shared tool blast radius: ScrapeWebsiteTool - │
+ │   🔴 ScrapeWebsiteTool shared by 3 agents                          │
+ │   🔴 SerperDevTool shared by 2 agents                              │
+ │                                                                   │
+ └───────────────────────────────────────────────────────────────────┘
+
+ StockAnalysisCrew (4 agents, sequential)  19/100
+ ┌───────────────────────────────────────────────────────────────────┐
+ │                                                                   │
+ │   financial.. ──▶ research_.. ──▶ financial.. ──▶ investmen..     │
+ │     financial_agent: ScrapeWebsiteTool, WebsiteSearchTool, Calcul │
+ │     research_analyst_agent: ScrapeWebsiteTool, SEC10QTool, SEC10K │
+ │     financial_analyst_agent: ScrapeWebsiteTool, WebsiteSearchTool │
+ │     investment_advisor_agent: ScrapeWebsiteTool, WebsiteSearchToo │
+ │                                                                   │
+ │   ☢ STRATUM-CR05.2: Shared tool blast radius: ScrapeWebsiteTool - │
+ │   🔴 ScrapeWebsiteTool shared by 4 agents                          │
+ │   🔴 WebsiteSearchTool shared by 3 agents                          │
+ │   🔴 CalculatorTool shared by 3 agents                             │
+ │   🔴 SEC10QTool shared by 3 agents                                 │
+ │   🔴 SEC10KTool shared by 3 agents                                 │
+ │                                                                   │
+ └───────────────────────────────────────────────────────────────────┘
+
+ SurpriseTravelCrew (3 agents, sequential)  19/100
+ ┌───────────────────────────────────────────────────────────────────┐
+ │                                                                   │
+ │   personalized_ac.. ──▶ restaurant_scout ──▶ itinerary_compi..    │
+ │     personalized_activity_planner: SerperDevTool, ScrapeWebsiteTo │
+ │     restaurant_scout: SerperDevTool, ScrapeWebsiteTool            │
+ │     itinerary_compiler: SerperDevTool                             │
+ │                                                                   │
+ │   ☢ STRATUM-CR05: Shared tool blast radius: SerperDevTool -> 3 ag │
+ │   🔴 SerperDevTool shared by 3 agents                              │
+ │   🔴 ScrapeWebsiteTool shared by 2 agents                          │
+ │                                                                   │
+ └───────────────────────────────────────────────────────────────────┘
+
+ MatchToProposalCrew (2 agents, sequential)  14/100
+ ┌───────────────────────────────────────────────────────────────────┐
+ │                                                                   │
+ │   cv_reader ──▶ matcher                                           │
+ │     cv_reader: FileReadTool                                       │
+ │     matcher: FileReadTool, CSVSearchTool, SerperDevTool (+1)      │
+ │                                                                   │
+ │   ⚠ STRATUM-CR06: 'Matcher' bypasses 'CV Reader' -- reads Crewai  │
+ │   ⚠ BYPASS: Matcher reads Crewai Tools directly                   │
+ │   🔴 FileReadTool shared by 2 agents                               │
+ │                                                                   │
+ └───────────────────────────────────────────────────────────────────┘
+
+ +26 more crews (stratum scan . --verbose to see all)
+
+ RISK SCORE ███████████████████████████░░░░░░░░░░░░░  69 / 100
+            ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+            4 critical · 5 high · 8 medium · 1 low
+
+
+ ─── FIX THESE FIRST ─────────────────────────────────────────────
+
+ ① Add input validation on shared tools                   ░ 30 min
+   Resolves 3 findings (3 critical)
+
+   Activity Planner is shared by 3 agents in
+   SurpriseTravelCrew. If Activity Planner returns poisoned
+   results (SEO spam, prompt injection in API response), all 3
+   agents process that payload. One compromised API response
+   corrupts your entire crew in a single request.
+
+   Fix:
+   ┌────────────────────────────────────────────────────────┐
+   │ class ValidatedSearch(BaseTool):                       │
+   │       def _run(self, query: str) -> str:               │
+   │           raw = SerperDevTool()._run(query)            │
+   │  +        if contains_injection_patterns(raw):         │
+   │  +            raise ValueError("Suspicious content")   │
+   │           return raw                                   │
+   └────────────────────────────────────────────────────────┘
+   Apply to: recruitment/crew.py, stock_analysis/crew.py,
+surprise_travel/crew.py
+
+   📎 Matches real breach: ServiceNow Now Assist Shared Resource
+      Your agent's shared resource amplifies compromise matches
+      the pattern from ServiceNow Now Assist Shared Resource
+      (March 2025).
+
+
+ ② Add human review on outbound tasks                      ░ 5 min
+   Resolves 4 findings (1 critical + 3 high)
+
+   Your GameBuilderCrew reads external input and sends to
+   external service with no human check between them. If
+   someone sends a prompt injection via external input, your
+   agent will send data to whatever destination the injection
+   specifies. This matches the EchoLeak breach pattern (March
+   2024), where a crafted email caused an agent to exfiltrate
+   an entire inbox to an external server.
+
+   Fix:
+   ┌──────────────────────────────────────────────────────────┐
+   │ task = Task(                                             │
+   │       description="...",                                 │
+   │  +    human_input=True   # review before external calls  │
+   │   )                                                      │
+   └──────────────────────────────────────────────────────────┘
+   Apply to: config/agents.yaml, email_filter_crew/email_filter_crew.py,
+instagram_post/agents.py (+4 more)
+
+   📎 Matches real breach: Microsoft Copilot EchoLeak
+      Your agent's data-to-external without review matches the
+      pattern from Microsoft Copilot EchoLeak (March 2024).
+
+
+ ③ Fix data access bypass                                 ░ 15 min
+   Resolves 2 findings (2 high)
+
+   You built senior_engineer_agent as a filter to sanitize
+   inputs before qa_engineer_agent processes them. But
+   qa_engineer_agent has direct access to the same data source
+   data source. It reads raw data without going through your
+   filter. Your filter is architecturally irrelevant — it runs,
+   but the unfiltered path exists in parallel.
+
+
+
+ ─── ALSO WORTH FIXING ───────────────────────────────────────────
+
+ · 29 external API calls have no error handling
+ · 29 HTTP calls have no timeout
+ · 5 crews with findings (13 agents) have no checkpointing
+ · No validation between agent handoffs in StockAnalysisCrew (4 agents)
+
+ ─── 10 architecture risks · 6 operational recommendations · 2 hygiene items ·
+Full details: stratum scan . --verbose
+
+ → Run stratum scan . --fix to auto-fix 6 of 18 findings
+
+ .stratum/history.jsonl saved (1 scans)
+
+                                     stratum v0.2 ·
+github.com/stratum-systems/stratum-cli
+  Run 'stratum scan . --fix' to auto-fix 6 findings.
