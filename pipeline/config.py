@@ -59,6 +59,9 @@ DEFAULT_DISCOVERY_LOG_PATH = "pipeline/data/discovery_log.json"
 DEFAULT_SCAN_RESULTS_PATH = "pipeline/data/scan_results.jsonl"
 DEFAULT_QUARANTINE_PATH = "pipeline/data/quarantine.jsonl"
 DEFAULT_PIPELINE_LOG_PATH = "pipeline/data/pipeline_run_log.json"
+DEFAULT_AUDIT_REPORT_PATH = "pipeline/data/dataset_audit_report.md"
+DEFAULT_TRAIN_PATH = "pipeline/data/scan_results_train.jsonl"
+DEFAULT_TEST_PATH = "pipeline/data/scan_results_test.jsonl"
 
 # Scan runner settings
 SCAN_TIMEOUT_SECONDS = 300       # 5-minute timeout for stratum scan

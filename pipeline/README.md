@@ -121,6 +121,62 @@ python pipeline/monitor.py --once
 - ETA based on throughput
 - Last error
 
+## Phase 4: Dataset Audit
+
+Post-collection quality audit that reads `scan_results.jsonl`, evaluates 8 quality gates, and produces a markdown report with ASCII histograms.
+
+### Full audit
+
+```bash
+python pipeline/audit.py
+python pipeline/audit.py --input pipeline/data/scan_results.jsonl
+```
+
+### Generate train/test split
+
+```bash
+# Stratified 80/20 split by framework x deployment_score
+python pipeline/audit.py --split
+```
+
+### Run a single section
+
+```bash
+python pipeline/audit.py --section duplicates
+python pipeline/audit.py --section frameworks
+```
+
+Available sections: `volume`, `frameworks`, `scores`, `findings`, `maturity`, `duplicates`, `coverage`, `strata`, `gates`, `recommendations`
+
+### Quality Gates
+
+| Gate | Name | Threshold |
+|------|------|-----------|
+| G1 | Volume | success + partial >= 40,000 |
+| G2 | Framework coverage | each top-5 framework >= 1,000 repos |
+| G3 | Maturity spread | >= 2,000 repos with deployment_score >= 3 |
+| G4 | Finding coverage | >= 15 rules appear in 100+ repos |
+| G5 | Duplicate rate | <= 5% repos share topology_signature_hash with 10+ others |
+| G6 | Empty rate | empty scans <= 20% |
+| G7 | Failure rate | failed scans <= 10% |
+| G8 | Coverage | median files_scanned/files_total >= 0.80 |
+
+### Output
+
+- `pipeline/data/dataset_audit_report.md` — full audit report with ASCII charts
+- `pipeline/data/scan_results_train.jsonl` — training split (80%, with `--split`)
+- `pipeline/data/scan_results_test.jsonl` — test split (20%, with `--split`)
+
+### Testing with synthetic data
+
+```bash
+# Generate 200 synthetic pings
+python pipeline/generate_test_data.py
+
+# Run audit on synthetic data
+python pipeline/audit.py --input pipeline/data/test_scan_results.jsonl
+```
+
 ## Schema
 
 All outputs conform to Stratum telemetry schema v0.3.2 (schema_id=5). See `spec/telemetry/SCHEMA.md` for the full data dictionary.
