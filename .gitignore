@@ -26,21 +26,38 @@ ENV/
 .DS_Store
 Thumbs.db
 
-# Stratum
+# Stratum runtime
 .stratum/
 
 # Secrets
 .env
 .env.*
-!test_project/.env
 
 # Claude Code
 .claude/
-
-# Spec patches (not part of project)
-PATCH-*.md
 
 # Testing
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Dev specs and patch docs (not part of distribution)
+PATCH-*.md
+STRATUM-*.md
+SPEC*.md
+STRATEGY-*.md
+claude-code-prompt.md
+
+# Test outputs, profiling, and scan artifacts
+outputs/
+scan_result.json
+profile*.json
+*_output.json
+test_eval*.json
+test_eval*.txt
+test_json_out.txt
+
+# Test repos and dev utilities
+test_project/
+risk_map/
+scripts/
