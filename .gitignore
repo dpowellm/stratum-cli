@@ -62,3 +62,7 @@ test_json_out.txt
 /test_project/
 /risk_map/
 /scripts/
+
+# Pipeline data outputs (not committed)
+pipeline/data/*
+!pipeline/data/.gitkeep

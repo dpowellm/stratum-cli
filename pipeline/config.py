@@ -1,0 +1,115 @@
+"""Shared configuration for the Stratum 50k pipeline."""
+
+import os
+import sys
+
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
+
+if not GITHUB_TOKEN:
+    print("ERROR: GITHUB_TOKEN environment variable is required.", file=sys.stderr)
+    print("  export GITHUB_TOKEN=ghp_...", file=sys.stderr)
+    sys.exit(1)
+
+GITHUB_API = "https://api.github.com"
+GITHUB_HEADERS = {
+    "Accept": "application/vnd.github+json",
+    "Authorization": f"Bearer {GITHUB_TOKEN}",
+    "X-GitHub-Api-Version": "2022-11-28",
+}
+
+# Rate limit thresholds
+RATE_LIMIT_FLOOR = 5          # sleep when remaining < this
+SEARCH_RATE_LIMIT_FLOOR = 2   # search API is stricter (30/min)
+MAX_RETRIES = 3
+RETRY_BACKOFF = [2, 10, 30]   # seconds
+
+# GitHub Search API limits
+SEARCH_PER_PAGE = 100
+SEARCH_MAX_RESULTS = 1000     # GitHub caps at 1000 per query
+
+# Date partitions for queries that hit the 1000-result cap
+DATE_PARTITIONS = [
+    ("2024-01-01", "2024-04-01"),
+    ("2024-04-01", "2024-07-01"),
+    ("2024-07-01", "2024-10-01"),
+    ("2024-10-01", "2025-01-01"),
+    ("2025-01-01", "2025-04-01"),
+    ("2025-04-01", "2025-07-01"),
+    ("2025-07-01", "2025-10-01"),
+    ("2025-10-01", "2026-01-01"),
+    ("2026-01-01", "2026-04-01"),
+]
+
+# Default output paths
+DEFAULT_MANIFEST_PATH = "pipeline/data/repo_manifest.jsonl"
+DEFAULT_DISCOVERY_LOG_PATH = "pipeline/data/discovery_log.json"
+
+STRATA = [
+    {
+        "name": "langchain_active",
+        "queries": [
+            "langchain agent language:python pushed:>2025-06-01",
+            "langchain tool language:python pushed:>2025-06-01",
+            "langchain graph language:python pushed:>2025-06-01",
+        ],
+        "target": 8000,
+    },
+    {
+        "name": "crewai",
+        "queries": [
+            "crewai language:python pushed:>2025-06-01",
+            "crewai crew language:python pushed:>2025-06-01",
+        ],
+        "target": 6000,
+    },
+    {
+        "name": "langgraph",
+        "queries": [
+            "langgraph language:python pushed:>2025-06-01",
+            "langgraph agent language:python pushed:>2025-06-01",
+        ],
+        "target": 5000,
+    },
+    {
+        "name": "autogen",
+        "queries": [
+            "autogen agent language:python pushed:>2025-01-01",
+            "autogen multi-agent language:python pushed:>2025-01-01",
+        ],
+        "target": 3000,
+    },
+    {
+        "name": "llamaindex",
+        "queries": [
+            "llamaindex agent language:python pushed:>2025-01-01",
+            "llama-index agent language:python pushed:>2025-01-01",
+        ],
+        "target": 3000,
+    },
+    {
+        "name": "agno_smolagents_other",
+        "queries": [
+            "agno agent language:python pushed:>2025-06-01",
+            "smolagents language:python pushed:>2025-06-01",
+            "ai agent framework language:python pushed:>2025-06-01",
+        ],
+        "target": 3000,
+    },
+    {
+        "name": "high_maturity",
+        "queries": [
+            "ai agent language:python stars:>100",
+            "llm agent language:python stars:>50 pushed:>2024-06-01",
+        ],
+        "target": 5000,
+    },
+    {
+        "name": "discovery_pool",
+        "queries": [
+            "ai agent python language:python pushed:>2025-06-01",
+            "llm agent language:python pushed:>2025-06-01",
+            "autonomous agent language:python pushed:>2025-01-01",
+        ],
+        "target": 10000,
+    },
+]
