@@ -19,7 +19,8 @@
     "v5_rescan": true,
     "scan_status": "success",
     "scan_duration_ms": 4250,
-    "schema_id": 3
+    "schema_id": 4,
+    "failure_reason": null
   },
   {
     "repo_name": "crewAIInc/crewAI",
@@ -38,7 +39,8 @@
     "v5_rescan": true,
     "scan_status": "success",
     "scan_duration_ms": 3560,
-    "schema_id": 3
+    "schema_id": 4,
+    "failure_reason": null
   },
   {
     "repo_name": "langchain-ai/deepagents",
@@ -60,7 +62,8 @@
     "v5_rescan": true,
     "scan_status": "success",
     "scan_duration_ms": 1250,
-    "schema_id": 3
+    "schema_id": 4,
+    "failure_reason": null
   },
   {
     "repo_name": "bytedance/deer-flow",
@@ -79,7 +82,8 @@
     "v5_rescan": true,
     "scan_status": "success",
     "scan_duration_ms": 1190,
-    "schema_id": 3
+    "schema_id": 4,
+    "failure_reason": null
   },
   {
     "repo_name": "crewAIInc/crewAI-tools",
@@ -98,7 +102,8 @@
     "v5_rescan": true,
     "scan_status": "success",
     "scan_duration_ms": 1160,
-    "schema_id": 3
+    "schema_id": 4,
+    "failure_reason": null
   },
   {
     "repo_name": "strnad/CrewAI-Studio",
@@ -117,7 +122,8 @@
     "v5_rescan": true,
     "scan_status": "success",
     "scan_duration_ms": 650,
-    "schema_id": 3
+    "schema_id": 4,
+    "failure_reason": null
   },
   {
     "repo_name": "jgravelle/AutoGroq",
@@ -136,7 +142,8 @@
     "v5_rescan": true,
     "scan_status": "success",
     "scan_duration_ms": 500,
-    "schema_id": 3
+    "schema_id": 4,
+    "failure_reason": null
   },
   {
     "repo_name": "langchain-ai/streamlit-agent",
@@ -158,7 +165,8 @@
     "v5_rescan": true,
     "scan_status": "success",
     "scan_duration_ms": 470,
-    "schema_id": 3
+    "schema_id": 4,
+    "failure_reason": null
   },
   {
     "repo_name": "lightninglabs/LangChainBitcoin",
@@ -179,7 +187,8 @@
     "v5_rescan": true,
     "scan_status": "success",
     "scan_duration_ms": 380,
-    "schema_id": 3
+    "schema_id": 4,
+    "failure_reason": null
   },
   {
     "repo_name": "wassim249/fastapi-langgraph-agent-production-ready-template",
@@ -204,7 +213,8 @@
     "v5_rescan": true,
     "scan_status": "success",
     "scan_duration_ms": 500,
-    "schema_id": 3
+    "schema_id": 4,
+    "failure_reason": null
   },
   {
     "repo_name": "steamship-core/langchain-production-starter",
@@ -225,7 +235,8 @@
     "v5_rescan": true,
     "scan_status": "success",
     "scan_duration_ms": 470,
-    "schema_id": 3
+    "schema_id": 4,
+    "failure_reason": null
   },
   {
     "repo_name": "alexfazio/viral-clips-crew",
@@ -246,7 +257,8 @@
     "v5_rescan": true,
     "scan_status": "success",
     "scan_duration_ms": 350,
-    "schema_id": 3
+    "schema_id": 4,
+    "failure_reason": null
   },
   {
     "repo_name": "JoshuaC215/agent-service-toolkit",
@@ -265,7 +277,8 @@
     "v5_rescan": true,
     "scan_status": "success",
     "scan_duration_ms": 440,
-    "schema_id": 3
+    "schema_id": 4,
+    "failure_reason": null
   },
   {
     "repo_name": "langchain-ai/oap-langgraph-tools-agent",
@@ -284,7 +297,8 @@
     "v5_rescan": true,
     "scan_status": "success",
     "scan_duration_ms": 320,
-    "schema_id": 3
+    "schema_id": 4,
+    "failure_reason": null
   },
   {
     "repo_name": "langchain-ai/langgraph-bigtool",
@@ -303,7 +317,8 @@
     "v5_rescan": true,
     "scan_status": "success",
     "scan_duration_ms": 290,
-    "schema_id": 3
+    "schema_id": 4,
+    "failure_reason": null
   },
   {
     "repo_name": "langchain-ai/react-agent-tool-server",
@@ -322,6 +337,7 @@
     "v5_rescan": true,
     "scan_status": "success",
     "scan_duration_ms": 230,
-    "schema_id": 3
+    "schema_id": 4,
+    "failure_reason": null
   }
 ]

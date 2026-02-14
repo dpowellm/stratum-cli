@@ -1,7 +1,7 @@
 {
   "evaluation_date": "2026-02-14",
-  "patch_version": "v7",
-  "scanner_version": "0.3.0",
+  "patch_version": "v7.1",
+  "scanner_version": "0.3.1",
   "bugs_fixed": {
     "bug_1_scoring": {
       "description": "Replace linear scoring with asymptotic normalization: raw/(raw+K)*100 where K=50",
@@ -149,6 +149,15 @@
       "modified": ["schema_version 0.2.0 -> 0.3.0"],
       "batch_fields_added": ["scan_status", "scan_duration_ms", "schema_id"],
       "verification": "S1-S18 all pass"
+    }
+  },
+  "v7_1_fixes": {
+    "collect_now_fields": {
+      "description": "Added 9 collect-now-or-never fields for 50k scan: finding_instance_counts, total_finding_instances, fix_impact_estimates, llm_providers, llm_models, framework_versions, deployment_signals, inter_crew_edges, failure_reason",
+      "status": "FIXED",
+      "fields_added": 9,
+      "fields_modified": 2,
+      "rationale": "These fields require data available during scan but unrecoverable from ping afterward"
     }
   },
   "enterprise_polish": {
@@ -349,9 +358,9 @@
       "status": "PASS",
       "evidence": "files_scanned=116, files_total=116, 116 <= 116"
     },
-    "V20_schema_id_3": {
+    "V20_schema_id_4": {
       "status": "PASS",
-      "evidence": "Both pings have schema_id=3"
+      "evidence": "Both pings have schema_id=4"
     },
     "V21_finding_count_matches_severities": {
       "status": "PASS",
@@ -384,6 +393,54 @@
     "V28_rescan_pre_scan_id": {
       "status": "PASS",
       "evidence": "Rescan pre_scan_id='4cde4df6' matches initial scan_id='4cde4df6'"
+    },
+    "V29_finding_instance_counts": {
+      "status": "PASS",
+      "evidence": "Both pings have finding_instance_counts with keys matching finding_rules"
+    },
+    "V30_total_finding_instances": {
+      "status": "PASS",
+      "evidence": "Initial total_finding_instances=94=sum(instances), rescan=39=sum(instances)"
+    },
+    "V31_fix_impact_estimates": {
+      "status": "PASS",
+      "evidence": "Both pings have fix_impact_estimates with negative integer values for all finding_rules"
+    },
+    "V32_llm_in_pings": {
+      "status": "PASS",
+      "evidence": "Both pings have llm_providers and llm_models as lists"
+    },
+    "V33_framework_versions": {
+      "status": "PASS",
+      "evidence": "Both pings have framework_versions matching frameworks list"
+    },
+    "V34_deployment_signals": {
+      "status": "PASS",
+      "evidence": "Both pings have deployment_signals with 5 booleans and deployment_score=count(true)"
+    },
+    "V35_inter_crew_edges": {
+      "status": "PASS",
+      "evidence": "Both pings have inter_crew_edges as integer <= graph_edge_count"
+    },
+    "V36_failure_reason": {
+      "status": "PASS",
+      "evidence": "Both pings have failure_reason=null (scan_status=success), all batch records have failure_reason=null"
+    },
+    "V37_schema_v71": {
+      "status": "PASS",
+      "evidence": "All pings and batch records have schema_id=4 and schema_version=0.3.1"
+    },
+    "V38_instance_vs_rule_count": {
+      "status": "PASS",
+      "evidence": "total_finding_instances(94) >= finding_rule_count(18) in initial, 39 >= 15 in rescan"
+    },
+    "V39_rescan_instances_drop": {
+      "status": "PASS",
+      "evidence": "Rescan total_finding_instances(39) < initial(94), resolved rules absent from rescan instance_counts"
+    },
+    "V40_v7_preserved": {
+      "status": "PASS",
+      "evidence": "All V17-V28 checks still pass, v7 schema fields preserved"
     }
   },
   "batch_scan": {

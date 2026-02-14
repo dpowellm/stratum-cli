@@ -8,7 +8,7 @@
   "files_scanned": 116,
   "files_total": 116,
   "parser_errors": 0,
-  "schema_id": 3,
+  "schema_id": 4,
   "is_rescan": true,
   "prev_score": 69,
   "score_delta": -14,
@@ -209,5 +209,57 @@
     "median": 0,
     "stddev": 1.7
   },
-  "schema_version": "0.3.0"
+  "finding_instance_counts": {
+    "STRATUM-001": 9,
+    "STRATUM-008": 6,
+    "STRATUM-010": 3,
+    "STRATUM-CR05": 3,
+    "STRATUM-CR05.1": 1,
+    "STRATUM-CR05.2": 1,
+    "STRATUM-CR01": 2,
+    "STRATUM-CR02": 2,
+    "STRATUM-CR06": 2,
+    "STRATUM-BR01": 3,
+    "STRATUM-BR03": 1,
+    "STRATUM-BR04": 1,
+    "STRATUM-OP02": 3,
+    "CONTEXT-001": 1,
+    "TELEMETRY-003": 1
+  },
+  "total_finding_instances": 39,
+  "fix_impact_estimates": {
+    "STRATUM-CR05": -10,
+    "STRATUM-001": -5,
+    "STRATUM-CR06": -5,
+    "STRATUM-CR05.1": -4,
+    "STRATUM-CR05.2": -4,
+    "STRATUM-008": -3,
+    "STRATUM-010": -2,
+    "STRATUM-CR01": -3,
+    "STRATUM-CR02": -3,
+    "STRATUM-BR01": -2,
+    "STRATUM-BR03": -2,
+    "STRATUM-BR04": -2,
+    "STRATUM-OP02": -1,
+    "CONTEXT-001": -1,
+    "TELEMETRY-003": -1
+  },
+  "llm_providers": ["openai"],
+  "llm_models": ["gpt-4o"],
+  "framework_versions": {
+    "CrewAI": "0.80.0",
+    "LangChain": "0.3.7",
+    "LangGraph": "0.2.44"
+  },
+  "deployment_signals": {
+    "has_dockerfile": false,
+    "has_ci_config": false,
+    "has_tests": true,
+    "has_lockfile": true,
+    "has_env_example": true,
+    "deployment_score": 3
+  },
+  "inter_crew_edges": 4,
+  "failure_reason": null,
+  "schema_version": "0.3.1"
 }
