@@ -256,8 +256,8 @@ def group_findings_into_actions(
                         apply_files.add(clean)
         group.apply_to = sorted(apply_files)
 
-        # Incident match — find incident related to this action's findings
-        group.incident_match = _find_best_incident(matching, incident_matches)
+        # Incident match — use finding-type-based matching (v5)
+        group.incident_match = _get_breach_for_finding(narrative_finding, incident_matches)
 
         groups.append(group)
 
@@ -339,6 +339,39 @@ def _build_narrative(
 
     # Generic fallback
     return primary_finding.description[:200]
+
+
+def _get_breach_for_finding(
+    primary_finding: Finding,
+    incident_matches: list[IncidentMatch],
+) -> dict | None:
+    """Get breach match based on the finding's type using FINDING_BREACH_MAP.
+
+    Returns None if no match — omits the 📎 section entirely.
+    Falls back to keyword-based matching if the finding isn't in the map.
+    """
+    from stratum.research.narratives import FINDING_BREACH_MAP, BREACH_DB
+
+    base_id = primary_finding.id.split(".")[0]
+    breach_ids = FINDING_BREACH_MAP.get(base_id)
+
+    if breach_ids is not None:
+        # Finding is in the map
+        if not breach_ids:
+            return None  # Explicitly no breach match (empty list)
+        breach = BREACH_DB.get(breach_ids[0])
+        if breach:
+            return {
+                "name": breach["name"],
+                "confidence": 0.8,
+                "match_reason": (
+                    f"Your agent's {breach['pattern']} matches the pattern "
+                    f"from {breach['name']} ({breach['date']})."
+                ),
+            }
+
+    # Fallback: use keyword matching for unmapped findings
+    return _find_best_incident([primary_finding], incident_matches)
 
 
 def _find_best_incident(

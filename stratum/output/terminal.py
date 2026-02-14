@@ -149,13 +149,38 @@ def _render_header(result: ScanResult) -> None:
 _FINDING_TITLES: dict[str, str] = {
     "STRATUM-001": "Unguarded data-to-external path",
     "STRATUM-002": "Destructive tool with no gate",
+    "STRATUM-003": "Missing input validation",
+    "STRATUM-007": "No rate limiting",
     "STRATUM-008": "No error handling on external calls",
     "STRATUM-009": "No timeout on HTTP calls",
-    "STRATUM-010": "No checkpointing",
+    "STRATUM-010": "No checkpointing on long pipeline",
     "STRATUM-BR01": "External messages without review",
+    "STRATUM-BR02": "Sensitive data in agent prompts",
+    "STRATUM-BR03": "No audit trail",
+    "STRATUM-BR04": "No cost controls",
+    "STRATUM-CR01": "Circular delegation",
+    "STRATUM-CR02": "Single point of failure",
     "STRATUM-CR05": "Shared tool blast radius",
-    "STRATUM-CR06": "Control bypass",
+    "STRATUM-CR06": "Data access bypass",
+    "STRATUM-OP01": "No observability",
+    "STRATUM-OP02": "No human oversight",
+    "CONTEXT-001": "Multiple frameworks detected",
+    "CONTEXT-002": "Large agent fleet",
+    "IDENTITY-001": "Multiple LLM providers",
+    "IDENTITY-002": "External service dependencies",
+    "ENV-001": "Sensitive environment variables",
+    "ENV-002": "Database credentials detected",
+    "TELEMETRY-003": "No observability telemetry",
+    "LEARNING-001": "No learning or eval framework",
 }
+
+
+def _get_finding_title(finding_id: str) -> str:
+    """Look up finding title with fallback for sub-IDs (e.g., CR06.1 -> CR06)."""
+    if finding_id in _FINDING_TITLES:
+        return _FINDING_TITLES[finding_id]
+    base_id = finding_id.rsplit(".", 1)[0]
+    return _FINDING_TITLES.get(base_id, finding_id)
 
 
 def _render_rescan_header(result: ScanResult) -> None:
@@ -183,7 +208,7 @@ def _render_rescan_header(result: ScanResult) -> None:
         console.print(f" \u2500\u2500\u2500 RESOLVED SINCE LAST SCAN \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500")
         console.print()
         for fid in diff.resolved_finding_ids:
-            title = _FINDING_TITLES.get(fid, fid)
+            title = _get_finding_title(fid)
             console.print(f"  [green]\u2713[/green] {fid}  {title} \u2014 RESOLVED")
 
     # New findings
@@ -192,7 +217,7 @@ def _render_rescan_header(result: ScanResult) -> None:
         console.print(f" \u2500\u2500\u2500 NEW SINCE LAST SCAN \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500")
         console.print()
         for fid in diff.new_finding_ids:
-            title = _FINDING_TITLES.get(fid, fid)
+            title = _get_finding_title(fid)
             console.print(f"  [yellow]\u26a0[/yellow] {fid}  {title} \u2014 NEW")
 
     # Summary

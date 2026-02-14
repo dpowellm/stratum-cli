@@ -532,26 +532,8 @@ def scan(path: str) -> ScanResult:
         if base_id in FINDING_CLASS:
             f.finding_class = FINDING_CLASS[base_id]
 
-    # Recalculate risk score with class-weighted scoring (v4 calibration)
-    class_score = _calculate_class_weighted_score(all_findings_final)
-
-    # Add compounding bonuses
-    compounding_bonus = 0
-    if any(f.id == "STRATUM-CR01" for f in all_findings_final):
-        compounding_bonus += 10
-    if any(f.id == "STRATUM-CR02" for f in all_findings_final):
-        compounding_bonus += 5
-    if any(f.id == "STRATUM-CR03" for f in all_findings_final):
-        compounding_bonus += 10
-    if any(f.id == "STRATUM-CR05" for f in all_findings_final):
-        compounding_bonus += 10  # Blast radius with 3+ agents
-    if any(f.id == "STRATUM-CR06" for f in all_findings_final):
-        compounding_bonus += 8   # Architectural control bypass
-
-    # Apply score floor (prevents score=0 when findings exist)
-    result.risk_score = _finalize_score(
-        class_score + compounding_bonus, all_findings_final,
-    )
+    # Calculate risk score with asymptotic normalization (v5)
+    result.risk_score = calculate_risk_score(all_findings_final)
 
     # Compute per-crew scores using crew_id on findings (v4)
     per_crew_scores_map: dict[str, int] = {}
@@ -706,10 +688,9 @@ def _calculate_risk_score(
 
 
 def _score_crew(crew_name: str, all_findings: list[Finding]) -> int:
-    """Compute risk score for a single crew based on its tagged findings."""
+    """Compute risk score for a single crew using asymptotic normalization."""
     crew_findings = [f for f in all_findings if getattr(f, 'crew_id', '') == crew_name]
-    raw = sum(CREW_SEVERITY_WEIGHT.get(f.severity, 0) for f in crew_findings)
-    return min(raw, 100)
+    return calculate_risk_score(crew_findings)
 
 
 def _finalize_score(raw_score: int, all_findings: list[Finding]) -> int:
@@ -742,18 +723,32 @@ def _filter_guarded_paths(
         return list(uncontrolled_paths)
 
     # Build set of agent names/tools that have HITL coverage
-    hitl_covered: set[str] = set()
+    hitl_covered_names: set[str] = set()
+    # Files that contain HITL guardrails (human_input=True, interrupt)
+    hitl_covered_files: set[str] = set()
+
     for g in guardrails:
         if g.kind == "hitl":
             if g.covers_tools:
-                hitl_covered.update(t.lower() for t in g.covers_tools)
-            # Also include detail as a signal
+                hitl_covered_names.update(t.lower() for t in g.covers_tools)
+            # Track source files with HITL guards
             detail = (g.detail or "").lower()
-            if "human_input" in detail or "interrupt_before" in detail:
-                hitl_covered.add(g.source_file)
+            if "human_input" in detail or "interrupt" in detail:
+                hitl_covered_files.add(g.source_file)
 
-    if not hitl_covered:
+    if not hitl_covered_names and not hitl_covered_files:
         return list(uncontrolled_paths)
+
+    # Build agent-to-file mapping from graph nodes
+    agent_files: dict[str, set[str]] = {}
+    if graph and hasattr(graph, 'nodes'):
+        for nid, node in graph.nodes.items():
+            if node.node_type == NodeType.AGENT:
+                label_lower = node.label.lower().replace(" ", "_").replace("-", "_")
+                source = getattr(node, 'source_file', '') or ''
+                if source:
+                    agent_files.setdefault(label_lower, set()).add(source)
+                    agent_files.setdefault(node.label.lower(), set()).add(source)
 
     unguarded = []
     for path in uncontrolled_paths:
@@ -762,8 +757,22 @@ def _filter_guarded_paths(
             node = graph.nodes.get(nid) if graph else None
             if node and node.node_type == NodeType.AGENT:
                 label_lower = node.label.lower().replace(" ", "_").replace("-", "_")
-                if label_lower in hitl_covered or node.label.lower() in hitl_covered:
+                # Check 1: agent name/tool directly in HITL covered names
+                if label_lower in hitl_covered_names or node.label.lower() in hitl_covered_names:
                     path_guarded = True
+                    break
+                # Check 2: agent's source file has an HITL guardrail
+                node_source = getattr(node, 'source_file', '') or ''
+                if node_source and node_source in hitl_covered_files:
+                    path_guarded = True
+                    break
+                # Check 3: agent mapped to a file with HITL guardrail
+                for key in (label_lower, node.label.lower()):
+                    if key in agent_files:
+                        if agent_files[key] & hitl_covered_files:
+                            path_guarded = True
+                            break
+                if path_guarded:
                     break
         if not path_guarded:
             unguarded.append(path)
@@ -771,13 +780,13 @@ def _filter_guarded_paths(
     return unguarded
 
 
-def _calculate_class_weighted_score(all_findings: list[Finding]) -> int:
-    """Calculate risk score using class-weighted severity (v4 calibration).
+def calculate_risk_score(all_findings: list[Finding]) -> int:
+    """Compute a 0-100 risk score using class-weighted severity and asymptotic normalization.
 
-    Architecture findings get full weight. Hygiene findings that fire on every
-    project contribute minimally. This spreads the score distribution and makes
-    the fleet report credible.
+    Uses raw / (raw + K) * 100 with K=50 for diminishing returns.
+    Replaces the old linear sum scoring entirely.
     """
+    # Step 1: Compute raw weighted sum
     raw = 0
     for f in all_findings:
         sev = f.severity.value if hasattr(f.severity, 'value') else str(f.severity)
@@ -785,9 +794,32 @@ def _calculate_class_weighted_score(all_findings: list[Finding]) -> int:
         # Normalize: 'security' and 'compounding' map to 'architecture' for weights
         if fc in ('security', 'compounding'):
             fc = 'architecture'
-        weight = SCORE_WEIGHTS.get((sev, fc), SCORE_WEIGHTS.get((sev, 'architecture'), 0))
+        base_id = f.id.rsplit('.', 1)[0] if '.' in f.id else f.id
+        cls = FINDING_CLASS.get(base_id, fc)
+        if cls in ('security', 'compounding'):
+            cls = 'architecture'
+        weight = SCORE_WEIGHTS.get((sev, cls), 0)
         raw += weight
-    return raw
+
+    # Step 2: Asymptotic normalization
+    # k=50: raw=50 → score=50, raw=100 → score=67, raw=200 → score=80
+    K = 50
+    if raw == 0:
+        score = 0.0
+    else:
+        score = (raw / (raw + K)) * 100
+
+    # Step 3: Floor — if real findings exist, minimum score is 8
+    non_info = [
+        f for f in all_findings
+        if f.severity in (Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM, Severity.LOW)
+    ]
+    if non_info:
+        floor = max(8, len(non_info) * 2)
+        score = max(floor, score)
+
+    # Step 4: Round to integer, cap at 100
+    return min(100, round(score))
 
 
 def _load_gitignore(directory: str) -> list[str]:

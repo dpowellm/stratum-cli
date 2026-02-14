@@ -15,6 +15,32 @@ FINDING_BREACH_MAP: dict[str, list[str]] = {
     "STRATUM-CR05": ["SERVICENOW-NOWASSIST-2025"],
     "STRATUM-CR06": [],  # No known breach match
     "STRATUM-BR01": ["ECHOLEAK-2025"],
+    "STRATUM-008": [],
+    "STRATUM-009": [],
+    "STRATUM-010": [],
+}
+
+BREACH_DB: dict[str, dict] = {
+    "ECHOLEAK-2025": {
+        "name": "Microsoft Copilot EchoLeak",
+        "date": "March 2024",
+        "pattern": "data-to-external without review",
+    },
+    "DOCKER-GORDON-2025": {
+        "name": "Docker Ask Gordon Prompt Injection",
+        "date": "January 2025",
+        "pattern": "auto-execution of external content",
+    },
+    "SERVICENOW-NOWASSIST-2025": {
+        "name": "ServiceNow Now Assist Shared Resource",
+        "date": "March 2025",
+        "pattern": "shared resource amplifies compromise",
+    },
+    "SLACK-AI-EXFIL-2024": {
+        "name": "Slack AI Data Exfiltration",
+        "date": "August 2024",
+        "pattern": "channel data exfiltration via prompt injection",
+    },
 }
 
 FINDING_NARRATIVES: dict[str, dict] = {
@@ -295,6 +321,16 @@ def build_narrative_context(finding, result) -> dict:
                 parts = ev.split(":")
                 if len(parts) > 1:
                     ctx["tool_name"] = parts[-1].strip().split(",")[0].strip()
+
+    # For CR05 findings, override agent_count with per-crew count from title
+    fid = getattr(finding, "id", "")
+    if fid.startswith("STRATUM-CR05"):
+        title = getattr(finding, "title", "")
+        # Title format: "Shared tool blast radius: ToolName -> N agents in CrewName"
+        import re
+        m = re.search(r"(\d+)\s+agents?\b", title)
+        if m:
+            ctx["agent_count"] = int(m.group(1))
 
     # External services / channels
     ext_services = getattr(result, "external_services", [])

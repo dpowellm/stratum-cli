@@ -544,6 +544,7 @@ class ScanProfile:
     # ─── CONNECTABLE SURFACES (Sprint 1: CHAIN-PATCH) ──────────
     llm_models: list = field(default_factory=list)
     llm_providers: list[str] = field(default_factory=list)
+    llm_providers_inferred: list = field(default_factory=list)
     llm_model_count: int = 0
     has_multiple_providers: bool = False
 

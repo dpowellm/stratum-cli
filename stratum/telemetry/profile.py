@@ -24,6 +24,44 @@ from stratum import __version__
 
 logger = logging.getLogger(__name__)
 
+ENV_TO_PROVIDER: dict[str, dict] = {
+    "OPENAI_API_KEY":        {"provider": "openai",       "confidence": "high"},
+    "ANTHROPIC_API_KEY":     {"provider": "anthropic",    "confidence": "high"},
+    "GOOGLE_API_KEY":        {"provider": "google",       "confidence": "medium"},
+    "GOOGLE_GENAI_API_KEY":  {"provider": "google",       "confidence": "high"},
+    "AZURE_OPENAI_API_KEY":  {"provider": "azure_openai", "confidence": "high"},
+    "AZURE_OPENAI_ENDPOINT": {"provider": "azure_openai", "confidence": "high"},
+    "GROQ_API_KEY":          {"provider": "groq",         "confidence": "high"},
+    "TOGETHER_API_KEY":      {"provider": "together",     "confidence": "high"},
+    "MISTRAL_API_KEY":       {"provider": "mistral",      "confidence": "high"},
+    "COHERE_API_KEY":        {"provider": "cohere",       "confidence": "high"},
+    "FIREWORKS_API_KEY":     {"provider": "fireworks",    "confidence": "high"},
+    "DEEPSEEK_API_KEY":      {"provider": "deepseek",     "confidence": "high"},
+    "XAI_API_KEY":           {"provider": "xai",          "confidence": "high"},
+}
+
+
+def infer_providers_from_env(
+    env_var_names: list[str], detected_models: list,
+) -> list[dict]:
+    """Infer LLM providers from API key env vars when no models detected."""
+    if detected_models:
+        return []
+    inferred = []
+    seen: set[str] = set()
+    for var_name in env_var_names:
+        match = ENV_TO_PROVIDER.get(var_name)
+        if match and match["provider"] not in seen:
+            seen.add(match["provider"])
+            inferred.append({
+                "provider": match["provider"],
+                "model": None,
+                "source": "env_inference",
+                "env_var": var_name,
+                "confidence": match["confidence"],
+            })
+    return inferred
+
 
 def build_profile(result: ScanResult) -> TelemetryProfile:
     """Build an anonymized telemetry profile from a ScanResult."""
@@ -917,6 +955,14 @@ def build_scan_profile(
     p.env_var_names_specific = [
         e for e in env_detected if e.get("specificity") == "specific"
     ]
+
+    # Provider inference from env vars (v5)
+    if not llm_models:
+        env_var_names = [e.get("name", "") for e in env_detected]
+        inferred = infer_providers_from_env(env_var_names, llm_models)
+        if inferred:
+            p.llm_providers_inferred = inferred
+            p.llm_providers = [ip["provider"] for ip in inferred]
 
     # Vector stores
     vs = getattr(result, "vector_stores_detected", [])
