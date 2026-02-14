@@ -207,19 +207,13 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
         click.echo(json.dumps(sarif, indent=2))
 
     elif output_format == "json" or ci:
-        import dataclasses
-        # Temporarily remove graph (not a plain dataclass for asdict)
-        graph_obj = result.graph
-        result.graph = None
-        out = dataclasses.asdict(result)
-        result.graph = graph_obj
-        # Add graph as structured JSON
-        if graph_obj is not None:
-            out["graph"] = graph_obj.to_dict()
-        # Add telemetry profile summary
-        if telemetry_profile_dict:
-            out["telemetry_profile"] = telemetry_profile_dict
-        click.echo(json.dumps(out, indent=2))
+        from stratum.telemetry.ping import build_v72_ping
+        scan_duration_ms = int((_time.monotonic() - _scan_start) * 1000)
+        ping = build_v72_ping(
+            result, profile, scan_profile,
+            scan_duration_ms=scan_duration_ms,
+        )
+        click.echo(json.dumps(ping, indent=2))
 
         if ci:
             all_findings = result.top_paths + result.signals
