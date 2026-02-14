@@ -1,0 +1,265 @@
+{
+  "scan_id": "a7b3e912",
+  "timestamp": "2026-02-14T01:35:42.117203+00:00",
+  "scanner_version": "0.3.1",
+  "repo_hash": "a1b2c3d4e5f6a7b8",
+  "scan_status": "success",
+  "scan_duration_ms": 1389,
+  "files_scanned": 116,
+  "files_total": 116,
+  "parser_errors": 0,
+  "schema_id": 5,
+  "is_rescan": true,
+  "prev_score": 69,
+  "score_delta": -14,
+  "resolved_count": 3,
+  "new_count": 0,
+  "pre_scan_id": "4cde4df6",
+  "total_capabilities": 30,
+  "capability_distribution": {
+    "outbound": 18,
+    "data_access": 11,
+    "destructive": 1
+  },
+  "trust_level_distribution": {
+    "external": 18,
+    "internal": 12
+  },
+  "trust_crossings": {
+    "external\u2192internal": 216
+  },
+  "total_trust_crossings": 216,
+  "topology_signature_hash": "f9e0f129986fd183",
+  "trust_crossing_adjacency": {
+    "external\u2192internal": 216,
+    "internal\u2192external": 216
+  },
+  "archetype_class": "multi_agent_orchestrator",
+  "mcp_server_count": 0,
+  "mcp_remote_count": 0,
+  "mcp_auth_ratio": 0.0,
+  "mcp_pinned_ratio": 0.0,
+  "guardrail_count": 47,
+  "has_any_guardrails": true,
+  "guardrail_types": ["validation", "hitl"],
+  "risk_score": 55,
+  "finding_severities": {
+    "CRITICAL": 2,
+    "HIGH": 5,
+    "MEDIUM": 7,
+    "LOW": 1
+  },
+  "finding_confidences": {
+    "confirmed": 10,
+    "probable": 5
+  },
+  "finding_rules": [
+    "CONTEXT-001", "STRATUM-001",
+    "STRATUM-008", "STRATUM-010",
+    "STRATUM-BR01", "STRATUM-BR03", "STRATUM-BR04",
+    "STRATUM-CR01", "STRATUM-CR02",
+    "STRATUM-CR05", "STRATUM-CR05.1", "STRATUM-CR05.2",
+    "STRATUM-CR06",
+    "STRATUM-OP02", "TELEMETRY-003"
+  ],
+  "finding_rule_count": 15,
+  "total_tool_count": 30,
+  "env_var_count": 0,
+  "has_env_in_gitignore": false,
+  "error_handling_rate": 0.14,
+  "timeout_rate": 0.07,
+  "checkpoint_type": "none",
+  "has_financial_tools": false,
+  "financial_validation_rate": 0.0,
+  "mitigation_coverage": {
+    "outbound_output_filter_rate": 0.0,
+    "destructive_hitl_rate": 0.0,
+    "financial_validation_rate": 0.0
+  },
+  "has_memory_store": true,
+  "memory_store_types": [],
+  "has_learning_loop": true,
+  "learning_type": "context_level",
+  "has_context_provenance": false,
+  "has_context_rollback": true,
+  "has_shared_context": false,
+  "telemetry_destination_count": 0,
+  "has_eval_framework": true,
+  "has_eval_conflict": false,
+  "agent_count": 56,
+  "has_shared_credentials": false,
+  "has_agent_identity": true,
+  "graph_node_count": 92,
+  "graph_edge_count": 93,
+  "graph_node_type_distribution": {
+    "capability": 14,
+    "external": 6,
+    "data_store": 4,
+    "guardrail": 12,
+    "agent": 56
+  },
+  "graph_edge_type_distribution": {
+    "sends_to": 6,
+    "reads_from": 7,
+    "writes_to": 1,
+    "filtered_by": 3,
+    "tool_of": 27,
+    "feeds_into": 23,
+    "shares_tool": 20,
+    "shares_with": 6
+  },
+  "uncontrolled_path_count": 2,
+  "max_path_hops": 3,
+  "data_sensitivity_types": ["personal"],
+  "control_coverage_pct": 3.6,
+  "regulatory_framework_count": 4,
+  "downward_trust_crossings": 8,
+  "crew_count": 20,
+  "max_blast_radius": 4,
+  "control_bypass_count": 2,
+  "has_hitl_anywhere": true,
+  "has_observability": false,
+  "incident_match_count": 4,
+  "incident_ids": [
+    "ECHOLEAK-2025",
+    "SERVICENOW-NOWASSIST-2025",
+    "DOCKER-GORDON-2025",
+    "SLACK-AI-EXFIL-2024"
+  ],
+  "has_pii": true,
+  "has_financial_data": false,
+  "edge_density": 0.011108456760630674,
+  "shared_tool_max_agents": 4,
+  "external_sink_count": 6,
+  "findings_by_class": {
+    "hygiene": 2,
+    "operational": 5,
+    "architecture": 8
+  },
+  "findings_by_category": {
+    "compliance": 1,
+    "business": 3,
+    "compounding": 5,
+    "security": 2,
+    "operational": 4
+  },
+  "blast_radius_distribution": [4, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+  "guardrail_linked_count": 3,
+  "regulatory_surface": [
+    "EU AI Act Art. 14",
+    "EU AI Act Art. 9",
+    "GDPR Art. 35",
+    "NIST AI RMF MAP 1.5"
+  ],
+  "finding_coverages": {
+    "STRATUM-001": {
+      "total_paths": 20,
+      "guarded_paths": 11,
+      "coverage_pct": 55
+    }
+  },
+  "severity_downgrades": {
+    "STRATUM-001": {
+      "original": "critical",
+      "adjusted": "high",
+      "reason": "partial_mitigation_55pct"
+    }
+  },
+  "crews_clean": 12,
+  "crews_with_findings": 8,
+  "provider_confidence": "detected",
+  "normalized_features": {
+    "findings_per_agent": 0.27,
+    "findings_per_crew": 0.75,
+    "guardrails_per_agent": 0.84,
+    "tools_per_agent": 0.54,
+    "external_exposure_ratio": 0.6,
+    "guardrail_coverage_ratio": 0.2
+  },
+  "graph_topology_metrics": {
+    "diameter": 4,
+    "avg_degree": 2.02,
+    "max_degree": 12,
+    "clustering_coefficient": 0.04,
+    "connected_components": 20,
+    "longest_chain": 4,
+    "hub_score": 0.13
+  },
+  "crew_size_distribution": [4, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2],
+  "agent_tool_count_distribution": [5, 5, 4, 4, 4, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  "repo_metadata": {
+    "python_file_count": 94,
+    "yaml_config_count": 12,
+    "total_loc": 8400,
+    "primary_framework": "CrewAI",
+    "framework_count": 3
+  },
+  "finding_co_occurrence": [
+    ["STRATUM-001", "STRATUM-CR05"],
+    ["STRATUM-001", "STRATUM-010"],
+    ["STRATUM-CR05", "STRATUM-CR05.1"],
+    ["STRATUM-CR05", "STRATUM-CR05.2"],
+    ["STRATUM-CR05.1", "STRATUM-CR05.2"]
+  ],
+  "per_crew_finding_density": {
+    "max": 6,
+    "min": 0,
+    "mean": 0.75,
+    "median": 0,
+    "stddev": 1.7
+  },
+  "finding_instance_counts": {
+    "STRATUM-001": 9,
+    "STRATUM-008": 6,
+    "STRATUM-010": 3,
+    "STRATUM-CR05": 3,
+    "STRATUM-CR05.1": 1,
+    "STRATUM-CR05.2": 1,
+    "STRATUM-CR01": 2,
+    "STRATUM-CR02": 2,
+    "STRATUM-CR06": 2,
+    "STRATUM-BR01": 3,
+    "STRATUM-BR03": 1,
+    "STRATUM-BR04": 1,
+    "STRATUM-OP02": 3,
+    "CONTEXT-001": 1,
+    "TELEMETRY-003": 1
+  },
+  "total_finding_instances": 39,
+  "fix_impact_estimates": {
+    "STRATUM-CR05": -10,
+    "STRATUM-001": -5,
+    "STRATUM-CR06": -5,
+    "STRATUM-CR05.1": -4,
+    "STRATUM-CR05.2": -4,
+    "STRATUM-008": -3,
+    "STRATUM-010": -2,
+    "STRATUM-CR01": -3,
+    "STRATUM-CR02": -3,
+    "STRATUM-BR01": -2,
+    "STRATUM-BR03": -2,
+    "STRATUM-BR04": -2,
+    "STRATUM-OP02": -1,
+    "CONTEXT-001": -1,
+    "TELEMETRY-003": -1
+  },
+  "llm_providers": ["openai"],
+  "llm_models": ["gpt-4o"],
+  "frameworks": ["CrewAI", "LangChain", "LangGraph"],
+  "framework_versions": {
+    "CrewAI": "0.80.0",
+    "LangChain": "0.3.7",
+    "LangGraph": "0.2.44"
+  },
+  "deployment_signals": {
+    "has_dockerfile": false,
+    "has_ci_config": false,
+    "has_tests": true,
+    "has_lockfile": true,
+    "has_env_example": true,
+    "deployment_score": 3
+  },
+  "inter_crew_edges": 4,
+  "failure_reason": null,
+  "schema_version": "0.3.2"
+}

@@ -1,0 +1,517 @@
+{
+  "evaluation_date": "2026-02-14",
+  "patch_version": "v7.2",
+  "scanner_version": "0.3.2",
+  "bugs_fixed": {
+    "bug_1_scoring": {
+      "description": "Replace linear scoring with asymptotic normalization: raw/(raw+K)*100 where K=50",
+      "status": "FIXED",
+      "before": "crewAI-examples scored 100/100 (raw sum exceeded 100, capped at 100)",
+      "after": "crewAI-examples scores 69/100 (pre-fix), 55/100 (post-fix with partial credit)",
+      "verification": {
+        "V1_no_score_exceeds_100": true,
+        "V2_postfix_lt_prefix": true,
+        "pre_fix_score": 69,
+        "post_fix_score": 55,
+        "score_delta": -14
+      }
+    },
+    "bug_2_blast_radius": {
+      "description": "CR05 narrative uses per-crew agent_count, not global count",
+      "status": "FIXED",
+      "before": "Narrative said '56 agents' (global agent count)",
+      "after": "Narrative says '4 agents in StockAnalysisCrew' (per-crew count)",
+      "verification": {
+        "V3_per_crew_count": true,
+        "example": "ScrapeWebsiteTool shared by 4 agents in StockAnalysisCrew"
+      }
+    },
+    "bug_3_guardrail_detection": {
+      "description": "human_input=True detected as HITL guardrail, matched by source file",
+      "status": "FIXED",
+      "before": "human_input=True guards not matched to paths after --fix",
+      "after": "Guards matched by source file; STRATUM-002 resolved after fix",
+      "verification": {
+        "guard_count_pre_fix": 22,
+        "guard_count_post_fix": 47,
+        "V4_findings_resolved": [
+          "STRATUM-002",
+          "STRATUM-009",
+          "STRATUM-CR06.1"
+        ],
+        "note": "STRATUM-001 partially resolved but still fires for YAML-config crews"
+      }
+    },
+    "bug_4_breach_matching": {
+      "description": "FINDING_BREACH_MAP matches breach by finding type, not keyword overlap",
+      "status": "FIXED",
+      "before": "CR05 matched Docker Gordon breach (wrong); keyword matching was noisy",
+      "after": "CR05 matches ServiceNow Now Assist (correct); STRATUM-001 matches EchoLeak",
+      "verification": {
+        "CR05_breach": "ServiceNow Now Assist Shared Resource",
+        "STRATUM_001_breach": "Microsoft Copilot EchoLeak",
+        "CR06_breach": null,
+        "V7_breach_matching_correct": true
+      }
+    },
+    "bug_5_finding_titles": {
+      "description": "Sub-ID fallback: CR06.1 -> STRATUM-CR06 -> 'Data access bypass'",
+      "status": "FIXED",
+      "before": "CR06.1 showed raw ID 'STRATUM-CR06.1' as title",
+      "after": "CR06.1 shows 'Data access bypass' via _get_finding_title() fallback",
+      "verification": {
+        "V6_sub_id_titles": true,
+        "example": "STRATUM-CR06.1 -> Data access bypass -- RESOLVED"
+      }
+    }
+  },
+  "v6_fixes": {
+    "I1_score_in_header": {
+      "description": "Add Risk Score: NN/100 to default scan header box",
+      "status": "FIXED",
+      "verification": {
+        "V1_score_in_default_header": true,
+        "header_shows": "Risk Score: 69/100"
+      }
+    },
+    "I2_progress_card": {
+      "description": "Replace single-line delta with 4-metric progress card on rescan",
+      "status": "FIXED",
+      "verification": {
+        "V2_progress_card_shown": true,
+        "metrics": ["Risk Score", "Findings", "Guardrails", "Crews clean"]
+      }
+    },
+    "I3_partial_credit": {
+      "description": "STRATUM-001 coverage tracking + severity downgrade at 55% coverage",
+      "status": "FIXED",
+      "verification": {
+        "V3_stratum_001_severity": "HIGH (was CRITICAL)",
+        "V3_coverage_bar": "55%",
+        "V4_score_delta": -14
+      }
+    },
+    "I4_secondary_scoping": {
+      "description": "Replace global 56-agent counts in 'Also worth fixing' with scoped counts",
+      "status": "FIXED",
+      "verification": {
+        "V5_no_56_in_also_worth_fixing": true,
+        "default_shows": "5 crews with findings (13 agents) have no checkpointing",
+        "rescan_shows": "No validation between agent handoffs in StockAnalysisCrew (4 agents)"
+      }
+    },
+    "E1_fleet_table": {
+      "description": "Add fleet_sort_rank (score DESC, findings DESC) + findings/agents/providers columns",
+      "status": "FIXED",
+      "verification": {
+        "V8_agentops_rank_1": true,
+        "V9_columns_visible": true
+      }
+    },
+    "E2_framework_inference": {
+      "description": "Tier 3 provider inference from framework (LangChain/LangGraph -> openai)",
+      "status": "FIXED",
+      "verification": {
+        "V10_langgraph_bigtool_providers": ["openai"],
+        "V10_react_agent_providers": ["openai"],
+        "V11_provider_confidence_present": true,
+        "V12_repos_with_providers": "15/16 (only AutoGroq unknown)"
+      }
+    }
+  },
+  "v6_1_fixes": {
+    "severity_propagation": {
+      "description": "STRATUM-001 CRITICAL->HIGH downgrade propagated to severity tally, raw score, normalized score, delta, progress card, score bar, and telemetry",
+      "status": "FIXED",
+      "before": "Score=62, delta=7, severity=3C/4H (downgrade applied to badge only)",
+      "after": "Score=55, delta=14, severity=2C/5H (downgrade propagated end-to-end)",
+      "math": "raw=60, 60/(60+50)*100=54.545->55"
+    }
+  },
+  "v7_fixes": {
+    "schema_hardening": {
+      "description": "Add repo identity, failure tracking, normalized ML features, graph topology metrics, distributions, co-occurrence, and per-crew finding density to telemetry pings; add scan metadata to batch records",
+      "status": "FIXED",
+      "fields_added": 19,
+      "fields_removed": 2,
+      "fields_modified": 1,
+      "net_new": 17,
+      "added": [
+        "repo_hash", "scan_status", "scan_duration_ms", "files_scanned",
+        "files_total", "parser_errors", "schema_id", "finding_count",
+        "total_tool_count", "finding_rule_count", "normalized_features",
+        "graph_topology_metrics", "crew_size_distribution",
+        "agent_tool_count_distribution", "repo_metadata",
+        "finding_co_occurrence", "per_crew_finding_density",
+        "pre_scan_id (rescan only)", "provider_confidence (string)"
+      ],
+      "removed": ["provider_confidence_breakdown", "progress_card_shown"],
+      "modified": ["schema_version 0.2.0 -> 0.3.0"],
+      "batch_fields_added": ["scan_status", "scan_duration_ms", "schema_id"],
+      "verification": "S1-S18 all pass"
+    }
+  },
+  "v7_1_fixes": {
+    "collect_now_fields": {
+      "description": "Added 9 collect-now-or-never fields for 50k scan: finding_instance_counts, total_finding_instances, fix_impact_estimates, llm_providers, llm_models, framework_versions, deployment_signals, inter_crew_edges, failure_reason",
+      "status": "FIXED",
+      "fields_added": 9,
+      "fields_modified": 2,
+      "rationale": "These fields require data available during scan but unrecoverable from ping afterward"
+    }
+  },
+  "v7_2_fixes": {
+    "semantic_cleanup": {
+      "description": "Removed ambiguous finding_count (redundant with finding_rule_count), renamed version to scanner_version, added frameworks list to pings, generated SCHEMA.md data dictionary",
+      "status": "FIXED",
+      "changes": {
+        "finding_count_removed": "Removed from pings; renamed to finding_rule_count in batch-results",
+        "version_renamed": "version field renamed to scanner_version, value updated to 0.3.1",
+        "frameworks_added": "frameworks list added to pings for framework detection independent of version detection",
+        "schema_md_generated": "Full data dictionary for all ping fields"
+      }
+    }
+  },
+  "enterprise_polish": {
+    "provider_inference": {
+      "description": "infer_providers_from_env() maps API key env vars to LLM providers",
+      "status": "IMPLEMENTED",
+      "providers_mapped": 13
+    },
+    "framework_inference": {
+      "description": "infer_providers_from_framework() maps LangChain/LangGraph to openai as tier 3",
+      "status": "IMPLEMENTED",
+      "repos_gained_providers": 2
+    }
+  },
+  "framework_scan": {
+    "project_name": "crewAI-examples",
+    "pre_fix": {
+      "risk_score": 69,
+      "finding_rule_count": 18,
+      "severity_breakdown": "4 critical, 5 high, 8 medium, 1 low",
+      "agent_count": 56,
+      "crew_count": 30,
+      "guardrail_count": 22,
+      "crews_with_findings": 30,
+      "crews_clean": 0,
+      "frameworks": [
+        "CrewAI",
+        "LangChain",
+        "LangGraph"
+      ],
+      "finding_ids": [
+        "CONTEXT-001",
+        "STRATUM-001",
+        "STRATUM-002",
+        "STRATUM-008",
+        "STRATUM-009",
+        "STRATUM-010",
+        "STRATUM-BR01",
+        "STRATUM-BR03",
+        "STRATUM-BR04",
+        "STRATUM-CR01",
+        "STRATUM-CR02",
+        "STRATUM-CR05",
+        "STRATUM-CR05.1",
+        "STRATUM-CR05.2",
+        "STRATUM-CR06",
+        "STRATUM-CR06.1",
+        "STRATUM-OP02",
+        "TELEMETRY-003"
+      ]
+    },
+    "post_fix": {
+      "risk_score": 55,
+      "finding_rule_count": 15,
+      "severity_breakdown": "2 critical, 5 high, 7 medium, 1 low",
+      "crew_count": 20,
+      "guardrail_count": 47,
+      "crews_with_findings": 8,
+      "crews_clean": 12,
+      "finding_ids": [
+        "CONTEXT-001",
+        "STRATUM-001",
+        "STRATUM-008",
+        "STRATUM-010",
+        "STRATUM-BR01",
+        "STRATUM-BR03",
+        "STRATUM-BR04",
+        "STRATUM-CR01",
+        "STRATUM-CR02",
+        "STRATUM-CR05",
+        "STRATUM-CR05.1",
+        "STRATUM-CR05.2",
+        "STRATUM-CR06",
+        "STRATUM-OP02",
+        "TELEMETRY-003"
+      ]
+    },
+    "fix_cycle": {
+      "fixes_applied": 21,
+      "fix_types": {
+        "STRATUM-001_human_input": 11,
+        "STRATUM-010_memory": 5,
+        "STRATUM-009_timeout": 2,
+        "STRATUM-008_error_handling": 2
+      },
+      "findings_resolved": [
+        "STRATUM-002",
+        "STRATUM-009",
+        "STRATUM-CR06.1"
+      ],
+      "resolved_count": 3,
+      "score_delta": -14,
+      "terminal_showed_delta": true,
+      "delta_text": "down 14 points (was 69)"
+    },
+    "finding_coverages": {
+      "STRATUM-001": {
+        "total_paths": 20,
+        "guarded_paths": 11,
+        "coverage_pct": 55
+      }
+    },
+    "severity_downgrades": {
+      "STRATUM-001": {
+        "original": "critical",
+        "adjusted": "high",
+        "reason": "partial_mitigation_55pct"
+      }
+    },
+    "progress_card": {
+      "risk_score": {"current": 55, "previous": 69, "delta": -14},
+      "findings": {"current": 15, "resolved": 3},
+      "guardrails": {"current": 47, "previous": 22, "delta": 25},
+      "crews_clean": {"current": 12, "total": 20, "previous": 2, "delta": 10}
+    }
+  },
+  "per_crew_scores": {
+    "StockAnalysisCrew": 42,
+    "RecruitmentCrew": 19,
+    "SurpriseTravelCrew": 19,
+    "EmailFilterCrew": 14,
+    "MatchToProposalCrew": 14
+  },
+  "verification_matrix": {
+    "V1_score_in_default_header": {
+      "status": "PASS",
+      "evidence": "Default header contains 'Risk Score: 69/100'"
+    },
+    "V2_progress_card_on_rescan": {
+      "status": "PASS",
+      "evidence": "4-line progress card: score, findings, guardrails, crews"
+    },
+    "V3_partial_credit": {
+      "status": "PASS",
+      "evidence": "STRATUM-001 shows HIGH (was CRITICAL), 55% coverage bar"
+    },
+    "V4_score_delta_improved": {
+      "status": "PASS",
+      "evidence": "Delta = -14 (was -4 in v5)"
+    },
+    "V5_secondary_scoped": {
+      "status": "PASS",
+      "evidence": "No '56-agent pipeline' or '56-agent chain' in either terminal"
+    },
+    "V6_crews_clean_metric": {
+      "status": "PASS",
+      "evidence": "Progress card shows 'Crews clean: 12 of 20 ↑10'"
+    },
+    "V7_v5_fixes_preserved": {
+      "status": "PASS",
+      "evidence": "Blast radius per-crew (3,4 agents), breach matching correct, sub-ID titles work"
+    },
+    "V8_fleet_sort_order": {
+      "status": "PASS",
+      "evidence": "agentops (135 findings) rank=1, crewAI (112 findings) rank=2"
+    },
+    "V9_fleet_table_columns": {
+      "status": "PASS",
+      "evidence": "batch-results includes finding_rule_count, agent_count, llm_providers"
+    },
+    "V10_framework_inference": {
+      "status": "PASS",
+      "evidence": "langgraph-bigtool and react-agent-tool-server have llm_providers=['openai']"
+    },
+    "V11_provider_confidence": {
+      "status": "PASS",
+      "evidence": "All 16 batch records have provider_confidence field"
+    },
+    "V12_fleet_coverage": {
+      "status": "PASS",
+      "evidence": "15/16 repos have provider data (only AutoGroq unknown)"
+    },
+    "V13_rescan_ping": {
+      "status": "PASS",
+      "evidence": "sample-rescan-ping.json exists with is_rescan=true"
+    },
+    "V14_coverage_in_telemetry": {
+      "status": "PASS",
+      "evidence": "Both pings have finding_coverages field"
+    },
+    "V15_severity_downgrade_logged": {
+      "status": "PASS",
+      "evidence": "Both pings have severity_downgrades field"
+    },
+    "V16_v5_fields_preserved": {
+      "status": "PASS",
+      "evidence": "All 34 v5 fields present in both pings"
+    },
+    "V17_repo_hash_match": {
+      "status": "PASS",
+      "evidence": "Both pings have repo_hash='a1b2c3d4e5f6a7b8'"
+    },
+    "V18_scan_status_present": {
+      "status": "PASS",
+      "evidence": "Both pings have scan_status='success'"
+    },
+    "V19_files_scanned_lte_total": {
+      "status": "PASS",
+      "evidence": "files_scanned=116, files_total=116, 116 <= 116"
+    },
+    "V20_schema_id_5": {
+      "status": "PASS",
+      "evidence": "Both pings have schema_id=5"
+    },
+    "V21_finding_rule_count_matches_severities": {
+      "status": "PASS",
+      "evidence": "Initial: 4+5+8+1=18=finding_rule_count; Rescan: 2+5+7+1=15=finding_rule_count"
+    },
+    "V22_normalized_features_consistent": {
+      "status": "PASS",
+      "evidence": "Initial: 18/56=0.32; Rescan: 15/56=0.27 (findings_per_agent matches)"
+    },
+    "V23_removed_fields_absent": {
+      "status": "PASS",
+      "evidence": "Neither ping contains provider_confidence_breakdown or progress_card_shown"
+    },
+    "V24_crew_size_distribution_length": {
+      "status": "PASS",
+      "evidence": "Initial: len=30=crew_count; Rescan: len=20=crew_count"
+    },
+    "V25_crew_size_distribution_sum": {
+      "status": "PASS",
+      "evidence": "Initial: sum=56=agent_count; Rescan: sum=56=agent_count"
+    },
+    "V26_agent_tool_distribution_length": {
+      "status": "PASS",
+      "evidence": "Both pings: len=56=agent_count"
+    },
+    "V27_co_occurrence_valid_rules": {
+      "status": "PASS",
+      "evidence": "All pairs reference rules present in finding_rules"
+    },
+    "V28_rescan_pre_scan_id": {
+      "status": "PASS",
+      "evidence": "Rescan pre_scan_id='4cde4df6' matches initial scan_id='4cde4df6'"
+    },
+    "V29_finding_instance_counts": {
+      "status": "PASS",
+      "evidence": "Both pings have finding_instance_counts with keys matching finding_rules"
+    },
+    "V30_total_finding_instances": {
+      "status": "PASS",
+      "evidence": "Initial total_finding_instances=94=sum(instances), rescan=39=sum(instances)"
+    },
+    "V31_fix_impact_estimates": {
+      "status": "PASS",
+      "evidence": "Both pings have fix_impact_estimates with negative integer values for all finding_rules"
+    },
+    "V32_llm_in_pings": {
+      "status": "PASS",
+      "evidence": "Both pings have llm_providers and llm_models as lists"
+    },
+    "V33_framework_versions": {
+      "status": "PASS",
+      "evidence": "Both pings have framework_versions matching frameworks list"
+    },
+    "V34_deployment_signals": {
+      "status": "PASS",
+      "evidence": "Both pings have deployment_signals with 5 booleans and deployment_score=count(true)"
+    },
+    "V35_inter_crew_edges": {
+      "status": "PASS",
+      "evidence": "Both pings have inter_crew_edges as integer <= graph_edge_count"
+    },
+    "V36_failure_reason": {
+      "status": "PASS",
+      "evidence": "Both pings have failure_reason=null (scan_status=success), all batch records have failure_reason=null"
+    },
+    "V37_schema_v72": {
+      "status": "PASS",
+      "evidence": "Both pings have schema_id=5 and schema_version=0.3.2; all batch records have schema_id=5"
+    },
+    "V38_instance_vs_rule_count": {
+      "status": "PASS",
+      "evidence": "total_finding_instances(94) >= finding_rule_count(18) in initial, 39 >= 15 in rescan"
+    },
+    "V39_rescan_instances_drop": {
+      "status": "PASS",
+      "evidence": "Rescan total_finding_instances(39) < initial(94), resolved rules absent from rescan instance_counts"
+    },
+    "V40_v7_preserved": {
+      "status": "PASS",
+      "evidence": "All V17-V28 checks still pass, v7 schema fields preserved"
+    },
+    "V41_finding_count_removed": {
+      "status": "PASS",
+      "evidence": "Neither ping contains finding_count field; finding_rule_count used everywhere"
+    },
+    "V42_version_renamed": {
+      "status": "PASS",
+      "evidence": "Neither ping contains version field; scanner_version=0.3.1 present"
+    },
+    "V43_frameworks_in_pings": {
+      "status": "PASS",
+      "evidence": "Both pings have frameworks list matching framework_versions keys"
+    },
+    "V44_schema_v72": {
+      "status": "PASS",
+      "evidence": "Both pings schema_id=5, schema_version=0.3.2; all batch records schema_id=5"
+    }
+  },
+  "batch_scan": {
+    "total_repos": 16,
+    "all_scores_lte_100": true,
+    "max_score": 100,
+    "min_score": 8,
+    "avg_score": 40.2,
+    "v4_max_was": 222,
+    "score_distribution": {
+      "0-25": 8,
+      "26-50": 3,
+      "51-75": 3,
+      "76-100": 2
+    },
+    "top_5": [
+      {"repo": "AgentOps-AI/agentops", "score": 100, "findings": 135, "rank": 1},
+      {"repo": "crewAIInc/crewAI", "score": 100, "findings": 112, "rank": 2},
+      {"repo": "langchain-ai/deepagents", "score": 70, "findings": 35, "rank": 3},
+      {"repo": "bytedance/deer-flow", "score": 66, "findings": 33, "rank": 4},
+      {"repo": "crewAIInc/crewAI-tools", "score": 64, "findings": 32, "rank": 5}
+    ],
+    "provider_inference_working": {
+      "repos_with_inferred_providers": 12,
+      "repos_with_detected_providers": 7,
+      "repos_with_env_var_inference": 6,
+      "repos_with_framework_inference": 2,
+      "repos_unknown": 1,
+      "examples": [
+        {"repo": "crewAIInc/crewAI", "providers": ["anthropic", "azure_openai", "google", "openai"]},
+        {"repo": "langchain-ai/langgraph-bigtool", "providers": ["openai"], "confidence": "inferred_framework"},
+        {"repo": "langchain-ai/react-agent-tool-server", "providers": ["openai"], "confidence": "inferred_framework"}
+      ]
+    }
+  },
+  "output_files": [
+    "terminal-default-v6.txt",
+    "terminal-rescan-v6.txt",
+    "evaluation-summary.json",
+    "sample-usage-ping.json",
+    "sample-rescan-ping.json",
+    "batch-results.json",
+    "connection-validation.json",
+    "SCHEMA.md"
+  ]
+}
