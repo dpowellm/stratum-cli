@@ -22,44 +22,7 @@ import requests
 
 # Allow running from repo root (python pipeline/discover.py)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-# config.py validates GITHUB_TOKEN on import — defer until we know we need it
-_config_loaded = False
-_config = None
-
-
-def _load_config():
-    global _config_loaded, _config
-    if not _config_loaded:
-        from config import (
-            GITHUB_API,
-            GITHUB_HEADERS,
-            RATE_LIMIT_FLOOR,
-            SEARCH_RATE_LIMIT_FLOOR,
-            SEARCH_PER_PAGE,
-            SEARCH_MAX_RESULTS,
-            DATE_PARTITIONS,
-            MAX_RETRIES,
-            RETRY_BACKOFF,
-            STRATA,
-            DEFAULT_MANIFEST_PATH,
-            DEFAULT_DISCOVERY_LOG_PATH,
-        )
-        _config = {
-            "GITHUB_API": GITHUB_API,
-            "GITHUB_HEADERS": GITHUB_HEADERS,
-            "RATE_LIMIT_FLOOR": RATE_LIMIT_FLOOR,
-            "SEARCH_RATE_LIMIT_FLOOR": SEARCH_RATE_LIMIT_FLOOR,
-            "SEARCH_PER_PAGE": SEARCH_PER_PAGE,
-            "SEARCH_MAX_RESULTS": SEARCH_MAX_RESULTS,
-            "DATE_PARTITIONS": DATE_PARTITIONS,
-            "MAX_RETRIES": MAX_RETRIES,
-            "RETRY_BACKOFF": RETRY_BACKOFF,
-            "STRATA": STRATA,
-            "DEFAULT_MANIFEST_PATH": DEFAULT_MANIFEST_PATH,
-            "DEFAULT_DISCOVERY_LOG_PATH": DEFAULT_DISCOVERY_LOG_PATH,
-        }
-        _config_loaded = True
-    return _config
+import config
 
 
 def check_rate_limit(response, is_search=False):
@@ -71,7 +34,7 @@ def check_rate_limit(response, is_search=False):
         return 0
 
     remaining = int(remaining)
-    floor = _load_config()["SEARCH_RATE_LIMIT_FLOOR"] if is_search else _load_config()["RATE_LIMIT_FLOOR"]
+    floor = config.SEARCH_RATE_LIMIT_FLOOR if is_search else config.RATE_LIMIT_FLOOR
 
     if remaining < floor and reset_at:
         reset_time = int(reset_at)
@@ -86,11 +49,11 @@ def check_rate_limit(response, is_search=False):
 
 def api_request(url, params=None, is_search=False):
     """Make a GitHub API request with retry and rate limit handling."""
-    cfg = _load_config()
+    _, headers = config.require_token()
 
-    for attempt in range(cfg["MAX_RETRIES"]):
+    for attempt in range(config.MAX_RETRIES):
         try:
-            resp = requests.get(url, headers=cfg["GITHUB_HEADERS"], params=params, timeout=30)
+            resp = requests.get(url, headers=headers, params=params, timeout=30)
             check_rate_limit(resp, is_search=is_search)
 
             if resp.status_code == 403 and "rate limit" in resp.text.lower():
@@ -109,9 +72,9 @@ def api_request(url, params=None, is_search=False):
             return resp
 
         except requests.exceptions.RequestException as e:
-            backoff = cfg["RETRY_BACKOFF"][min(attempt, len(cfg["RETRY_BACKOFF"]) - 1)]
-            print(f"  Request error (attempt {attempt + 1}/{cfg['MAX_RETRIES']}): {e}")
-            if attempt < cfg["MAX_RETRIES"] - 1:
+            backoff = config.RETRY_BACKOFF[min(attempt, len(config.RETRY_BACKOFF) - 1)]
+            print(f"  Request error (attempt {attempt + 1}/{config.MAX_RETRIES}): {e}")
+            if attempt < config.MAX_RETRIES - 1:
                 print(f"  Retrying in {backoff}s...")
                 time.sleep(backoff)
             else:
@@ -123,8 +86,7 @@ def api_request(url, params=None, is_search=False):
 
 def search_repos(query):
     """Search GitHub for repos matching query. Returns list of search result items."""
-    cfg = _load_config()
-    url = f"{cfg['GITHUB_API']}/search/repositories"
+    url = f"{config.GITHUB_API}/search/repositories"
     all_items = []
     page = 1
 
@@ -132,7 +94,7 @@ def search_repos(query):
         params = {
             "q": query,
             "sort": "updated",
-            "per_page": cfg["SEARCH_PER_PAGE"],
+            "per_page": config.SEARCH_PER_PAGE,
             "page": page,
         }
 
@@ -150,14 +112,14 @@ def search_repos(query):
         all_items.extend(items)
 
         # Check if we've hit the 1000-result cap
-        if total_count > cfg["SEARCH_MAX_RESULTS"] and page == 1:
-            print(f"    Query has {total_count} results (>{cfg['SEARCH_MAX_RESULTS']} cap), will partition by date")
+        if total_count > config.SEARCH_MAX_RESULTS and page == 1:
+            print(f"    Query has {total_count} results (>{config.SEARCH_MAX_RESULTS} cap), will partition by date")
 
         # Stop at 1000 results (10 pages of 100)
-        if page * cfg["SEARCH_PER_PAGE"] >= cfg["SEARCH_MAX_RESULTS"]:
+        if page * config.SEARCH_PER_PAGE >= config.SEARCH_MAX_RESULTS:
             break
 
-        if page * cfg["SEARCH_PER_PAGE"] >= total_count:
+        if page * config.SEARCH_PER_PAGE >= total_count:
             break
 
         page += 1
@@ -167,19 +129,17 @@ def search_repos(query):
 
 def search_with_partitioning(query):
     """Search with automatic date partitioning if results exceed 1000."""
-    cfg = _load_config()
-
     # First, try the query as-is
     items, total_count = search_repos(query)
 
-    if total_count <= cfg["SEARCH_MAX_RESULTS"]:
+    if total_count <= config.SEARCH_MAX_RESULTS:
         return items
 
     # Results exceed cap — partition by created: date ranges
-    print(f"    Partitioning query into {len(cfg['DATE_PARTITIONS'])} date ranges...")
+    print(f"    Partitioning query into {len(config.DATE_PARTITIONS)} date ranges...")
     all_items = []
 
-    for start_date, end_date in cfg["DATE_PARTITIONS"]:
+    for start_date, end_date in config.DATE_PARTITIONS:
         partitioned_query = f"{query} created:{start_date}..{end_date}"
         print(f"    Partition: created:{start_date}..{end_date}")
         partition_items, _ = search_repos(partitioned_query)
@@ -191,9 +151,8 @@ def search_with_partitioning(query):
 
 def enrich_repo(repo_item):
     """Fetch full repo details from GET /repos/{owner}/{repo}."""
-    cfg = _load_config()
     full_name = repo_item["full_name"]
-    url = f"{cfg['GITHUB_API']}/repos/{full_name}"
+    url = f"{config.GITHUB_API}/repos/{full_name}"
 
     resp = api_request(url)
     if resp is None:
@@ -376,7 +335,7 @@ def dry_run(strata):
 
 def run_discovery(strata, output_path, resume=False):
     """Execute full discovery pipeline."""
-    cfg = _load_config()
+    config.require_token()
     started_at = datetime.now(timezone.utc).isoformat()
     rate_limit_sleeps = 0
     errors = []
@@ -520,42 +479,22 @@ def main():
 
     args = parser.parse_args()
 
-    # For dry-run, we don't need GITHUB_TOKEN — load strata directly
-    if args.dry_run:
-        # Import STRATA without triggering token check
-        spec_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.py")
-        strata = []
-        # Parse STRATA from config without importing (avoids token check)
-        import importlib.util
-        # Actually just use the hardcoded strata for dry run
-        from types import ModuleType
-        # Simplest approach: set a dummy token temporarily
-        if not os.environ.get("GITHUB_TOKEN"):
-            os.environ["GITHUB_TOKEN"] = "dry-run-no-token-needed"
-        cfg = _load_config()
-        strata = cfg["STRATA"]
-
-        if args.stratum:
-            strata = [s for s in strata if s["name"] == args.stratum]
-            if not strata:
-                valid = [s["name"] for s in cfg["STRATA"]]
-                print(f"Unknown stratum '{args.stratum}'. Valid: {valid}")
-                sys.exit(1)
-
-        dry_run(strata)
-        return
-
-    # Real run — config import validates GITHUB_TOKEN
-    cfg = _load_config()
-    strata = cfg["STRATA"]
-    output_path = args.output or cfg["DEFAULT_MANIFEST_PATH"]
+    strata = list(config.STRATA)
 
     if args.stratum:
         strata = [s for s in strata if s["name"] == args.stratum]
         if not strata:
-            valid = [s["name"] for s in cfg["STRATA"]]
+            valid = [s["name"] for s in config.STRATA]
             print(f"Unknown stratum '{args.stratum}'. Valid: {valid}")
             sys.exit(1)
+
+    if args.dry_run:
+        dry_run(strata)
+        return
+
+    # Real run — require token before any API calls
+    config.require_token()
+    output_path = args.output or config.DEFAULT_MANIFEST_PATH
 
     print(f"Stratum Pipeline — Phase 1: Discovery")
     print(f"Strata: {len(strata)}")

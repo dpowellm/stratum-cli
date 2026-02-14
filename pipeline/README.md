@@ -10,6 +10,9 @@ export GITHUB_TOKEN=ghp_your_token_here
 
 # 2. Install dependencies
 pip install -r pipeline/requirements.txt
+
+# 3. Ensure stratum-cli is installed (needed for Phase 2)
+pip install -e .
 ```
 
 ## Phase 1: Repo Discovery
@@ -51,6 +54,72 @@ python pipeline/discover.py --resume --output pipeline/data/repo_manifest.jsonl
 | discovery_pool | 10,000 | ai/llm/autonomous agent |
 
 Total target: ~43,000. After dedup, expect ~50-60k unique repos.
+
+## Phase 2: Scan Runner
+
+Parallel scan runner that clones repos, runs `stratum scan`, validates pings, and writes results to `scan_results.jsonl`. Invalid pings go to `quarantine.jsonl`.
+
+### Quick test (first 16 repos)
+
+```bash
+python pipeline/scan_runner.py --manifest pipeline/data/test_manifest.jsonl --limit 16 --workers 2
+```
+
+### Full 50k scan
+
+```bash
+# Start the scan (default 10 workers)
+python pipeline/scan_runner.py
+
+# Or with custom settings
+python pipeline/scan_runner.py --workers 20 --manifest pipeline/data/repo_manifest.jsonl
+```
+
+### Resume after crash
+
+```bash
+# Automatically skips repos already in scan_results.jsonl and quarantine.jsonl
+python pipeline/scan_runner.py --resume
+```
+
+### Output
+
+- `pipeline/data/scan_results.jsonl` — validated scan pings (success, partial, failed, empty)
+- `pipeline/data/quarantine.jsonl` — pings that failed schema validation
+- `pipeline/data/pipeline_run_log.json` — run progress (updated every 100 scans)
+
+### CLI flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--manifest`, `-m` | `pipeline/data/repo_manifest.jsonl` | Path to repo manifest |
+| `--limit`, `-l` | (all) | Scan only the first N repos |
+| `--workers`, `-w` | 10 | Number of parallel workers |
+| `--resume` | off | Skip already-scanned repos |
+
+## Phase 3: Monitor
+
+Real-time dashboard that tails `scan_results.jsonl` and displays progress, status breakdown, score distribution, and framework stats.
+
+### Run in a separate terminal while scanning
+
+```bash
+# Live watch (refreshes every 30 seconds)
+python pipeline/monitor.py
+
+# One-shot snapshot
+python pipeline/monitor.py --once
+```
+
+### Dashboard shows
+
+- Progress count and percentage
+- Status breakdown (success / partial / failed / empty / quarantined)
+- Score distribution buckets (0-20, 21-40, 41-60, 61-80, 81-100)
+- Framework distribution (top 10)
+- Average scan duration
+- ETA based on throughput
+- Last error
 
 ## Schema
 
