@@ -41,12 +41,13 @@ Thumbs.db
 .coverage
 htmlcov/
 
-# Dev specs and patch docs (not part of distribution)
-PATCH-*.md
-STRATUM-*.md
-SPEC*.md
-STRATEGY-*.md
-claude-code-prompt.md
+# Dev specs and patch docs at root (not part of distribution)
+# Anchored to root with / so spec/ subdirectory copies are tracked
+/PATCH-*.md
+/STRATUM-*.md
+/SPEC*.md
+/STRATEGY-*.md
+/claude-code-prompt.md
 
 # Test outputs, profiling, and scan artifacts
 outputs/
@@ -57,7 +58,7 @@ test_eval*.json
 test_eval*.txt
 test_json_out.txt
 
-# Test repos and dev utilities
-test_project/
-risk_map/
-scripts/
+# Test repos and dev utilities (anchored to root)
+/test_project/
+/risk_map/
+/scripts/
