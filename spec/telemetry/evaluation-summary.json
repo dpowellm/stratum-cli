@@ -132,13 +132,13 @@
     "schema_hardening": {
       "description": "Add repo identity, failure tracking, normalized ML features, graph topology metrics, distributions, co-occurrence, and per-crew finding density to telemetry pings; add scan metadata to batch records",
       "status": "FIXED",
-      "fields_added": 19,
+      "fields_added": 18,
       "fields_removed": 2,
       "fields_modified": 1,
-      "net_new": 17,
+      "net_new": 16,
       "added": [
         "repo_hash", "scan_status", "scan_duration_ms", "files_scanned",
-        "files_total", "parser_errors", "schema_id", "finding_count",
+        "files_total", "parser_errors", "schema_id",
         "total_tool_count", "finding_rule_count", "normalized_features",
         "graph_topology_metrics", "crew_size_distribution",
         "agent_tool_count_distribution", "repo_metadata",
