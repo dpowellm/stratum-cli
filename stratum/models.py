@@ -247,6 +247,16 @@ class ScanResult:
     vector_stores_detected: list[str] = field(default_factory=list)
     framework_parse_quality: str = "unknown"
 
+    # Reliability scanner (Phase 10)
+    reliability_findings: list[Finding] = field(default_factory=list)
+    composite_findings: list[Finding] = field(default_factory=list)
+    reliability_score: int = 0
+    reliability_metrics: dict = field(default_factory=dict)
+    per_node_metrics: dict = field(default_factory=dict)
+    observation_points: list = field(default_factory=list)
+    repo_profile: dict = field(default_factory=dict)
+    compound_risk_score: int = 0
+
 
 @dataclass
 class ScanDiff:

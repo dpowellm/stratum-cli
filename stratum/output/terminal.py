@@ -95,6 +95,13 @@ def render(result: ScanResult, verbose: bool = False,
         framework = result.detected_frameworks[0] if result.detected_frameworks else ""
         _render_toxic_combinations(tc_matches, framework)
 
+    # Reliability findings section (after toxic combinations)
+    _rel_findings = getattr(result, "reliability_findings", [])
+    _comp_findings = getattr(result, "composite_findings", [])
+    _rel_score = getattr(result, "reliability_score", 0)
+    if _rel_findings:
+        _render_reliability_section(_rel_findings, _comp_findings, _rel_score)
+
     if primary:
         _render_section_header("FIX THESE FIRST")
         for i, group in enumerate(primary):
@@ -281,6 +288,69 @@ def _render_toxic_combinations(tc_matches, framework: str) -> None:
                     console.print(f"      {line}")
 
         console.print()
+
+
+# ── Reliability ───────────────────────────────────────────────────────────────
+
+def _render_reliability_section(
+    reliability_findings: list,
+    composite_findings: list,
+    reliability_score: int,
+) -> None:
+    """Render the RELIABILITY FINDINGS section."""
+    severity_color = {"CRITICAL": "red", "HIGH": "yellow", "MEDIUM": "blue", "LOW": "dim"}
+
+    # Filter to non-anomaly reliability findings
+    main_findings = [
+        f for f in reliability_findings
+        if not f.id.startswith("STRAT-ANOMALY")
+    ]
+    anomaly_findings = [
+        f for f in reliability_findings
+        if f.id.startswith("STRAT-ANOMALY")
+    ]
+
+    count = len(main_findings) + len(composite_findings)
+    if count == 0:
+        return
+
+    _render_section_header(f"RELIABILITY ({count} findings, score {reliability_score}/100)")
+
+    # Top findings (up to 5)
+    sorted_findings = sorted(
+        main_findings,
+        key=lambda f: {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}.get(
+            f.severity.value if hasattr(f.severity, 'value') else str(f.severity), 0
+        ),
+        reverse=True,
+    )
+
+    for f in sorted_findings[:5]:
+        sev = f.severity.value if hasattr(f.severity, 'value') else str(f.severity)
+        color = severity_color.get(sev, "white")
+        console.print(f"  [{color}]{sev:<8}[/]  {f.id}  {f.title}")
+        if f.path:
+            path_display = f.path.split("\n")[0][:60]
+            console.print(f"           [dim]{path_display}[/dim]")
+
+    if len(sorted_findings) > 5:
+        console.print(f"  [dim]... and {len(sorted_findings) - 5} more[/dim]")
+
+    # Composite findings
+    if composite_findings:
+        console.print()
+        console.print(f"  [bold]Compounding risks:[/bold]")
+        for f in composite_findings[:3]:
+            sev = f.severity.value if hasattr(f.severity, 'value') else str(f.severity)
+            color = severity_color.get(sev, "white")
+            console.print(f"  [{color}]{sev:<8}[/]  {f.id}  {f.title}")
+
+    # Anomalies (brief)
+    if anomaly_findings:
+        console.print()
+        console.print(f"  [dim]{len(anomaly_findings)} structural anomalies detected (advisory)[/dim]")
+
+    console.print()
 
 
 # ── Section Headers ───────────────────────────────────────────────────────────

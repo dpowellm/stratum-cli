@@ -54,6 +54,10 @@ def cli() -> None:
               help="Upload profile to Stratum dashboard (requires --token)")
 @click.option("--token", "api_token", type=str, default=None,
               help="Stratum API token for --upload")
+@click.option("--reliability", "reliability_mode", is_flag=True, default=False,
+              help="Include reliability findings in output (auto-enabled for multi-agent)")
+@click.option("--security-only", "security_only", is_flag=True, default=False,
+              help="Disable reliability scanner, backward-compatible schema_id 7 output")
 def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
              no_telemetry: bool, offline: bool, fail_above: int | None,
              security_mode: bool, output_format: str, apply_fix: bool,
@@ -61,7 +65,9 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
              profile_output: str | None,
              export_graph_flag: bool = False,
              quiet: bool = False,
-             upload: bool = False, api_token: str | None = None) -> None:
+             upload: bool = False, api_token: str | None = None,
+             reliability_mode: bool = False,
+             security_only: bool = False) -> None:
     """Run a security audit on an AI agent project."""
     # --ci implies --security ordering
     if ci:
@@ -102,6 +108,16 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
 
     # Run scan
     result = scan(path)
+
+    # Determine effective reliability mode:
+    # --security-only disables reliability, --reliability enables it,
+    # otherwise auto-enable for multi-agent projects (>= 2 agents)
+    show_reliability = reliability_mode
+    if security_only:
+        show_reliability = False
+    elif not reliability_mode:
+        # Auto-enable if multi-agent
+        show_reliability = len(getattr(result, 'agent_definitions', [])) >= 2
 
     # History (always writes, even --offline)
     prev = load_last(stratum_dir)
@@ -230,6 +246,44 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
             result, profile, scan_profile,
             scan_duration_ms=scan_duration_ms,
         )
+
+        # Inject reliability data into JSON output (schema_id 8)
+        if show_reliability and not security_only:
+            ping["schema_id"] = 8
+            _rel_findings = getattr(result, 'reliability_findings', [])
+            _comp_findings = getattr(result, 'composite_findings', [])
+            ping["reliability"] = {
+                "findings": [
+                    {
+                        "id": f.id,
+                        "severity": f.severity.value if hasattr(f.severity, 'value') else str(f.severity),
+                        "title": f.title,
+                        "path": f.path,
+                        "description": f.description,
+                        "evidence": f.evidence[:3],
+                        "remediation": f.remediation,
+                    }
+                    for f in _rel_findings
+                    if f.finding_class == "reliability"
+                ],
+                "composite_findings": [
+                    {
+                        "id": f.id,
+                        "severity": f.severity.value if hasattr(f.severity, 'value') else str(f.severity),
+                        "title": f.title,
+                        "description": f.description,
+                        "evidence": f.evidence[:3],
+                    }
+                    for f in _comp_findings
+                ],
+                "score": getattr(result, 'reliability_score', 0),
+                "metrics": getattr(result, 'reliability_metrics', {}),
+                "observation_points": getattr(result, 'observation_points', []),
+            }
+            _repo_profile = getattr(result, 'repo_profile', {})
+            if _repo_profile:
+                ping["repo_profile"] = _repo_profile
+
         click.echo(json.dumps(ping, indent=2))
 
         if ci:

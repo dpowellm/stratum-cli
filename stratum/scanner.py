@@ -418,6 +418,69 @@ def scan(path: str) -> ScanResult:
     # Build risk graph
     result.graph = build_graph(result)
 
+    # === RELIABILITY SCANNER (Phase 10) ===
+    # Runs after graph construction, before blast radii.
+    # The reliability pipeline: enrich → config → evaluate → compose → metrics → anomalies → observations
+    try:
+        from stratum.reliability.enrichment import enrich_graph as _enrich_graph
+        from stratum.reliability.engine import evaluate as _evaluate_reliability
+        from stratum.reliability.composition import run_compositions as _run_compositions
+        from stratum.reliability.metrics_compute import (
+            compute_global_metrics, compute_per_node_metrics,
+            compute_risk_score as _compute_rel_score, build_repo_profile,
+        )
+        from stratum.reliability.anomalies import detect_structural_anomalies
+        from stratum.reliability.observations import (
+            generate_observation_points, observation_points_to_dict,
+        )
+        from stratum.reliability.config import load_stratum_config, apply_config_to_graph
+
+        # Step 1: Enrich graph nodes/edges with reliability metadata
+        _enrich_graph(result.graph, rel_py_files)
+
+        # Step 2: Apply .stratum.yml config (Bucket B bridge)
+        _stratum_cfg = load_stratum_config(abs_path)
+        if _stratum_cfg.has_config:
+            apply_config_to_graph(_stratum_cfg, result.graph)
+
+        # Step 3: Run 18 Bucket A reliability rules
+        result.reliability_findings = _evaluate_reliability(result.graph)
+
+        # Step 4: Run compositions (within-reliability + cross-dataset)
+        _security_findings = top_paths + signals
+        result.composite_findings = _run_compositions(
+            _security_findings, result.reliability_findings,
+        )
+
+        # Step 5: Compute structural metrics
+        result.reliability_metrics = compute_global_metrics(
+            result.graph, result.reliability_findings,
+        )
+        result.per_node_metrics = compute_per_node_metrics(result.graph)
+
+        # Step 6: Detect structural anomalies (advisory findings)
+        _anomaly_findings = detect_structural_anomalies(result.graph)
+        result.reliability_findings.extend(_anomaly_findings)
+
+        # Step 7: Generate observation points
+        _all_rel_findings = result.reliability_findings + result.composite_findings
+        _obs_points = generate_observation_points(result.graph, _all_rel_findings)
+        result.observation_points = observation_points_to_dict(_obs_points)
+
+        # Step 8: Compute reliability score
+        result.reliability_score = int(_compute_rel_score(result.reliability_findings))
+
+        # Step 9: Build repo profile
+        fw_name = result.detected_frameworks[0] if result.detected_frameworks else "unknown"
+        result.repo_profile = build_repo_profile(
+            result.graph, _security_findings, result.reliability_findings,
+            result.composite_findings, framework=fw_name,
+        )
+
+    except Exception as _rel_err:
+        logger.warning("Reliability scanner failed: %s", _rel_err)
+        # Reliability is additive — security findings are unaffected
+
     # Compute blast radii and control bypasses
     result.blast_radii = find_blast_radii(result.graph, crew_definitions, all_agent_defs)
     result._control_bypasses = find_control_bypasses(result.graph, crew_definitions)
