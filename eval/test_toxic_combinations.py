@@ -105,6 +105,106 @@ def build_tc001_graph_with_hitl():
     return G
 
 
+def build_tc003_graph():
+    """Build minimal graph that should trigger TC-003.
+
+    TC-003: Code Execution Reachable From External Input
+    Pattern: external -[sends_to|reads_from|calls|feeds_into]-> agent <-[tool_of]- capability
+    Negative: agent has guardrail of type "hitl"
+    """
+    G = nx.DiGraph()
+    G.add_node("ext_input", type="external")
+    G.add_node("exec_agent", type="agent")
+    G.add_node("exec_cap", type="capability")
+    G.add_edge("ext_input", "exec_agent", type="sends_to")
+    G.add_edge("exec_cap", "exec_agent", type="tool_of")
+    return G
+
+
+def build_tc004_graph():
+    """Build minimal graph that should trigger TC-004.
+
+    TC-004: Financial Operation Through Shared Context
+    Pattern: agent_A -[shares_tool|feeds_into|delegates_to]-> agent_B <-[tool_of]- capability
+             agent_B -[sends_to|calls]-> external
+    Negative: fin_agent has guardrail of type "hitl" or "validation"
+    """
+    G = nx.DiGraph()
+    G.add_node("ext_agent", type="agent")
+    G.add_node("fin_agent", type="agent")
+    G.add_node("fin_cap", type="capability")
+    G.add_node("ext_sink", type="external")
+    G.add_edge("ext_agent", "fin_agent", type="shares_tool")
+    G.add_edge("fin_cap", "fin_agent", type="tool_of")
+    G.add_edge("fin_agent", "ext_sink", type="sends_to")
+    return G
+
+
+def build_tc006_graph():
+    """Build minimal graph that should trigger TC-006.
+
+    TC-006: MCP Credential Cascade
+    Pattern: mcp_server(mcp_auth=false) -[calls|tool_of]-> agent <-[calls|tool_of]- mcp_server
+    No negative constraints.
+    """
+    G = nx.DiGraph()
+    G.add_node("mcp_noauth", type="mcp_server", mcp_auth=False)
+    G.add_node("agent", type="agent")
+    G.add_node("mcp_creds", type="mcp_server")
+    G.add_edge("mcp_noauth", "agent", type="calls")
+    G.add_edge("mcp_creds", "agent", type="calls")
+    return G
+
+
+def build_tc008_graph():
+    """Build minimal graph that should trigger TC-008.
+
+    TC-008: Checkpoint-Free Destructive Pipeline
+    Pattern: agent_1 -[feeds_into]-> agent_2 -[feeds_into]-> agent_3
+    Negative: agent_3 has guardrail of type "hitl"
+    """
+    G = nx.DiGraph()
+    G.add_node("agent_1", type="agent")
+    G.add_node("agent_2", type="agent")
+    G.add_node("agent_3", type="agent")
+    G.add_edge("agent_1", "agent_2", type="feeds_into")
+    G.add_edge("agent_2", "agent_3", type="feeds_into")
+    return G
+
+
+def build_tc009_graph():
+    """Build minimal graph that should trigger TC-009.
+
+    TC-009: Cross-Crew Data Sensitivity Escalation
+    Pattern: agent -[feeds_into|delegates_to|shares_tool, has_control=false]-> agent
+    Negative: edge_on_path has_control=true
+    """
+    G = nx.DiGraph()
+    G.add_node("low_agent", type="agent")
+    G.add_node("high_agent", type="agent")
+    G.add_edge("low_agent", "high_agent", type="feeds_into", has_control=False)
+    return G
+
+
+def build_tc010_graph():
+    """Build minimal graph that should trigger TC-010.
+
+    TC-010: Autonomous Loop With External Write Access
+    Pattern: agent -[feeds_into|delegates_to]-> agent (self-loop)
+             capability -[tool_of]-> agent
+             capability -[sends_to|writes_to]-> external|data_store
+    Negative: agent has guardrail of type "hitl" or "rate_limit"
+    """
+    G = nx.DiGraph()
+    G.add_node("loop_agent", type="agent")
+    G.add_node("write_cap", type="capability")
+    G.add_node("ext_target", type="external")
+    G.add_edge("loop_agent", "loop_agent", type="feeds_into")  # self-loop
+    G.add_edge("write_cap", "loop_agent", type="tool_of")
+    G.add_edge("write_cap", "ext_target", type="sends_to")
+    return G
+
+
 def build_multi_tc_graph():
     """Build a graph that should trigger both TC-001 and TC-007."""
     G = nx.DiGraph()
@@ -264,3 +364,63 @@ def test_negative_constraint_hitl_suppresses():
     matches_controlled = match_all(G_controlled)
     tc001_controlled = [m for m in matches_controlled if m.tc_id == "STRATUM-TC-001"]
     assert len(tc001_controlled) == 0, "TC-001 should be suppressed with has_control=True"
+
+
+def test_match_tc_003():
+    """Build graph triggering TC-003 (code execution reachable from external input)."""
+    G = build_tc003_graph()
+    matches = match_all(G)
+
+    tc003_matches = [m for m in matches if m.tc_id == "STRATUM-TC-003"]
+    assert len(tc003_matches) >= 1, "TC-003 should fire when external input reaches code exec agent"
+    assert tc003_matches[0].severity == "CRITICAL"
+
+
+def test_match_tc_004():
+    """Build graph triggering TC-004 (financial operation through shared context)."""
+    G = build_tc004_graph()
+    matches = match_all(G)
+
+    tc004_matches = [m for m in matches if m.tc_id == "STRATUM-TC-004"]
+    assert len(tc004_matches) >= 1, "TC-004 should fire when financial agent shares context with external-facing agent"
+    assert tc004_matches[0].severity == "CRITICAL"
+
+
+def test_match_tc_006():
+    """Build graph triggering TC-006 (MCP credential cascade)."""
+    G = build_tc006_graph()
+    matches = match_all(G)
+
+    tc006_matches = [m for m in matches if m.tc_id == "STRATUM-TC-006"]
+    assert len(tc006_matches) >= 1, "TC-006 should fire when unauthenticated MCP and credentialed MCP share an agent"
+    assert tc006_matches[0].severity == "HIGH"
+
+
+def test_match_tc_008():
+    """Build graph triggering TC-008 (checkpoint-free destructive pipeline)."""
+    G = build_tc008_graph()
+    matches = match_all(G)
+
+    tc008_matches = [m for m in matches if m.tc_id == "STRATUM-TC-008"]
+    assert len(tc008_matches) >= 1, "TC-008 should fire on 3-agent pipeline with no checkpoint"
+    assert tc008_matches[0].severity == "HIGH"
+
+
+def test_match_tc_009():
+    """Build graph triggering TC-009 (cross-crew data sensitivity escalation)."""
+    G = build_tc009_graph()
+    matches = match_all(G)
+
+    tc009_matches = [m for m in matches if m.tc_id == "STRATUM-TC-009"]
+    assert len(tc009_matches) >= 1, "TC-009 should fire on uncontrolled cross-crew data flow"
+    assert tc009_matches[0].severity == "HIGH"
+
+
+def test_match_tc_010():
+    """Build graph triggering TC-010 (autonomous loop with external write access)."""
+    G = build_tc010_graph()
+    matches = match_all(G)
+
+    tc010_matches = [m for m in matches if m.tc_id == "STRATUM-TC-010"]
+    assert len(tc010_matches) >= 1, "TC-010 should fire on self-looping agent with external write"
+    assert tc010_matches[0].severity == "HIGH"

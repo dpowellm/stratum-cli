@@ -58,7 +58,7 @@
       },
       "remediation": {
         "description": "Add output filtering on the delegation edge or input validation on the writer agent to prevent PII from reaching external services.",
-        "effort": "med",
+        "effort": "medium",
         "framework_specific": {
           "CrewAI": "task = Task(\n    description=\"...\",\n    output_pydantic=SanitizedOutput,  # validates no PII in output\n)",
           "LangGraph": "graph.add_node(\"pii_filter\", pii_filter_fn)\ngraph.add_edge(\"reader\", \"pii_filter\")\ngraph.add_edge(\"pii_filter\", \"writer\")"
@@ -88,7 +88,7 @@
       },
       "remediation": {
         "description": "Add human-in-the-loop approval before code execution, or sandbox the execution environment.",
-        "effort": "med",
+        "effort": "medium",
         "framework_specific": {
           "CrewAI": "task = Task(\n    description=\"...\",\n    human_input=True,  # requires approval before execution\n)",
           "LangGraph": "graph.add_edge(\"agent\", \"code_exec\", interrupt_before=[\"code_exec\"])"
@@ -155,7 +155,7 @@
       },
       "remediation": {
         "description": "Add output filtering between the inbox reader and outbound services to prevent sensitive data exfiltration.",
-        "effort": "med",
+        "effort": "medium",
         "framework_specific": {
           "CrewAI": "# Add output filtering guardrail\nfrom crewai import Task\ntask = Task(\n    description=\"Process email\",\n    output_pydantic=FilteredOutput,  # strips sensitive content\n)",
           "LangGraph": "graph.add_node(\"output_filter\", filter_pii_fn)\ngraph.add_edge(\"agent\", \"output_filter\")\ngraph.add_edge(\"output_filter\", \"outbound\")"
@@ -216,7 +216,7 @@
       },
       "remediation": {
         "description": "Add input validation or rate limiting on the shared tool, or reduce tool sharing by giving each agent its own tool instance.",
-        "effort": "med",
+        "effort": "medium",
         "framework_specific": {
           "CrewAI": "# Add input validation to shared tool\n@tool\ndef shared_tool(input: ValidatedInput) -> str:\n    # Pydantic model validates input before execution\n    ...",
           "LangGraph": "# Wrap tool with validation middleware\ndef validated_tool(state):\n    validate_input(state)\n    return original_tool(state)"
@@ -246,7 +246,7 @@
       },
       "remediation": {
         "description": "Add checkpointing to the pipeline so state can be rolled back, or add HITL on the final destructive step.",
-        "effort": "med",
+        "effort": "medium",
         "framework_specific": {
           "CrewAI": "crew = Crew(\n    agents=[a1, a2, a3],\n    process=Process.sequential,\n    step_callback=checkpoint_fn,  # saves state between steps\n)",
           "LangGraph": "# Add persistent checkpointing\nfrom langgraph.checkpoint.sqlite import SqliteSaver\ngraph = builder.compile(checkpointer=SqliteSaver.from_conn_string(\":memory:\"))"
@@ -274,7 +274,7 @@
       },
       "remediation": {
         "description": "Add access control or input validation on cross-crew data flow edges to prevent sensitivity escalation.",
-        "effort": "med",
+        "effort": "medium",
         "framework_specific": {
           "CrewAI": "task = Task(\n    description=\"...\",\n    output_pydantic=CrossCrewPayload,  # validates data before cross-crew transfer\n)",
           "LangGraph": "# Add validation node between crews\ngraph.add_node(\"cross_crew_gate\", validate_cross_crew)\ngraph.add_edge(\"low_crew_out\", \"cross_crew_gate\")\ngraph.add_edge(\"cross_crew_gate\", \"high_crew_in\")"

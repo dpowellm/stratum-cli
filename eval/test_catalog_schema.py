@@ -36,7 +36,7 @@ def test_all_tcs_have_remediation(catalog):
         remediation = tc.get("remediation", {})
         assert "description" in remediation, f"{tc['tc_id']} missing remediation.description"
         assert "effort" in remediation, f"{tc['tc_id']} missing remediation.effort"
-        assert remediation["effort"] in ("low", "med", "high"), \
+        assert remediation["effort"] in ("low", "medium", "high"), \
             f"{tc['tc_id']} has invalid effort: {remediation['effort']}"
 
 
