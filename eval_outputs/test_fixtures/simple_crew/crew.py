@@ -1,112 +1,111 @@
-"""Simple 3-agent crewAI project for evaluation.
-
-This fixture demonstrates:
-- 3 agents with delegation
-- Shared data store (shared_memory)
-- Irreversible capability (delete_records) without approval gate
-- No human_input on any task
-- Silent error handling (try/except returning defaults)
 """
-from crewai import Agent, Crew, Task
+Multi-agent CrewAI fixture for reliability scanner evaluation.
+3 agents, delegation, shared state, mixed error handling, irreversible actions.
+"""
+import os
+from crewai import Agent, Task, Crew, Process
 from crewai_tools import SerperDevTool, FileReadTool
 
-# Tools
-search_tool = SerperDevTool()
-file_tool = FileReadTool()
-
-
-def delete_records(record_ids: list[str]) -> str:
-    """Permanently delete records from the database. IRREVERSIBLE."""
-    import psycopg2
-    conn = psycopg2.connect(dsn="postgresql://admin:secret@db:5432/prod")
-    cur = conn.cursor()
-    for rid in record_ids:
-        cur.execute("DELETE FROM records WHERE id = %s", (rid,))
-    conn.commit()
-    return f"Deleted {len(record_ids)} records"
-
-
-def send_email(to: str, subject: str, body: str) -> str:
-    """Send email via SMTP."""
-    import smtplib
-    server = smtplib.SMTP("smtp.company.com", 587)
-    server.login("agent@company.com", "password123")
-    server.sendmail("agent@company.com", to, f"Subject: {subject}\n\n{body}")
-    return "sent"
-
-
-# Shared data store
-shared_memory = {}
-
-
-def write_to_shared(key: str, value: str) -> str:
-    """Write to shared memory store."""
-    shared_memory[key] = value
-    return "ok"
-
-
-def read_from_shared(key: str) -> str:
-    """Read from shared memory store."""
-    try:
-        return shared_memory[key]
-    except KeyError:
-        return "default_value"  # Silent error: returns default instead of raising
-
-
-# Agents
-manager = Agent(
-    role="Project Manager",
-    goal="Coordinate research and analysis tasks",
-    backstory="Senior project manager with delegation authority",
-    tools=[search_tool, write_to_shared, read_from_shared],
-    allow_delegation=True,
+# Three agents with different roles and error handling patterns
+researcher = Agent(
+    role="Senior Research Analyst",
+    goal="Find comprehensive market data and competitor analysis",
+    backstory="Expert at finding and synthesizing market data from multiple sources",
+    tools=[SerperDevTool(), FileReadTool()],
+    allow_delegation=False,
     verbose=True,
 )
 
-researcher = Agent(
-    role="Research Analyst",
-    goal="Research topics and compile findings",
-    backstory="Expert researcher with access to search and files",
-    tools=[search_tool, file_tool, write_to_shared, read_from_shared],
+analyst = Agent(
+    role="Financial Analyst",
+    goal="Minimize risk while maximizing portfolio returns",
+    backstory="Experienced financial analyst specializing in risk assessment",
+    tools=[],
     allow_delegation=True,
     verbose=True,
 )
 
 executor = Agent(
-    role="Action Executor",
-    goal="Execute actions based on research findings",
-    backstory="Executor with database and email access",
-    tools=[delete_records, send_email, read_from_shared],
+    role="Trade Executor",
+    goal="Execute approved trades accurately and efficiently",
+    backstory="Responsible for executing financial transactions",
+    tools=[],
     allow_delegation=False,
     verbose=True,
 )
 
-# Tasks (no human_input on any task)
+# Database connection (shared state)
+import psycopg2
+DB_CONN = os.environ.get("DATABASE_URL", "postgresql://user:password123@localhost:5432/trades")
+
+def read_portfolio(query: str) -> str:
+    """Read portfolio positions from database."""
+    try:
+        conn = psycopg2.connect(DB_CONN)
+        cur = conn.cursor()
+        cur.execute(f"SELECT * FROM positions WHERE {query}")
+        results = cur.fetchall()
+        conn.close()
+        return str(results)
+    except Exception:
+        return []
+
+def write_trade(trade_data: dict) -> str:
+    """Execute a trade and record it in the database. IRREVERSIBLE."""
+    try:
+        conn = psycopg2.connect(DB_CONN)
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO trades (symbol, quantity, price, side) VALUES (%s, %s, %s, %s)",
+            (trade_data["symbol"], trade_data["quantity"], trade_data["price"], trade_data["side"])
+        )
+        conn.commit()
+        conn.close()
+        return "Trade executed"
+    except Exception:
+        pass
+
+def send_notification(recipient: str, message: str) -> str:
+    """Send email notification about trade execution. IRREVERSIBLE."""
+    import smtplib
+    from email.mime.text import MIMEText
+    msg = MIMEText(message)
+    msg["Subject"] = "Trade Notification"
+    msg["To"] = recipient
+    with smtplib.SMTP("smtp.company.com") as server:
+        server.send_message(msg)
+    return "Notification sent"
+
+# Error handling patterns differ by agent:
+# researcher: uses try/except with defaults (default_on_error -> fail_silent risk)
+# analyst: propagates errors (fail_loud)
+# executor: catches and returns None (fail_silent)
+
+# Tasks with explicit ordering and context flow
 research_task = Task(
-    description="Research the topic and store findings in shared memory",
-    expected_output="Research summary stored in shared memory",
+    description="Research market conditions for tech sector stocks",
+    expected_output="Market analysis report with key metrics",
     agent=researcher,
 )
 
 analysis_task = Task(
-    description="Analyze research findings and determine actions",
-    expected_output="Action plan based on research",
-    agent=manager,
+    description="Analyze the research and recommend specific trades with risk scores",
+    expected_output="Trade recommendations with risk assessment",
+    agent=analyst,
+    context=[research_task],  # feeds_into: researcher -> analyst
 )
 
 execution_task = Task(
-    description="Execute the action plan: delete old records and notify stakeholders",
-    expected_output="Confirmation of executed actions",
+    description="Execute the recommended trades and send confirmation emails",
+    expected_output="Trade execution confirmation",
     agent=executor,
+    context=[analysis_task],  # feeds_into: analyst -> executor
 )
 
-# Crew
+# Crew with sequential process -- no human checkpoint
 crew = Crew(
-    agents=[manager, researcher, executor],
+    agents=[researcher, analyst, executor],
     tasks=[research_task, analysis_task, execution_task],
+    process=Process.sequential,
     verbose=True,
 )
-
-if __name__ == "__main__":
-    result = crew.kickoff()
-    print(result)

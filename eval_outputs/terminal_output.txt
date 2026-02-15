@@ -2,35 +2,77 @@
 STRATUM SCAN — simple_crew fixture
 ============================================================
 
-Security Score: 48/100
-Security Findings: 11
+Security Score: 65/100
+Security Findings: 16
   CRITICAL  STRATUM-002  Destructive action, no human gate
-  HIGH      STRATUM-001  Unguarded data-to-external path (2 paths)
+  CRITICAL  STRATUM-CR05  Shared tool blast radius: psycopg2 -> 3 agents in crew 'crew'
+  CRITICAL  STRATUM-CR05.1  Shared tool blast radius: smtplib -> 3 agents in crew 'crew'
+  HIGH      STRATUM-001  Unguarded data-to-external path (4 paths)
   HIGH      STRATUM-BR01  Agent sends external messages without human review
-  MEDIUM    STRATUM-008  No error handling on 4 external calls
-  MEDIUM    STRATUM-010  No checkpointing detected
 
 ------------------------------------------------------------
 RELIABILITY ANALYSIS
 ------------------------------------------------------------
 
-Graph Topology: 1 agents | 5 capabilities | 3 data stores | 9 edges
-Delegation Depth: 0 | Feedback Loops: 0 | Trust Crossings: 5
+Graph Topology: 3 agents | 5 capabilities | 3 data stores | 43 edges
+Delegation Depth: 2 | Feedback Loops: 1 | Trust Crossings: 14
 
 Reliability Risk Score: 100/100
 
+  HIGH      STRAT-DC-001  Unsupervised Multi-Step Decision Chain
+           Senior Research Analyst → Financial Analyst → Trade Executor
   CRITICAL  STRAT-DC-002  Irreversible Action Without Approval Gate
-           smtplib
-  CRITICAL  STRAT-DC-002  Irreversible Action Without Approval Gate
-           SerperDevTool
-  CRITICAL  STRAT-DC-002  Irreversible Action Without Approval Gate
-           FileReadTool
+           Senior Research Analyst → smtplib
+  HIGH      STRAT-DC-008  No Timeout or Circuit Breaker on Agent Chain
+           Senior Research Analyst → Financial Analyst → Trade Executor
+  MEDIUM    STRAT-OC-002  Competing Resource Consumers Without Prioritization
+           Trade Executor → Financial Analyst → Senior Research Analyst
+  CRITICAL  STRAT-SI-001  Silent Error Propagation Across Agent Boundary
+           Senior Research Analyst → Financial Analyst
+  CRITICAL  STRAT-SI-001  Silent Error Propagation Across Agent Boundary
+           Financial Analyst → Trade Executor
+  HIGH      STRAT-SI-002  Confidence Laundering Through Agent Chain
+           Senior Research Analyst → Financial Analyst
+  HIGH      STRAT-SI-002  Confidence Laundering Through Agent Chain
+           Senior Research Analyst → Financial Analyst → Trade Executor
+  HIGH      STRAT-SI-002  Confidence Laundering Through Agent Chain
+           Financial Analyst → Trade Executor
+  HIGH      STRAT-SI-004  Schema Mismatch on Data Flow
+           Trade Executor → Financial Analyst → Senior Research Analyst
+  HIGH      STRAT-SI-005  Unvalidated External Data Ingestion
+           Email (SMTP) → smtplib → Senior Research Analyst
+  HIGH      STRAT-SI-005  Unvalidated External Data Ingestion
+           Serper API → SerperDevTool → Senior Research Analyst
+  HIGH      STRAT-EA-001  Implicit Authority Escalation Through Delegation
+           Financial Analyst → FileReadTool → SerperDevTool
+  MEDIUM    STRAT-EA-004  Transitive Data Access Through Delegation
+           Financial Analyst → Crewai Tools
+  HIGH      STRAT-AB-001  Unbounded Autonomous Volume
+           Senior Research Analyst → smtplib
+  HIGH      STRAT-AB-001  Unbounded Autonomous Volume
+           Financial Analyst → smtplib
+  HIGH      STRAT-AB-001  Unbounded Autonomous Volume
+           Trade Executor → smtplib
+  HIGH      STRAT-AB-003  Regulatory Exposure Without Audit Trail
+           Senior Research Analyst → smtplib
+  HIGH      STRAT-AB-003  Regulatory Exposure Without Audit Trail
+           Senior Research Analyst → SerperDevTool
+  HIGH      STRAT-AB-006  No Rollback on Multi-Step Workflow
+           Senior Research Analyst → Financial Analyst → Trade Executor
+  MEDIUM    STRAT-AB-007  Concentration of External Dependencies
+           Trade Executor → Financial Analyst → Senior Research Analyst
 
-  6 structural anomalies detected (advisory)
+COMPOSITIONS
+  CRITICAL+     STRAT-COMP-001  Unsupervised Chain With Silent Error Propagation
+  CRITICAL+     STRAT-COMP-003  Unsupervised Chain With Implicit Authority Escalation
+  CRITICAL+     STRAT-COMP-004  Silent Errors Across Unvalidated Data Boundaries
+  CRITICAL+     STRAT-COMP-006  Unbounded Autonomous Execution of Irreversible Actions
+
+  1 structural anomalies detected (advisory)
 
 ------------------------------------------------------------
 DUAL-AXIS SUMMARY
 ------------------------------------------------------------
-Security Score:    48/100
+Security Score:    65/100
 Reliability Score: 100/100
 Classification:    Both axes need attention

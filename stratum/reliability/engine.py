@@ -175,9 +175,9 @@ def _make_finding(
 def _dc001_unsupervised_chain(graph: RiskGraph) -> list[Finding]:
     """STRAT-DC-001: Unsupervised Multi-Step Decision Chain.
 
-    Path of 3+ delegates_to edges with no human_input_enabled agent in the path.
+    Path of 3+ agent-to-agent edges with no human_input_enabled agent in the path.
     """
-    chain_edges = {EdgeType.DELEGATES_TO.value}
+    chain_edges = {EdgeType.DELEGATES_TO.value, EdgeType.TASK_SEQUENCE.value, EdgeType.FEEDS_INTO.value}
     paths = find_paths(graph, chain_edges, source_filter="agent", min_length=3, max_length=8)
 
     findings: list[Finding] = []

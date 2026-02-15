@@ -1,5 +1,5 @@
 {
-  "scan_id": "d97d7e80",
+  "scan_id": "47b400e8",
   "graph": {
     "nodes": [
       {
@@ -70,7 +70,7 @@
         "makes_decisions": false,
         "error_handling_pattern": "",
         "betweenness_centrality": 0.0,
-        "reversibility": "irreversible"
+        "reversibility": "reversible"
       },
       {
         "id": "ext_serper_api",
@@ -90,7 +90,7 @@
         "makes_decisions": false,
         "error_handling_pattern": "",
         "betweenness_centrality": 0.0,
-        "reversibility": "irreversible"
+        "reversibility": "reversible"
       },
       {
         "id": "ds_crewai_tools",
@@ -103,8 +103,28 @@
         "reversibility": ""
       },
       {
-        "id": "agent_agent",
-        "label": "Project Manager",
+        "id": "agent_researcher",
+        "label": "Senior Research Analyst",
+        "node_type": "agent",
+        "source_file": "crew.py",
+        "makes_decisions": false,
+        "error_handling_pattern": "default_on_error",
+        "betweenness_centrality": 0.0952,
+        "reversibility": ""
+      },
+      {
+        "id": "agent_analyst",
+        "label": "Financial Analyst",
+        "node_type": "agent",
+        "source_file": "crew.py",
+        "makes_decisions": false,
+        "error_handling_pattern": "default_on_error",
+        "betweenness_centrality": 0.0714,
+        "reversibility": ""
+      },
+      {
+        "id": "agent_executor",
+        "label": "Trade Executor",
         "node_type": "agent",
         "source_file": "crew.py",
         "makes_decisions": false,
@@ -150,14 +170,203 @@
         "schema_validated": false
       },
       {
-        "source": "cap_psycopg2_data_access",
-        "target": "cap_smtplib_outbound",
-        "edge_type": "shares_with",
+        "source": "cap_SerperDevTool_outbound",
+        "target": "agent_researcher",
+        "edge_type": "tool_of",
         "trust_crossing": true,
         "schema_validated": false
       },
       {
+        "source": "cap_FileReadTool_data_access",
+        "target": "agent_researcher",
+        "edge_type": "tool_of",
+        "trust_crossing": false,
+        "schema_validated": false
+      },
+      {
         "source": "cap_psycopg2_data_access",
+        "target": "agent_researcher",
+        "edge_type": "tool_of",
+        "trust_crossing": false,
+        "schema_validated": false
+      },
+      {
+        "source": "cap_psycopg2_data_access",
+        "target": "agent_analyst",
+        "edge_type": "tool_of",
+        "trust_crossing": false,
+        "schema_validated": false
+      },
+      {
+        "source": "cap_psycopg2_data_access",
+        "target": "agent_executor",
+        "edge_type": "tool_of",
+        "trust_crossing": false,
+        "schema_validated": false
+      },
+      {
+        "source": "cap_psycopg2_destructive",
+        "target": "agent_researcher",
+        "edge_type": "tool_of",
+        "trust_crossing": false,
+        "schema_validated": false
+      },
+      {
+        "source": "cap_psycopg2_destructive",
+        "target": "agent_analyst",
+        "edge_type": "tool_of",
+        "trust_crossing": false,
+        "schema_validated": false
+      },
+      {
+        "source": "cap_psycopg2_destructive",
+        "target": "agent_executor",
+        "edge_type": "tool_of",
+        "trust_crossing": false,
+        "schema_validated": false
+      },
+      {
+        "source": "cap_smtplib_outbound",
+        "target": "agent_researcher",
+        "edge_type": "tool_of",
+        "trust_crossing": true,
+        "schema_validated": false
+      },
+      {
+        "source": "cap_smtplib_outbound",
+        "target": "agent_analyst",
+        "edge_type": "tool_of",
+        "trust_crossing": true,
+        "schema_validated": false
+      },
+      {
+        "source": "cap_smtplib_outbound",
+        "target": "agent_executor",
+        "edge_type": "tool_of",
+        "trust_crossing": true,
+        "schema_validated": false
+      },
+      {
+        "source": "agent_researcher",
+        "target": "agent_analyst",
+        "edge_type": "task_sequence",
+        "trust_crossing": false,
+        "schema_validated": false
+      },
+      {
+        "source": "agent_analyst",
+        "target": "agent_executor",
+        "edge_type": "task_sequence",
+        "trust_crossing": false,
+        "schema_validated": false
+      },
+      {
+        "source": "agent_researcher",
+        "target": "agent_analyst",
+        "edge_type": "feeds_into",
+        "trust_crossing": false,
+        "schema_validated": false
+      },
+      {
+        "source": "agent_analyst",
+        "target": "agent_executor",
+        "edge_type": "feeds_into",
+        "trust_crossing": false,
+        "schema_validated": false
+      },
+      {
+        "source": "agent_analyst",
+        "target": "agent_researcher",
+        "edge_type": "delegates_to",
+        "trust_crossing": false,
+        "schema_validated": false
+      },
+      {
+        "source": "agent_analyst",
+        "target": "agent_executor",
+        "edge_type": "delegates_to",
+        "trust_crossing": false,
+        "schema_validated": false
+      },
+      {
+        "source": "agent_researcher",
+        "target": "ds_postgresql",
+        "edge_type": "reads_from",
+        "trust_crossing": false,
+        "schema_validated": false
+      },
+      {
+        "source": "agent_analyst",
+        "target": "ds_postgresql",
+        "edge_type": "reads_from",
+        "trust_crossing": false,
+        "schema_validated": false
+      },
+      {
+        "source": "agent_executor",
+        "target": "ds_postgresql",
+        "edge_type": "reads_from",
+        "trust_crossing": false,
+        "schema_validated": false
+      },
+      {
+        "source": "agent_researcher",
+        "target": "ds_psycopg2_write",
+        "edge_type": "writes_to",
+        "trust_crossing": false,
+        "schema_validated": false
+      },
+      {
+        "source": "agent_analyst",
+        "target": "ds_psycopg2_write",
+        "edge_type": "writes_to",
+        "trust_crossing": false,
+        "schema_validated": false
+      },
+      {
+        "source": "agent_executor",
+        "target": "ds_psycopg2_write",
+        "edge_type": "writes_to",
+        "trust_crossing": false,
+        "schema_validated": false
+      },
+      {
+        "source": "agent_researcher",
+        "target": "ext_email_smtp",
+        "edge_type": "sends_to",
+        "trust_crossing": true,
+        "schema_validated": false
+      },
+      {
+        "source": "agent_analyst",
+        "target": "ext_email_smtp",
+        "edge_type": "sends_to",
+        "trust_crossing": true,
+        "schema_validated": false
+      },
+      {
+        "source": "agent_executor",
+        "target": "ext_email_smtp",
+        "edge_type": "sends_to",
+        "trust_crossing": true,
+        "schema_validated": false
+      },
+      {
+        "source": "agent_researcher",
+        "target": "ext_serper_api",
+        "edge_type": "sends_to",
+        "trust_crossing": true,
+        "schema_validated": false
+      },
+      {
+        "source": "agent_researcher",
+        "target": "ds_crewai_tools",
+        "edge_type": "reads_from",
+        "trust_crossing": true,
+        "schema_validated": false
+      },
+      {
+        "source": "cap_FileReadTool_data_access",
         "target": "cap_SerperDevTool_outbound",
         "edge_type": "shares_with",
         "trust_crossing": true,
@@ -171,56 +380,127 @@
         "schema_validated": false
       },
       {
-        "source": "cap_FileReadTool_data_access",
+        "source": "cap_psycopg2_data_access",
         "target": "cap_SerperDevTool_outbound",
         "edge_type": "shares_with",
         "trust_crossing": true,
+        "schema_validated": false
+      },
+      {
+        "source": "cap_psycopg2_data_access",
+        "target": "cap_smtplib_outbound",
+        "edge_type": "shares_with",
+        "trust_crossing": true,
+        "schema_validated": false
+      },
+      {
+        "source": "agent_analyst",
+        "target": "cap_SerperDevTool_outbound",
+        "edge_type": "implicit_authority_over",
+        "trust_crossing": false,
+        "schema_validated": false
+      },
+      {
+        "source": "agent_researcher",
+        "target": "agent_analyst",
+        "edge_type": "error_boundary",
+        "trust_crossing": false,
+        "schema_validated": false
+      },
+      {
+        "source": "agent_analyst",
+        "target": "agent_executor",
+        "edge_type": "error_boundary",
+        "trust_crossing": false,
+        "schema_validated": false
+      },
+      {
+        "source": "agent_analyst",
+        "target": "agent_executor",
+        "edge_type": "shared_state_conflict",
+        "trust_crossing": false,
+        "schema_validated": false
+      },
+      {
+        "source": "agent_analyst",
+        "target": "agent_researcher",
+        "edge_type": "shared_state_conflict",
+        "trust_crossing": false,
+        "schema_validated": false
+      },
+      {
+        "source": "agent_executor",
+        "target": "agent_researcher",
+        "edge_type": "shared_state_conflict",
+        "trust_crossing": false,
         "schema_validated": false
       }
     ]
   },
   "structural_metrics": {
     "global": {
-      "total_agents": 1,
+      "total_agents": 3,
       "total_capabilities": 5,
       "total_data_stores": 3,
-      "total_edges": 9,
+      "total_edges": 43,
       "total_guardrails": 0,
       "total_observability_sinks": 0,
-      "max_delegation_depth": 0,
-      "max_data_flow_depth": 0,
-      "graph_density": 0.0818,
-      "strongly_connected_components": 0,
+      "max_delegation_depth": 2,
+      "max_data_flow_depth": 3,
+      "graph_density": 0.2756,
+      "strongly_connected_components": 1,
       "avg_path_length_to_critical": 0.0,
       "control_coverage_pct": 0.0,
       "observability_coverage_pct": 0.0,
       "human_checkpoint_ratio": 0.0,
       "approval_gate_ratio": 0.0,
-      "trust_boundary_crossings": 5,
-      "unguarded_trust_crossings": 5,
-      "shared_state_conflicts": 0,
-      "irreversible_capabilities": 3,
-      "unguarded_irreversible": 3,
+      "trust_boundary_crossings": 14,
+      "unguarded_trust_crossings": 14,
+      "shared_state_conflicts": 3,
+      "irreversible_capabilities": 1,
+      "unguarded_irreversible": 1,
       "fail_silent_agents_pct": 0.0,
       "default_on_error_pct": 1.0,
       "fail_silent_on_critical_path": 0,
-      "error_propagation_paths": 0,
-      "max_betweenness_centrality": 0.0,
+      "error_propagation_paths": 2,
+      "max_betweenness_centrality": 0.0952,
       "single_points_of_failure": 0,
-      "tool_to_agent_ratio": 5.0,
-      "max_tools_per_agent": 0,
-      "feedback_loops_detected": 0,
-      "undampened_feedback_loops": 0,
-      "unvalidated_data_flows": 0,
+      "tool_to_agent_ratio": 1.67,
+      "max_tools_per_agent": 5,
+      "feedback_loops_detected": 1,
+      "undampened_feedback_loops": 1,
+      "unvalidated_data_flows": 2,
       "schema_coverage_pct": 0.0
     },
     "per_node": {
-      "agent_agent": {
-        "betweenness_centrality": 0.0,
-        "closeness_centrality": 0.0,
-        "pagerank": 0.0136,
+      "agent_researcher": {
+        "betweenness_centrality": 0.0952,
+        "closeness_centrality": 0.6471,
+        "pagerank": 0.0586,
         "delegation_depth_downstream": 0,
-        "critical_capabilities_reachable": 0,
+        "critical_capabilities_reachable": 1,
+        "implicit_authorities": 0,
+        "guardrail_count": 0,
+        "observability_count": 0,
+        "error_blast_radius": 2
+      },
+      "agent_analyst": {
+        "betweenness_centrality": 0.0714,
+        "closeness_centrality": 0.6111,
+        "pagerank": 0.0343,
+        "delegation_depth_downstream": 1,
+        "critical_capabilities_reachable": 1,
+        "implicit_authorities": 1,
+        "guardrail_count": 0,
+        "observability_count": 0,
+        "error_blast_radius": 1
+      },
+      "agent_executor": {
+        "betweenness_centrality": 0.0,
+        "closeness_centrality": 0.5238,
+        "pagerank": 0.0309,
+        "delegation_depth_downstream": 0,
+        "critical_capabilities_reachable": 1,
         "implicit_authorities": 0,
         "guardrail_count": 0,
         "observability_count": 0,
@@ -230,176 +510,1173 @@
   },
   "preconditions": [
     {
+      "id": "STRAT-DC-001",
+      "severity": "HIGH",
+      "title": "Unsupervised Multi-Step Decision Chain",
+      "path": "Senior Research Analyst \u2192 Financial Analyst \u2192 Trade Executor",
+      "description": "Delegation chain of 3 agents with no human checkpoint. Decisions cascade without human review.",
+      "evidence": [
+        "crew.py"
+      ],
+      "remediation": "Add human_input=True (CrewAI) or interrupt_before (LangGraph) at critical points in the delegation chain."
+    },
+    {
       "id": "STRAT-DC-002",
       "severity": "CRITICAL",
       "title": "Irreversible Action Without Approval Gate",
-      "path": "smtplib",
+      "path": "Senior Research Analyst \u2192 smtplib",
       "description": "smtplib is irreversible with no human approval gate.",
       "evidence": [
-        "crew.py:34"
+        "crew.py",
+        "crew.py:76"
       ],
       "remediation": "Add approval_required guardrail or human_input=True on the Task."
     },
     {
-      "id": "STRAT-DC-002",
-      "severity": "CRITICAL",
-      "title": "Irreversible Action Without Approval Gate",
-      "path": "SerperDevTool",
-      "description": "SerperDevTool is irreversible with no human approval gate.",
+      "id": "STRAT-DC-008",
+      "severity": "HIGH",
+      "title": "No Timeout or Circuit Breaker on Agent Chain",
+      "path": "Senior Research Analyst \u2192 Financial Analyst \u2192 Trade Executor",
+      "description": "Chain of 3 agents with no timeout configuration. Chain can hang indefinitely.",
       "evidence": [
         "crew.py"
       ],
-      "remediation": "Add approval_required guardrail or human_input=True on the Task."
+      "remediation": "Set max_execution_time on each Task or step_timeout on agent nodes."
     },
     {
-      "id": "STRAT-DC-002",
-      "severity": "CRITICAL",
-      "title": "Irreversible Action Without Approval Gate",
-      "path": "FileReadTool",
-      "description": "FileReadTool is irreversible with no human approval gate.",
+      "id": "STRAT-OC-002",
+      "severity": "MEDIUM",
+      "title": "Competing Resource Consumers Without Prioritization",
+      "path": "Trade Executor \u2192 Financial Analyst \u2192 Senior Research Analyst \u2192 Email (SMTP)",
+      "description": "3 agents call Email (SMTP) with no shared rate coordination: Trade Executor, Financial Analyst, Senior Research Analyst.",
       "evidence": [
         "crew.py"
       ],
-      "remediation": "Add approval_required guardrail or human_input=True on the Task."
+      "remediation": "Implement shared rate limiting or token bucket across agents."
+    },
+    {
+      "id": "STRAT-SI-001",
+      "severity": "CRITICAL",
+      "title": "Silent Error Propagation Across Agent Boundary",
+      "path": "Senior Research Analyst \u2192 Financial Analyst",
+      "description": "Senior Research Analyst returns defaults on error (pattern: default_on_error) and feeds into Financial Analyst with no input validation. Error signal is permanently lost.",
+      "evidence": [
+        "crew.py"
+      ],
+      "remediation": "Replace default-on-error with explicit error propagation. Return error types, not default values."
+    },
+    {
+      "id": "STRAT-SI-001",
+      "severity": "CRITICAL",
+      "title": "Silent Error Propagation Across Agent Boundary",
+      "path": "Financial Analyst \u2192 Trade Executor",
+      "description": "Financial Analyst returns defaults on error (pattern: default_on_error) and feeds into Trade Executor with no input validation. Error signal is permanently lost.",
+      "evidence": [
+        "crew.py"
+      ],
+      "remediation": "Replace default-on-error with explicit error propagation. Return error types, not default values."
+    },
+    {
+      "id": "STRAT-SI-002",
+      "severity": "HIGH",
+      "title": "Confidence Laundering Through Agent Chain",
+      "path": "Senior Research Analyst \u2192 Financial Analyst",
+      "description": "Chain of 2 agents via feeds_into with no confidence/uncertainty metadata preserved. Downstream decisions treat uncertain data as certain.",
+      "evidence": [
+        "crew.py"
+      ],
+      "remediation": "Add confidence scores to agent outputs. Use structured output with confidence fields."
+    },
+    {
+      "id": "STRAT-SI-002",
+      "severity": "HIGH",
+      "title": "Confidence Laundering Through Agent Chain",
+      "path": "Senior Research Analyst \u2192 Financial Analyst \u2192 Trade Executor",
+      "description": "Chain of 3 agents via feeds_into with no confidence/uncertainty metadata preserved. Downstream decisions treat uncertain data as certain.",
+      "evidence": [
+        "crew.py"
+      ],
+      "remediation": "Add confidence scores to agent outputs. Use structured output with confidence fields."
+    },
+    {
+      "id": "STRAT-SI-002",
+      "severity": "HIGH",
+      "title": "Confidence Laundering Through Agent Chain",
+      "path": "Financial Analyst \u2192 Trade Executor",
+      "description": "Chain of 2 agents via feeds_into with no confidence/uncertainty metadata preserved. Downstream decisions treat uncertain data as certain.",
+      "evidence": [
+        "crew.py"
+      ],
+      "remediation": "Add confidence scores to agent outputs. Use structured output with confidence fields."
+    },
+    {
+      "id": "STRAT-SI-004",
+      "severity": "HIGH",
+      "title": "Schema Mismatch on Data Flow",
+      "path": "Trade Executor \u2192 Financial Analyst \u2192 Senior Research Analyst",
+      "description": "2 inter-agent data flows lack schema contracts: Senior Research Analyst \u2192 Financial Analyst, Financial Analyst \u2192 Trade Executor.",
+      "evidence": [
+        "crew.py"
+      ],
+      "remediation": "Add output_pydantic or output_json on upstream agents. Use TypedDict State for LangGraph."
+    },
+    {
+      "id": "STRAT-SI-005",
+      "severity": "HIGH",
+      "title": "Unvalidated External Data Ingestion",
+      "path": "Email (SMTP) \u2192 smtplib \u2192 Senior Research Analyst",
+      "description": "External data flows through smtplib to agent without input validation.",
+      "evidence": [
+        "crew.py:76",
+        "crew.py"
+      ],
+      "remediation": "Add input validation on capabilities that ingest external data."
+    },
+    {
+      "id": "STRAT-SI-005",
+      "severity": "HIGH",
+      "title": "Unvalidated External Data Ingestion",
+      "path": "Serper API \u2192 SerperDevTool \u2192 Senior Research Analyst",
+      "description": "External data flows through SerperDevTool to agent without input validation.",
+      "evidence": [
+        "crew.py"
+      ],
+      "remediation": "Add input validation on capabilities that ingest external data."
+    },
+    {
+      "id": "STRAT-EA-001",
+      "severity": "HIGH",
+      "title": "Implicit Authority Escalation Through Delegation",
+      "path": "Financial Analyst \u2192 FileReadTool \u2192 SerperDevTool",
+      "description": "Financial Analyst has 3 direct capabilities but can reach 5 through delegation. Escalated: FileReadTool, SerperDevTool.",
+      "evidence": [
+        "crew.py",
+        "Direct: psycopg2, smtplib, psycopg2",
+        "Escalated: FileReadTool, SerperDevTool"
+      ],
+      "remediation": "Implement capability scoping on delegation. Use tools= parameter on Task to limit delegate capabilities."
+    },
+    {
+      "id": "STRAT-EA-004",
+      "severity": "MEDIUM",
+      "title": "Transitive Data Access Through Delegation",
+      "path": "Financial Analyst \u2192 Crewai Tools",
+      "description": "Financial Analyst can reach 1 data stores via delegation that it has no direct access to: Crewai Tools.",
+      "evidence": [
+        "crew.py"
+      ],
+      "remediation": "Review delegation scope and data access boundaries."
+    },
+    {
+      "id": "STRAT-AB-001",
+      "severity": "HIGH",
+      "title": "Unbounded Autonomous Volume",
+      "path": "Senior Research Analyst \u2192 smtplib",
+      "description": "Senior Research Analyst has irreversible capabilities [smtplib] with no rate limiting or human checkpoint.",
+      "evidence": [
+        "crew.py",
+        "crew.py:76"
+      ],
+      "remediation": "Add rate_limited_by guardrail or human_input on the agent."
+    },
+    {
+      "id": "STRAT-AB-001",
+      "severity": "HIGH",
+      "title": "Unbounded Autonomous Volume",
+      "path": "Financial Analyst \u2192 smtplib",
+      "description": "Financial Analyst has irreversible capabilities [smtplib] with no rate limiting or human checkpoint.",
+      "evidence": [
+        "crew.py",
+        "crew.py:76"
+      ],
+      "remediation": "Add rate_limited_by guardrail or human_input on the agent."
+    },
+    {
+      "id": "STRAT-AB-001",
+      "severity": "HIGH",
+      "title": "Unbounded Autonomous Volume",
+      "path": "Trade Executor \u2192 smtplib",
+      "description": "Trade Executor has irreversible capabilities [smtplib] with no rate limiting or human checkpoint.",
+      "evidence": [
+        "crew.py",
+        "crew.py:76"
+      ],
+      "remediation": "Add rate_limited_by guardrail or human_input on the agent."
+    },
+    {
+      "id": "STRAT-AB-003",
+      "severity": "HIGH",
+      "title": "Regulatory Exposure Without Audit Trail",
+      "path": "Senior Research Analyst \u2192 smtplib",
+      "description": "smtplib has regulatory category 'communications' but agent Senior Research Analyst has no observability/audit trail.",
+      "evidence": [
+        "crew.py",
+        "crew.py:76"
+      ],
+      "remediation": "Add observability sink (LangSmith, OpenTelemetry) covering this agent."
+    },
+    {
+      "id": "STRAT-AB-003",
+      "severity": "HIGH",
+      "title": "Regulatory Exposure Without Audit Trail",
+      "path": "Senior Research Analyst \u2192 SerperDevTool",
+      "description": "SerperDevTool has regulatory category 'communications' but agent Senior Research Analyst has no observability/audit trail.",
+      "evidence": [
+        "crew.py"
+      ],
+      "remediation": "Add observability sink (LangSmith, OpenTelemetry) covering this agent."
+    },
+    {
+      "id": "STRAT-AB-006",
+      "severity": "HIGH",
+      "title": "No Rollback on Multi-Step Workflow",
+      "path": "Senior Research Analyst \u2192 Financial Analyst \u2192 Trade Executor",
+      "description": "Multi-step workflow of 3 agents includes irreversible actions with no compensating transaction or rollback mechanism.",
+      "evidence": [
+        "crew.py"
+      ],
+      "remediation": "Implement saga pattern or checkpoint/restore for multi-step workflows."
+    },
+    {
+      "id": "STRAT-AB-007",
+      "severity": "MEDIUM",
+      "title": "Concentration of External Dependencies",
+      "path": "Trade Executor \u2192 Financial Analyst \u2192 Senior Research Analyst \u2192 Email (SMTP)",
+      "description": "3 agents depend on Email (SMTP) with no fallback. Dependent agents: Trade Executor, Financial Analyst, Senior Research Analyst.",
+      "evidence": [
+        "crew.py"
+      ],
+      "remediation": "Add fallback mechanisms or circuit breakers for shared dependencies."
     }
   ],
-  "compositions": [],
+  "compositions": [
+    {
+      "id": "STRAT-COMP-001",
+      "severity": "CRITICAL",
+      "title": "Unsupervised Chain With Silent Error Propagation",
+      "description": "Unsupervised decision chain WITH silent error propagation through the same chain. The chain can make bad decisions AND no one sees the errors."
+    },
+    {
+      "id": "STRAT-COMP-003",
+      "severity": "CRITICAL",
+      "title": "Unsupervised Chain With Implicit Authority Escalation",
+      "description": "Unsupervised chain where agents exercise authority they weren't directly granted. Escalation without oversight."
+    },
+    {
+      "id": "STRAT-COMP-004",
+      "severity": "CRITICAL",
+      "title": "Silent Errors Across Unvalidated Data Boundaries",
+      "description": "Errors propagate silently across unvalidated data boundaries. No schema contracts AND no error visibility."
+    },
+    {
+      "id": "STRAT-COMP-006",
+      "severity": "CRITICAL",
+      "title": "Unbounded Autonomous Execution of Irreversible Actions",
+      "description": "Unbounded autonomous execution of irreversible actions. No rate limiting AND no approval gate on destructive capabilities."
+    }
+  ],
   "structural_anomalies": [
     {
-      "id": "STRAT-ANOMALY-ZSCORE",
-      "severity": "MEDIUM",
-      "title": "Structural Anomaly: external_service_ratio",
-      "description": "external_service_ratio = 2.00 is 8.3 standard deviations above the reference baseline (mean=0.34, std=0.20)."
-    },
-    {
-      "id": "STRAT-ANOMALY-ZSCORE",
+      "id": "STRAT-ANOMALY-WRITEONLY",
       "severity": "LOW",
-      "title": "Structural Anomaly: max_chain_depth",
-      "description": "max_chain_depth = 0.00 is 2.0 standard deviations below the reference baseline (mean=3.00, std=1.50)."
-    },
-    {
-      "id": "STRAT-ANOMALY-ORPHAN-CAP",
-      "severity": "LOW",
-      "title": "Orphaned Capability",
-      "description": "psycopg2 has no tool_of edge \u2014 no agent owns it."
-    },
-    {
-      "id": "STRAT-ANOMALY-ORPHAN-CAP",
-      "severity": "LOW",
-      "title": "Orphaned Capability",
-      "description": "psycopg2 has no tool_of edge \u2014 no agent owns it."
-    },
-    {
-      "id": "STRAT-ANOMALY-ORPHAN-CAP",
-      "severity": "LOW",
-      "title": "Orphaned Capability",
-      "description": "smtplib has no tool_of edge \u2014 no agent owns it."
-    },
-    {
-      "id": "STRAT-ANOMALY-EMPTY-AGENT",
-      "severity": "LOW",
-      "title": "Agent With No Capabilities",
-      "description": "Project Manager has no tools \u2014 delegates everything."
+      "title": "Write-Only Data Store",
+      "description": "PostgreSQL (write) has 4 writers but zero readers."
     }
   ],
   "graph_motifs": [
     {
-      "motif_id": "7174ce410a17",
+      "motif_id": "8c06555b17c2",
       "node_types": [
+        "agent",
         "capability",
+        "data_store",
+        "external"
+      ],
+      "edge_types": [
+        "reads_from",
+        "sends_to",
+        "tool_of"
+      ],
+      "edge_pairs": [
+        [
+          0,
+          2
+        ],
+        [
+          0,
+          3
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "instances": 14,
+      "instance_node_ids": [
+        [
+          "cap_psycopg2_data_access",
+          "ext_email_smtp",
+          "ds_crewai_tools",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "ext_serper_api",
+          "ds_crewai_tools",
+          "agent_researcher"
+        ],
+        [
+          "ds_postgresql",
+          "cap_psycopg2_destructive",
+          "ext_email_smtp",
+          "agent_researcher"
+        ],
+        [
+          "ds_postgresql",
+          "cap_psycopg2_destructive",
+          "ext_email_smtp",
+          "agent_analyst"
+        ],
+        [
+          "ds_postgresql",
+          "cap_psycopg2_destructive",
+          "ext_email_smtp",
+          "agent_executor"
+        ],
+        [
+          "ds_postgresql",
+          "cap_psycopg2_destructive",
+          "ext_serper_api",
+          "agent_researcher"
+        ],
+        [
+          "ds_postgresql",
+          "cap_smtplib_outbound",
+          "ext_serper_api",
+          "agent_researcher"
+        ],
+        [
+          "ds_postgresql",
+          "ext_email_smtp",
+          "cap_SerperDevTool_outbound",
+          "agent_researcher"
+        ],
+        [
+          "ds_postgresql",
+          "ext_email_smtp",
+          "cap_FileReadTool_data_access",
+          "agent_researcher"
+        ],
+        [
+          "ds_postgresql",
+          "ext_serper_api",
+          "cap_FileReadTool_data_access",
+          "agent_researcher"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": true,
+        "avg_centrality": 0.0867,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "c4fad942fa8d",
+      "node_types": [
+        "agent",
+        "capability",
+        "external"
+      ],
+      "edge_types": [
+        "sends_to",
+        "tool_of"
+      ],
+      "edge_pairs": [
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "instances": 12,
+      "instance_node_ids": [
+        [
+          "cap_psycopg2_data_access",
+          "ext_email_smtp",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "ext_email_smtp",
+          "agent_analyst"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "ext_email_smtp",
+          "agent_executor"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "ext_serper_api",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_destructive",
+          "ext_email_smtp",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_destructive",
+          "ext_email_smtp",
+          "agent_analyst"
+        ],
+        [
+          "cap_psycopg2_destructive",
+          "ext_email_smtp",
+          "agent_executor"
+        ],
+        [
+          "cap_psycopg2_destructive",
+          "ext_serper_api",
+          "agent_researcher"
+        ],
+        [
+          "cap_smtplib_outbound",
+          "ext_serper_api",
+          "agent_researcher"
+        ],
+        [
+          "ext_email_smtp",
+          "cap_SerperDevTool_outbound",
+          "agent_researcher"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": true,
+        "avg_centrality": 0.0754,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "bb8f72942318",
+      "node_types": [
+        "agent",
         "capability",
         "data_store"
       ],
       "edge_types": [
         "reads_from",
-        "shares_with"
+        "tool_of"
       ],
       "edge_pairs": [
         [
           0,
-          1
+          2
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "instances": 12,
+      "instance_node_ids": [
+        [
+          "cap_psycopg2_data_access",
+          "ds_crewai_tools",
+          "agent_researcher"
+        ],
+        [
+          "ds_postgresql",
+          "cap_psycopg2_destructive",
+          "agent_researcher"
+        ],
+        [
+          "ds_postgresql",
+          "cap_psycopg2_destructive",
+          "agent_analyst"
+        ],
+        [
+          "ds_postgresql",
+          "cap_psycopg2_destructive",
+          "agent_executor"
+        ],
+        [
+          "ds_postgresql",
+          "cap_smtplib_outbound",
+          "agent_researcher"
+        ],
+        [
+          "ds_postgresql",
+          "cap_smtplib_outbound",
+          "agent_analyst"
+        ],
+        [
+          "ds_postgresql",
+          "cap_smtplib_outbound",
+          "agent_executor"
+        ],
+        [
+          "ds_postgresql",
+          "cap_SerperDevTool_outbound",
+          "agent_researcher"
+        ],
+        [
+          "ds_postgresql",
+          "cap_FileReadTool_data_access",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_destructive",
+          "ds_crewai_tools",
+          "agent_researcher"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": true,
+        "avg_centrality": 0.0754,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "108cfb9fd237",
+      "node_types": [
+        "agent",
+        "capability",
+        "capability"
+      ],
+      "edge_types": [
+        "tool_of",
+        "tool_of"
+      ],
+      "edge_pairs": [
+        [
+          1,
+          0
         ],
         [
           2,
           0
         ]
       ],
-      "instances": 3,
+      "instances": 10,
       "instance_node_ids": [
         [
           "cap_psycopg2_data_access",
-          "ds_postgresql",
-          "cap_smtplib_outbound"
+          "cap_psycopg2_destructive",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "cap_psycopg2_destructive",
+          "agent_analyst"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "cap_psycopg2_destructive",
+          "agent_executor"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "cap_FileReadTool_data_access",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_destructive",
+          "cap_smtplib_outbound",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_destructive",
+          "cap_smtplib_outbound",
+          "agent_analyst"
+        ],
+        [
+          "cap_psycopg2_destructive",
+          "cap_smtplib_outbound",
+          "agent_executor"
+        ],
+        [
+          "cap_psycopg2_destructive",
+          "cap_SerperDevTool_outbound",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_destructive",
+          "cap_FileReadTool_data_access",
+          "agent_researcher"
         ],
         [
           "cap_smtplib_outbound",
-          "cap_FileReadTool_data_access",
-          "ds_crewai_tools"
-        ],
-        [
           "cap_SerperDevTool_outbound",
-          "cap_FileReadTool_data_access",
-          "ds_crewai_tools"
+          "agent_researcher"
         ]
       ],
       "enrichment_summary": {
         "has_fail_silent": false,
         "has_irreversible": true,
-        "avg_centrality": 0.0,
+        "avg_centrality": 0.0714,
         "has_trust_crossing": true,
         "has_guardrail": false
       }
     },
     {
-      "motif_id": "3499ff507821",
+      "motif_id": "d54ea6cc95d2",
       "node_types": [
+        "agent",
         "capability",
         "capability",
         "external"
       ],
       "edge_types": [
         "sends_to",
-        "shares_with"
+        "tool_of",
+        "tool_of"
       ],
       "edge_pairs": [
         [
           0,
-          1
+          3
         ],
         [
           1,
-          2
+          0
+        ],
+        [
+          2,
+          0
         ]
       ],
-      "instances": 3,
+      "instances": 10,
       "instance_node_ids": [
         [
           "cap_psycopg2_data_access",
-          "cap_smtplib_outbound",
-          "ext_email_smtp"
-        ],
-        [
-          "cap_smtplib_outbound",
+          "cap_psycopg2_destructive",
           "ext_email_smtp",
-          "cap_FileReadTool_data_access"
+          "agent_researcher"
         ],
         [
-          "cap_SerperDevTool_outbound",
+          "cap_psycopg2_data_access",
+          "cap_psycopg2_destructive",
+          "ext_email_smtp",
+          "agent_analyst"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "cap_psycopg2_destructive",
+          "ext_email_smtp",
+          "agent_executor"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "cap_psycopg2_destructive",
           "ext_serper_api",
-          "cap_FileReadTool_data_access"
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "ext_email_smtp",
+          "cap_FileReadTool_data_access",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "ext_serper_api",
+          "cap_FileReadTool_data_access",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_destructive",
+          "cap_smtplib_outbound",
+          "ext_serper_api",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_destructive",
+          "ext_email_smtp",
+          "cap_SerperDevTool_outbound",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_destructive",
+          "ext_email_smtp",
+          "cap_FileReadTool_data_access",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_destructive",
+          "ext_serper_api",
+          "cap_FileReadTool_data_access",
+          "agent_researcher"
         ]
       ],
       "enrichment_summary": {
         "has_fail_silent": false,
         "has_irreversible": true,
-        "avg_centrality": 0.0,
+        "avg_centrality": 0.0833,
         "has_trust_crossing": true,
         "has_guardrail": false
       }
     },
     {
-      "motif_id": "8c7c51688655",
+      "motif_id": "566cf2c7e98b",
       "node_types": [
+        "agent",
+        "capability",
+        "capability",
+        "data_store"
+      ],
+      "edge_types": [
+        "reads_from",
+        "tool_of",
+        "tool_of"
+      ],
+      "edge_pairs": [
+        [
+          0,
+          3
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ]
+      ],
+      "instances": 10,
+      "instance_node_ids": [
+        [
+          "cap_psycopg2_data_access",
+          "cap_psycopg2_destructive",
+          "ds_crewai_tools",
+          "agent_researcher"
+        ],
+        [
+          "ds_postgresql",
+          "cap_psycopg2_destructive",
+          "cap_smtplib_outbound",
+          "agent_researcher"
+        ],
+        [
+          "ds_postgresql",
+          "cap_psycopg2_destructive",
+          "cap_smtplib_outbound",
+          "agent_analyst"
+        ],
+        [
+          "ds_postgresql",
+          "cap_psycopg2_destructive",
+          "cap_smtplib_outbound",
+          "agent_executor"
+        ],
+        [
+          "ds_postgresql",
+          "cap_psycopg2_destructive",
+          "cap_SerperDevTool_outbound",
+          "agent_researcher"
+        ],
+        [
+          "ds_postgresql",
+          "cap_psycopg2_destructive",
+          "cap_FileReadTool_data_access",
+          "agent_researcher"
+        ],
+        [
+          "ds_postgresql",
+          "cap_smtplib_outbound",
+          "cap_SerperDevTool_outbound",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_destructive",
+          "cap_smtplib_outbound",
+          "ds_crewai_tools",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_destructive",
+          "cap_SerperDevTool_outbound",
+          "ds_crewai_tools",
+          "agent_researcher"
+        ],
+        [
+          "cap_smtplib_outbound",
+          "cap_SerperDevTool_outbound",
+          "ds_crewai_tools",
+          "agent_researcher"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": true,
+        "avg_centrality": 0.0833,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "5b8346eb5279",
+      "node_types": [
+        "agent",
+        "capability",
+        "data_store"
+      ],
+      "edge_types": [
+        "tool_of",
+        "writes_to"
+      ],
+      "edge_pairs": [
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "instances": 8,
+      "instance_node_ids": [
+        [
+          "cap_psycopg2_data_access",
+          "ds_psycopg2_write",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "ds_psycopg2_write",
+          "agent_analyst"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "ds_psycopg2_write",
+          "agent_executor"
+        ],
+        [
+          "ds_psycopg2_write",
+          "cap_smtplib_outbound",
+          "agent_researcher"
+        ],
+        [
+          "ds_psycopg2_write",
+          "cap_smtplib_outbound",
+          "agent_analyst"
+        ],
+        [
+          "ds_psycopg2_write",
+          "cap_smtplib_outbound",
+          "agent_executor"
+        ],
+        [
+          "ds_psycopg2_write",
+          "cap_SerperDevTool_outbound",
+          "agent_researcher"
+        ],
+        [
+          "ds_psycopg2_write",
+          "cap_FileReadTool_data_access",
+          "agent_researcher"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": true,
+        "avg_centrality": 0.0655,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "0729eb7a7a77",
+      "node_types": [
+        "agent",
+        "capability",
+        "data_store",
+        "external"
+      ],
+      "edge_types": [
+        "sends_to",
+        "tool_of",
+        "writes_to"
+      ],
+      "edge_pairs": [
+        [
+          0,
+          2
+        ],
+        [
+          0,
+          3
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "instances": 8,
+      "instance_node_ids": [
+        [
+          "cap_psycopg2_data_access",
+          "ds_psycopg2_write",
+          "ext_email_smtp",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "ds_psycopg2_write",
+          "ext_email_smtp",
+          "agent_analyst"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "ds_psycopg2_write",
+          "ext_email_smtp",
+          "agent_executor"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "ds_psycopg2_write",
+          "ext_serper_api",
+          "agent_researcher"
+        ],
+        [
+          "ds_psycopg2_write",
+          "cap_smtplib_outbound",
+          "ext_serper_api",
+          "agent_researcher"
+        ],
+        [
+          "ds_psycopg2_write",
+          "ext_email_smtp",
+          "cap_SerperDevTool_outbound",
+          "agent_researcher"
+        ],
+        [
+          "ds_psycopg2_write",
+          "ext_email_smtp",
+          "cap_FileReadTool_data_access",
+          "agent_researcher"
+        ],
+        [
+          "ds_psycopg2_write",
+          "ext_serper_api",
+          "cap_FileReadTool_data_access",
+          "agent_researcher"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": true,
+        "avg_centrality": 0.0803,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "0a94e463f3ac",
+      "node_types": [
+        "agent",
+        "capability",
+        "data_store",
+        "data_store"
+      ],
+      "edge_types": [
+        "reads_from",
+        "tool_of",
+        "writes_to"
+      ],
+      "edge_pairs": [
+        [
+          0,
+          2
+        ],
+        [
+          0,
+          3
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "instances": 8,
+      "instance_node_ids": [
+        [
+          "cap_psycopg2_data_access",
+          "ds_psycopg2_write",
+          "ds_crewai_tools",
+          "agent_researcher"
+        ],
+        [
+          "ds_postgresql",
+          "ds_psycopg2_write",
+          "cap_smtplib_outbound",
+          "agent_researcher"
+        ],
+        [
+          "ds_postgresql",
+          "ds_psycopg2_write",
+          "cap_smtplib_outbound",
+          "agent_analyst"
+        ],
+        [
+          "ds_postgresql",
+          "ds_psycopg2_write",
+          "cap_smtplib_outbound",
+          "agent_executor"
+        ],
+        [
+          "ds_postgresql",
+          "ds_psycopg2_write",
+          "cap_SerperDevTool_outbound",
+          "agent_researcher"
+        ],
+        [
+          "ds_postgresql",
+          "ds_psycopg2_write",
+          "cap_FileReadTool_data_access",
+          "agent_researcher"
+        ],
+        [
+          "ds_psycopg2_write",
+          "cap_smtplib_outbound",
+          "ds_crewai_tools",
+          "agent_researcher"
+        ],
+        [
+          "ds_psycopg2_write",
+          "cap_SerperDevTool_outbound",
+          "ds_crewai_tools",
+          "agent_researcher"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": true,
+        "avg_centrality": 0.0803,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "bb7f1b4e165c",
+      "node_types": [
+        "agent",
+        "capability",
+        "capability",
+        "data_store",
+        "external"
+      ],
+      "edge_types": [
+        "reads_from",
+        "reads_from",
+        "sends_to",
+        "tool_of",
+        "tool_of"
+      ],
+      "edge_pairs": [
+        [
+          0,
+          3
+        ],
+        [
+          0,
+          4
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          3,
+          1
+        ]
+      ],
+      "instances": 8,
+      "instance_node_ids": [
+        [
+          "cap_psycopg2_data_access",
+          "ds_postgresql",
+          "cap_psycopg2_destructive",
+          "ext_email_smtp",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "ds_postgresql",
+          "cap_psycopg2_destructive",
+          "ext_email_smtp",
+          "agent_analyst"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "ds_postgresql",
+          "cap_psycopg2_destructive",
+          "ext_email_smtp",
+          "agent_executor"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "ds_postgresql",
+          "cap_psycopg2_destructive",
+          "ext_serper_api",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "ext_email_smtp",
+          "cap_FileReadTool_data_access",
+          "ds_crewai_tools",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "ext_serper_api",
+          "cap_FileReadTool_data_access",
+          "ds_crewai_tools",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_destructive",
+          "ext_email_smtp",
+          "cap_FileReadTool_data_access",
+          "ds_crewai_tools",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_destructive",
+          "ext_serper_api",
+          "cap_FileReadTool_data_access",
+          "ds_crewai_tools",
+          "agent_researcher"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": false,
+        "avg_centrality": 0.0803,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "39f2d85def8c",
+      "node_types": [
+        "agent",
         "capability",
         "capability",
         "data_store",
@@ -408,135 +1685,108 @@
       "edge_types": [
         "reads_from",
         "sends_to",
-        "shares_with"
+        "tool_of",
+        "tool_of"
       ],
       "edge_pairs": [
         [
           0,
-          1
-        ],
-        [
-          1,
           3
         ],
         [
+          0,
+          4
+        ],
+        [
+          1,
+          0
+        ],
+        [
           2,
           0
         ]
       ],
-      "instances": 3,
+      "instances": 8,
       "instance_node_ids": [
         [
           "cap_psycopg2_data_access",
-          "ds_postgresql",
-          "cap_smtplib_outbound",
-          "ext_email_smtp"
+          "cap_psycopg2_destructive",
+          "ext_email_smtp",
+          "ds_crewai_tools",
+          "agent_researcher"
         ],
         [
+          "cap_psycopg2_data_access",
+          "cap_psycopg2_destructive",
+          "ext_serper_api",
+          "ds_crewai_tools",
+          "agent_researcher"
+        ],
+        [
+          "ds_postgresql",
+          "cap_psycopg2_destructive",
           "cap_smtplib_outbound",
+          "ext_serper_api",
+          "agent_researcher"
+        ],
+        [
+          "ds_postgresql",
+          "cap_psycopg2_destructive",
+          "ext_email_smtp",
+          "cap_SerperDevTool_outbound",
+          "agent_researcher"
+        ],
+        [
+          "ds_postgresql",
+          "cap_psycopg2_destructive",
           "ext_email_smtp",
           "cap_FileReadTool_data_access",
-          "ds_crewai_tools"
+          "agent_researcher"
         ],
         [
-          "cap_SerperDevTool_outbound",
+          "ds_postgresql",
+          "cap_psycopg2_destructive",
           "ext_serper_api",
           "cap_FileReadTool_data_access",
-          "ds_crewai_tools"
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_destructive",
+          "cap_smtplib_outbound",
+          "ext_serper_api",
+          "ds_crewai_tools",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_destructive",
+          "ext_email_smtp",
+          "cap_SerperDevTool_outbound",
+          "ds_crewai_tools",
+          "agent_researcher"
         ]
       ],
       "enrichment_summary": {
         "has_fail_silent": false,
         "has_irreversible": true,
-        "avg_centrality": 0.0,
+        "avg_centrality": 0.0952,
         "has_trust_crossing": true,
         "has_guardrail": false
       }
     },
     {
-      "motif_id": "6dc7fd2fd949",
+      "motif_id": "53e1ede99b5e",
       "node_types": [
+        "agent",
         "capability",
-        "capability",
-        "data_store"
+        "data_store",
+        "data_store",
+        "external"
       ],
       "edge_types": [
         "reads_from",
-        "shares_with"
-      ],
-      "edge_pairs": [
-        [
-          1,
-          0
-        ],
-        [
-          2,
-          1
-        ]
-      ],
-      "instances": 1,
-      "instance_node_ids": [
-        [
-          "cap_psycopg2_data_access",
-          "ds_postgresql",
-          "cap_SerperDevTool_outbound"
-        ]
-      ],
-      "enrichment_summary": {
-        "has_fail_silent": false,
-        "has_irreversible": true,
-        "avg_centrality": 0.0,
-        "has_trust_crossing": true,
-        "has_guardrail": false
-      }
-    },
-    {
-      "motif_id": "50a0fb30acb6",
-      "node_types": [
-        "capability",
-        "capability",
-        "capability"
-      ],
-      "edge_types": [
-        "shares_with",
-        "shares_with"
-      ],
-      "edge_pairs": [
-        [
-          1,
-          0
-        ],
-        [
-          1,
-          2
-        ]
-      ],
-      "instances": 1,
-      "instance_node_ids": [
-        [
-          "cap_psycopg2_data_access",
-          "cap_smtplib_outbound",
-          "cap_SerperDevTool_outbound"
-        ]
-      ],
-      "enrichment_summary": {
-        "has_fail_silent": false,
-        "has_irreversible": true,
-        "avg_centrality": 0.0,
-        "has_trust_crossing": true,
-        "has_guardrail": false
-      }
-    },
-    {
-      "motif_id": "4158a65e82d4",
-      "node_types": [
-        "capability",
-        "capability",
-        "capability"
-      ],
-      "edge_types": [
-        "shares_with",
-        "shares_with"
+        "sends_to",
+        "tool_of",
+        "writes_to"
       ],
       "edge_pairs": [
         [
@@ -544,36 +1794,258 @@
           2
         ],
         [
+          0,
+          3
+        ],
+        [
+          0,
+          4
+        ],
+        [
           1,
-          2
+          0
         ]
       ],
-      "instances": 1,
+      "instances": 8,
       "instance_node_ids": [
         [
           "cap_psycopg2_data_access",
+          "ds_psycopg2_write",
+          "ext_email_smtp",
+          "ds_crewai_tools",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "ds_psycopg2_write",
+          "ext_serper_api",
+          "ds_crewai_tools",
+          "agent_researcher"
+        ],
+        [
+          "ds_postgresql",
+          "ds_psycopg2_write",
           "cap_smtplib_outbound",
-          "cap_FileReadTool_data_access"
+          "ext_serper_api",
+          "agent_researcher"
+        ],
+        [
+          "ds_postgresql",
+          "ds_psycopg2_write",
+          "ext_email_smtp",
+          "cap_SerperDevTool_outbound",
+          "agent_researcher"
+        ],
+        [
+          "ds_postgresql",
+          "ds_psycopg2_write",
+          "ext_email_smtp",
+          "cap_FileReadTool_data_access",
+          "agent_researcher"
+        ],
+        [
+          "ds_postgresql",
+          "ds_psycopg2_write",
+          "ext_serper_api",
+          "cap_FileReadTool_data_access",
+          "agent_researcher"
+        ],
+        [
+          "ds_psycopg2_write",
+          "cap_smtplib_outbound",
+          "ext_serper_api",
+          "ds_crewai_tools",
+          "agent_researcher"
+        ],
+        [
+          "ds_psycopg2_write",
+          "ext_email_smtp",
+          "cap_SerperDevTool_outbound",
+          "ds_crewai_tools",
+          "agent_researcher"
         ]
       ],
       "enrichment_summary": {
         "has_fail_silent": false,
         "has_irreversible": true,
-        "avg_centrality": 0.0,
+        "avg_centrality": 0.0952,
         "has_trust_crossing": true,
         "has_guardrail": false
       }
     },
     {
-      "motif_id": "0a339aebec77",
+      "motif_id": "2ac23d82d8ad",
       "node_types": [
+        "agent",
         "capability",
         "capability",
+        "data_store",
         "external"
       ],
       "edge_types": [
         "sends_to",
-        "shares_with"
+        "tool_of",
+        "tool_of",
+        "writes_to",
+        "writes_to"
+      ],
+      "edge_pairs": [
+        [
+          0,
+          3
+        ],
+        [
+          0,
+          4
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          2,
+          3
+        ]
+      ],
+      "instances": 7,
+      "instance_node_ids": [
+        [
+          "cap_psycopg2_data_access",
+          "cap_psycopg2_destructive",
+          "ds_psycopg2_write",
+          "ext_email_smtp",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "cap_psycopg2_destructive",
+          "ds_psycopg2_write",
+          "ext_email_smtp",
+          "agent_analyst"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "cap_psycopg2_destructive",
+          "ds_psycopg2_write",
+          "ext_email_smtp",
+          "agent_executor"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "cap_psycopg2_destructive",
+          "ds_psycopg2_write",
+          "ext_serper_api",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_destructive",
+          "ds_psycopg2_write",
+          "ext_email_smtp",
+          "cap_SerperDevTool_outbound",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_destructive",
+          "ds_psycopg2_write",
+          "ext_email_smtp",
+          "cap_FileReadTool_data_access",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_destructive",
+          "ds_psycopg2_write",
+          "ext_serper_api",
+          "cap_FileReadTool_data_access",
+          "agent_researcher"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": false,
+        "avg_centrality": 0.0782,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "627de9b6371e",
+      "node_types": [
+        "agent",
+        "data_store",
+        "external"
+      ],
+      "edge_types": [
+        "reads_from",
+        "sends_to"
+      ],
+      "edge_pairs": [
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ]
+      ],
+      "instances": 6,
+      "instance_node_ids": [
+        [
+          "ds_postgresql",
+          "ext_email_smtp",
+          "agent_researcher"
+        ],
+        [
+          "ds_postgresql",
+          "ext_email_smtp",
+          "agent_analyst"
+        ],
+        [
+          "ds_postgresql",
+          "ext_email_smtp",
+          "agent_executor"
+        ],
+        [
+          "ds_postgresql",
+          "ext_serper_api",
+          "agent_researcher"
+        ],
+        [
+          "ext_email_smtp",
+          "ds_crewai_tools",
+          "agent_researcher"
+        ],
+        [
+          "ext_serper_api",
+          "ds_crewai_tools",
+          "agent_researcher"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": false,
+        "avg_centrality": 0.0754,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "ae070f85d748",
+      "node_types": [
+        "agent",
+        "capability",
+        "data_store",
+        "external"
+      ],
+      "edge_types": [
+        "reads_from",
+        "reads_from",
+        "sends_to",
+        "tool_of"
       ],
       "edge_pairs": [
         [
@@ -581,73 +2053,77 @@
           2
         ],
         [
+          0,
+          3
+        ],
+        [
           1,
           0
-        ]
-      ],
-      "instances": 1,
-      "instance_node_ids": [
-        [
-          "cap_psycopg2_data_access",
-          "cap_SerperDevTool_outbound",
-          "ext_serper_api"
-        ]
-      ],
-      "enrichment_summary": {
-        "has_fail_silent": false,
-        "has_irreversible": true,
-        "avg_centrality": 0.0,
-        "has_trust_crossing": true,
-        "has_guardrail": false
-      }
-    },
-    {
-      "motif_id": "3eea555d26f5",
-      "node_types": [
-        "capability",
-        "capability",
-        "capability"
-      ],
-      "edge_types": [
-        "shares_with",
-        "shares_with"
-      ],
-      "edge_pairs": [
-        [
-          0,
-          1
         ],
         [
           2,
           1
         ]
       ],
-      "instances": 1,
+      "instances": 6,
       "instance_node_ids": [
         [
           "cap_psycopg2_data_access",
-          "cap_SerperDevTool_outbound",
-          "cap_FileReadTool_data_access"
+          "ds_postgresql",
+          "ext_email_smtp",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "ds_postgresql",
+          "ext_email_smtp",
+          "agent_analyst"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "ds_postgresql",
+          "ext_email_smtp",
+          "agent_executor"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "ds_postgresql",
+          "ext_serper_api",
+          "agent_researcher"
+        ],
+        [
+          "ext_email_smtp",
+          "cap_FileReadTool_data_access",
+          "ds_crewai_tools",
+          "agent_researcher"
+        ],
+        [
+          "ext_serper_api",
+          "cap_FileReadTool_data_access",
+          "ds_crewai_tools",
+          "agent_researcher"
         ]
       ],
       "enrichment_summary": {
         "has_fail_silent": false,
-        "has_irreversible": true,
-        "avg_centrality": 0.0,
+        "has_irreversible": false,
+        "avg_centrality": 0.0754,
         "has_trust_crossing": true,
         "has_guardrail": false
       }
     },
     {
-      "motif_id": "7a6238d608ae",
+      "motif_id": "b14c34f148d8",
       "node_types": [
-        "capability",
-        "capability",
-        "capability"
+        "agent",
+        "data_store",
+        "data_store",
+        "external"
       ],
       "edge_types": [
-        "shares_with",
-        "shares_with"
+        "reads_from",
+        "sends_to",
+        "writes_to"
       ],
       "edge_pairs": [
         [
@@ -657,80 +2133,153 @@
         [
           0,
           2
+        ],
+        [
+          0,
+          3
         ]
       ],
-      "instances": 1,
+      "instances": 6,
       "instance_node_ids": [
         [
-          "cap_smtplib_outbound",
-          "cap_SerperDevTool_outbound",
-          "cap_FileReadTool_data_access"
+          "ds_postgresql",
+          "ds_psycopg2_write",
+          "ext_email_smtp",
+          "agent_researcher"
+        ],
+        [
+          "ds_postgresql",
+          "ds_psycopg2_write",
+          "ext_email_smtp",
+          "agent_analyst"
+        ],
+        [
+          "ds_postgresql",
+          "ds_psycopg2_write",
+          "ext_email_smtp",
+          "agent_executor"
+        ],
+        [
+          "ds_postgresql",
+          "ds_psycopg2_write",
+          "ext_serper_api",
+          "agent_researcher"
+        ],
+        [
+          "ds_psycopg2_write",
+          "ext_email_smtp",
+          "ds_crewai_tools",
+          "agent_researcher"
+        ],
+        [
+          "ds_psycopg2_write",
+          "ext_serper_api",
+          "ds_crewai_tools",
+          "agent_researcher"
         ]
       ],
       "enrichment_summary": {
         "has_fail_silent": false,
-        "has_irreversible": true,
-        "avg_centrality": 0.0,
+        "has_irreversible": false,
+        "avg_centrality": 0.0754,
         "has_trust_crossing": true,
         "has_guardrail": false
       }
     },
     {
-      "motif_id": "43143975448c",
+      "motif_id": "de751ad4ca12",
       "node_types": [
+        "agent",
         "capability",
-        "capability",
-        "capability",
-        "data_store"
+        "data_store",
+        "external"
       ],
       "edge_types": [
         "reads_from",
-        "shares_with",
-        "shares_with"
+        "sends_to",
+        "sends_to",
+        "tool_of"
       ],
       "edge_pairs": [
+        [
+          0,
+          2
+        ],
+        [
+          0,
+          3
+        ],
         [
           1,
           0
         ],
         [
           1,
-          2
-        ],
-        [
-          3,
-          1
+          3
         ]
       ],
-      "instances": 1,
+      "instances": 6,
       "instance_node_ids": [
         [
-          "cap_psycopg2_data_access",
           "ds_postgresql",
           "cap_smtplib_outbound",
-          "cap_SerperDevTool_outbound"
+          "ext_email_smtp",
+          "agent_researcher"
+        ],
+        [
+          "ds_postgresql",
+          "cap_smtplib_outbound",
+          "ext_email_smtp",
+          "agent_analyst"
+        ],
+        [
+          "ds_postgresql",
+          "cap_smtplib_outbound",
+          "ext_email_smtp",
+          "agent_executor"
+        ],
+        [
+          "ds_postgresql",
+          "cap_SerperDevTool_outbound",
+          "ext_serper_api",
+          "agent_researcher"
+        ],
+        [
+          "cap_smtplib_outbound",
+          "ext_email_smtp",
+          "ds_crewai_tools",
+          "agent_researcher"
+        ],
+        [
+          "cap_SerperDevTool_outbound",
+          "ext_serper_api",
+          "ds_crewai_tools",
+          "agent_researcher"
         ]
       ],
       "enrichment_summary": {
         "has_fail_silent": false,
         "has_irreversible": true,
-        "avg_centrality": 0.0,
+        "avg_centrality": 0.0754,
         "has_trust_crossing": true,
         "has_guardrail": false
       }
     },
     {
-      "motif_id": "5228f7a193a8",
+      "motif_id": "58c0c4203b12",
       "node_types": [
+        "agent",
         "capability",
-        "capability",
-        "capability",
-        "data_store"
+        "data_store",
+        "data_store",
+        "external"
       ],
       "edge_types": [
         "reads_from",
-        "shares_with",
-        "shares_with"
+        "reads_from",
+        "sends_to",
+        "tool_of",
+        "writes_to"
       ],
       "edge_pairs": [
         [
@@ -738,34 +2287,170 @@
           2
         ],
         [
-          1,
-          2
+          0,
+          3
         ],
         [
-          3,
+          0,
+          4
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
           1
         ]
       ],
-      "instances": 1,
+      "instances": 6,
       "instance_node_ids": [
         [
           "cap_psycopg2_data_access",
           "ds_postgresql",
-          "cap_smtplib_outbound",
-          "cap_FileReadTool_data_access"
+          "ds_psycopg2_write",
+          "ext_email_smtp",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "ds_postgresql",
+          "ds_psycopg2_write",
+          "ext_email_smtp",
+          "agent_analyst"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "ds_postgresql",
+          "ds_psycopg2_write",
+          "ext_email_smtp",
+          "agent_executor"
+        ],
+        [
+          "cap_psycopg2_data_access",
+          "ds_postgresql",
+          "ds_psycopg2_write",
+          "ext_serper_api",
+          "agent_researcher"
+        ],
+        [
+          "ds_psycopg2_write",
+          "ext_email_smtp",
+          "cap_FileReadTool_data_access",
+          "ds_crewai_tools",
+          "agent_researcher"
+        ],
+        [
+          "ds_psycopg2_write",
+          "ext_serper_api",
+          "cap_FileReadTool_data_access",
+          "ds_crewai_tools",
+          "agent_researcher"
         ]
       ],
       "enrichment_summary": {
         "has_fail_silent": false,
-        "has_irreversible": true,
-        "avg_centrality": 0.0,
+        "has_irreversible": false,
+        "avg_centrality": 0.0754,
         "has_trust_crossing": true,
         "has_guardrail": false
       }
     },
     {
-      "motif_id": "1d061c0bb087",
+      "motif_id": "bd408eae56c6",
       "node_types": [
+        "agent",
+        "capability",
+        "data_store",
+        "data_store",
+        "external"
+      ],
+      "edge_types": [
+        "reads_from",
+        "sends_to",
+        "tool_of",
+        "writes_to",
+        "writes_to"
+      ],
+      "edge_pairs": [
+        [
+          0,
+          2
+        ],
+        [
+          0,
+          3
+        ],
+        [
+          0,
+          4
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          3
+        ]
+      ],
+      "instances": 6,
+      "instance_node_ids": [
+        [
+          "ds_postgresql",
+          "cap_psycopg2_destructive",
+          "ds_psycopg2_write",
+          "ext_email_smtp",
+          "agent_researcher"
+        ],
+        [
+          "ds_postgresql",
+          "cap_psycopg2_destructive",
+          "ds_psycopg2_write",
+          "ext_email_smtp",
+          "agent_analyst"
+        ],
+        [
+          "ds_postgresql",
+          "cap_psycopg2_destructive",
+          "ds_psycopg2_write",
+          "ext_email_smtp",
+          "agent_executor"
+        ],
+        [
+          "ds_postgresql",
+          "cap_psycopg2_destructive",
+          "ds_psycopg2_write",
+          "ext_serper_api",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_destructive",
+          "ds_psycopg2_write",
+          "ext_email_smtp",
+          "ds_crewai_tools",
+          "agent_researcher"
+        ],
+        [
+          "cap_psycopg2_destructive",
+          "ds_psycopg2_write",
+          "ext_serper_api",
+          "ds_crewai_tools",
+          "agent_researcher"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": false,
+        "avg_centrality": 0.0754,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "5012b4b5ac01",
+      "node_types": [
+        "agent",
         "capability",
         "capability",
         "data_store",
@@ -774,410 +2459,211 @@
       "edge_types": [
         "reads_from",
         "sends_to",
-        "shares_with"
-      ],
-      "edge_pairs": [
-        [
-          0,
-          3
-        ],
-        [
-          1,
-          0
-        ],
-        [
-          2,
-          1
-        ]
-      ],
-      "instances": 1,
-      "instance_node_ids": [
-        [
-          "cap_psycopg2_data_access",
-          "ds_postgresql",
-          "cap_SerperDevTool_outbound",
-          "ext_serper_api"
-        ]
-      ],
-      "enrichment_summary": {
-        "has_fail_silent": false,
-        "has_irreversible": true,
-        "avg_centrality": 0.0,
-        "has_trust_crossing": true,
-        "has_guardrail": false
-      }
-    },
-    {
-      "motif_id": "81399fa9b2ac",
-      "node_types": [
-        "capability",
-        "capability",
-        "capability",
-        "data_store"
-      ],
-      "edge_types": [
-        "reads_from",
-        "shares_with",
-        "shares_with"
-      ],
-      "edge_pairs": [
-        [
-          0,
-          1
-        ],
-        [
-          2,
-          1
-        ],
-        [
-          3,
-          2
-        ]
-      ],
-      "instances": 1,
-      "instance_node_ids": [
-        [
-          "cap_psycopg2_data_access",
-          "ds_postgresql",
-          "cap_SerperDevTool_outbound",
-          "cap_FileReadTool_data_access"
-        ]
-      ],
-      "enrichment_summary": {
-        "has_fail_silent": false,
-        "has_irreversible": true,
-        "avg_centrality": 0.0,
-        "has_trust_crossing": true,
-        "has_guardrail": false
-      }
-    },
-    {
-      "motif_id": "dc2723d2ffb9",
-      "node_types": [
-        "capability",
-        "capability",
-        "capability",
-        "external"
-      ],
-      "edge_types": [
         "sends_to",
-        "shares_with",
-        "shares_with"
+        "tool_of",
+        "tool_of"
       ],
       "edge_pairs": [
+        [
+          0,
+          3
+        ],
+        [
+          0,
+          4
+        ],
         [
           1,
           0
         ],
         [
-          1,
-          2
+          2,
+          0
         ],
         [
           2,
-          3
+          4
         ]
       ],
-      "instances": 1,
+      "instances": 6,
       "instance_node_ids": [
         [
-          "cap_psycopg2_data_access",
+          "ds_postgresql",
+          "cap_psycopg2_destructive",
           "cap_smtplib_outbound",
           "ext_email_smtp",
-          "cap_SerperDevTool_outbound"
-        ]
-      ],
-      "enrichment_summary": {
-        "has_fail_silent": false,
-        "has_irreversible": true,
-        "avg_centrality": 0.0,
-        "has_trust_crossing": true,
-        "has_guardrail": false
-      }
-    },
-    {
-      "motif_id": "6d59da551020",
-      "node_types": [
-        "capability",
-        "capability",
-        "capability",
-        "external"
-      ],
-      "edge_types": [
-        "sends_to",
-        "shares_with",
-        "shares_with"
-      ],
-      "edge_pairs": [
-        [
-          0,
-          2
+          "agent_researcher"
         ],
         [
-          1,
-          2
-        ],
-        [
-          2,
-          3
-        ]
-      ],
-      "instances": 1,
-      "instance_node_ids": [
-        [
-          "cap_psycopg2_data_access",
+          "ds_postgresql",
+          "cap_psycopg2_destructive",
           "cap_smtplib_outbound",
           "ext_email_smtp",
-          "cap_FileReadTool_data_access"
-        ]
-      ],
-      "enrichment_summary": {
-        "has_fail_silent": false,
-        "has_irreversible": true,
-        "avg_centrality": 0.0,
-        "has_trust_crossing": true,
-        "has_guardrail": false
-      }
-    },
-    {
-      "motif_id": "3686aae6a41a",
-      "node_types": [
-        "capability",
-        "capability",
-        "capability",
-        "external"
-      ],
-      "edge_types": [
-        "sends_to",
-        "shares_with",
-        "shares_with"
-      ],
-      "edge_pairs": [
-        [
-          0,
-          3
+          "agent_analyst"
         ],
         [
-          1,
-          0
-        ],
-        [
-          1,
-          2
-        ]
-      ],
-      "instances": 1,
-      "instance_node_ids": [
-        [
-          "cap_psycopg2_data_access",
+          "ds_postgresql",
+          "cap_psycopg2_destructive",
           "cap_smtplib_outbound",
-          "cap_SerperDevTool_outbound",
-          "ext_serper_api"
-        ]
-      ],
-      "enrichment_summary": {
-        "has_fail_silent": false,
-        "has_irreversible": true,
-        "avg_centrality": 0.0,
-        "has_trust_crossing": true,
-        "has_guardrail": false
-      }
-    },
-    {
-      "motif_id": "411b00522695",
-      "node_types": [
-        "capability",
-        "capability",
-        "capability",
-        "capability"
-      ],
-      "edge_types": [
-        "shares_with",
-        "shares_with",
-        "shares_with",
-        "shares_with"
-      ],
-      "edge_pairs": [
-        [
-          0,
-          1
+          "ext_email_smtp",
+          "agent_executor"
         ],
         [
-          0,
-          3
-        ],
-        [
-          2,
-          1
-        ],
-        [
-          2,
-          3
-        ]
-      ],
-      "instances": 1,
-      "instance_node_ids": [
-        [
-          "cap_psycopg2_data_access",
+          "ds_postgresql",
           "cap_smtplib_outbound",
+          "ext_email_smtp",
           "cap_SerperDevTool_outbound",
-          "cap_FileReadTool_data_access"
-        ]
-      ],
-      "enrichment_summary": {
-        "has_fail_silent": false,
-        "has_irreversible": true,
-        "avg_centrality": 0.0,
-        "has_trust_crossing": true,
-        "has_guardrail": false
-      }
-    },
-    {
-      "motif_id": "de70c02bec54",
-      "node_types": [
-        "capability",
-        "capability",
-        "capability",
-        "data_store"
-      ],
-      "edge_types": [
-        "reads_from",
-        "shares_with",
-        "shares_with"
-      ],
-      "edge_pairs": [
-        [
-          0,
-          2
+          "agent_researcher"
         ],
         [
-          1,
-          2
-        ],
-        [
-          3,
-          0
-        ]
-      ],
-      "instances": 1,
-      "instance_node_ids": [
-        [
-          "cap_psycopg2_data_access",
+          "cap_psycopg2_destructive",
           "cap_smtplib_outbound",
-          "cap_FileReadTool_data_access",
-          "ds_crewai_tools"
-        ]
-      ],
-      "enrichment_summary": {
-        "has_fail_silent": false,
-        "has_irreversible": true,
-        "avg_centrality": 0.0,
-        "has_trust_crossing": true,
-        "has_guardrail": false
-      }
-    },
-    {
-      "motif_id": "88789fc726e0",
-      "node_types": [
-        "capability",
-        "capability",
-        "capability",
-        "external"
-      ],
-      "edge_types": [
-        "sends_to",
-        "shares_with",
-        "shares_with"
-      ],
-      "edge_pairs": [
-        [
-          0,
-          1
+          "ext_email_smtp",
+          "ds_crewai_tools",
+          "agent_researcher"
         ],
         [
-          1,
-          3
-        ],
-        [
-          2,
-          1
-        ]
-      ],
-      "instances": 1,
-      "instance_node_ids": [
-        [
-          "cap_psycopg2_data_access",
+          "cap_smtplib_outbound",
+          "ext_email_smtp",
           "cap_SerperDevTool_outbound",
-          "ext_serper_api",
-          "cap_FileReadTool_data_access"
+          "ds_crewai_tools",
+          "agent_researcher"
         ]
       ],
       "enrichment_summary": {
         "has_fail_silent": false,
         "has_irreversible": true,
-        "avg_centrality": 0.0,
-        "has_trust_crossing": true,
-        "has_guardrail": false
-      }
-    },
-    {
-      "motif_id": "3d7368f25148",
-      "node_types": [
-        "capability",
-        "capability",
-        "capability",
-        "data_store"
-      ],
-      "edge_types": [
-        "reads_from",
-        "shares_with",
-        "shares_with"
-      ],
-      "edge_pairs": [
-        [
-          0,
-          1
-        ],
-        [
-          2,
-          1
-        ],
-        [
-          3,
-          0
-        ]
-      ],
-      "instances": 1,
-      "instance_node_ids": [
-        [
-          "cap_psycopg2_data_access",
-          "cap_SerperDevTool_outbound",
-          "cap_FileReadTool_data_access",
-          "ds_crewai_tools"
-        ]
-      ],
-      "enrichment_summary": {
-        "has_fail_silent": false,
-        "has_irreversible": true,
-        "avg_centrality": 0.0,
+        "avg_centrality": 0.0754,
         "has_trust_crossing": true,
         "has_guardrail": false
       }
     }
   ],
-  "observation_points": [],
-  "security_risk_score": 48,
+  "observation_points": [
+    {
+      "id": "OBS-002",
+      "category": "error_boundary",
+      "priority": "critical",
+      "node_id": "agent_researcher",
+      "node_label": "Senior Research Analyst",
+      "description": "Error boundary between 'Senior Research Analyst' and 'Financial Analyst'. Error signal is lost at this boundary (pattern: default_on_error).",
+      "rationale": "When an agent silently converts errors to defaults, downstream agents receive corrupted data that looks valid.",
+      "suggested_implementation": "Add error rate monitoring at this boundary. Log when default values are returned and alert on sustained error rates.",
+      "related_findings": [
+        "STRAT-SI-001",
+        "STRAT-SI-001"
+      ]
+    },
+    {
+      "id": "OBS-003",
+      "category": "error_boundary",
+      "priority": "critical",
+      "node_id": "agent_analyst",
+      "node_label": "Financial Analyst",
+      "description": "Error boundary between 'Financial Analyst' and 'Trade Executor'. Error signal is lost at this boundary (pattern: default_on_error).",
+      "rationale": "When an agent silently converts errors to defaults, downstream agents receive corrupted data that looks valid.",
+      "suggested_implementation": "Add error rate monitoring at this boundary. Log when default values are returned and alert on sustained error rates.",
+      "related_findings": [
+        "STRAT-SI-001",
+        "STRAT-SI-001"
+      ]
+    },
+    {
+      "id": "OBS-012",
+      "category": "authority_audit",
+      "priority": "critical",
+      "node_id": "agent_analyst",
+      "node_label": "Financial Analyst",
+      "description": "Agent 'Financial Analyst' has implicit authority over 1 capabilities not directly assigned: SerperDevTool.",
+      "rationale": "Transitive authority escalation should be monitored to detect when agents exercise capabilities beyond their direct scope.",
+      "suggested_implementation": "Log all delegation-chain invocations with the originating agent. Alert when escalated capabilities are actually exercised.",
+      "related_findings": [
+        "STRAT-EA-001"
+      ]
+    },
+    {
+      "id": "OBS-001",
+      "category": "decision_audit",
+      "priority": "high",
+      "node_id": "agent_executor",
+      "node_label": "Trade Executor",
+      "description": "Terminal agent 'Trade Executor' produces final output with no observation. Output quality is not monitored.",
+      "rationale": "Terminal agents in delegation chains produce the final output that reaches users or external systems.",
+      "suggested_implementation": "Add output logging with quality metrics. Consider adding a sampling-based evaluation loop.",
+      "related_findings": []
+    },
+    {
+      "id": "OBS-004",
+      "category": "volume_monitoring",
+      "priority": "high",
+      "node_id": "agent_researcher",
+      "node_label": "Senior Research Analyst",
+      "description": "Agent 'Senior Research Analyst' sends to external service 'Email (SMTP)' with no rate monitoring.",
+      "rationale": "Outbound API calls should be monitored for unusual volume to detect runaway loops or data exfiltration.",
+      "suggested_implementation": "Add rate limiting and volume monitoring. Track calls/minute and alert on deviations from baseline.",
+      "related_findings": []
+    },
+    {
+      "id": "OBS-005",
+      "category": "volume_monitoring",
+      "priority": "high",
+      "node_id": "agent_researcher",
+      "node_label": "Senior Research Analyst",
+      "description": "Agent 'Senior Research Analyst' sends to external service 'Serper API' with no rate monitoring.",
+      "rationale": "Outbound API calls should be monitored for unusual volume to detect runaway loops or data exfiltration.",
+      "suggested_implementation": "Add rate limiting and volume monitoring. Track calls/minute and alert on deviations from baseline.",
+      "related_findings": []
+    },
+    {
+      "id": "OBS-006",
+      "category": "volume_monitoring",
+      "priority": "high",
+      "node_id": "agent_researcher",
+      "node_label": "Senior Research Analyst",
+      "description": "Agent 'Senior Research Analyst' sends to external service 'Email (SMTP)' with no rate monitoring.",
+      "rationale": "Outbound API calls should be monitored for unusual volume to detect runaway loops or data exfiltration.",
+      "suggested_implementation": "Add rate limiting and volume monitoring. Track calls/minute and alert on deviations from baseline.",
+      "related_findings": []
+    },
+    {
+      "id": "OBS-010",
+      "category": "schema_validation",
+      "priority": "medium",
+      "node_id": "agent_researcher",
+      "node_label": "Senior Research Analyst",
+      "description": "Data flow from 'Senior Research Analyst' to 'Financial Analyst' has no schema contract.",
+      "rationale": "Unvalidated inter-agent data flows can silently pass malformed data that causes downstream failures.",
+      "suggested_implementation": "Add output_pydantic on the upstream agent (CrewAI) or TypedDict State (LangGraph) to enforce schema contracts.",
+      "related_findings": [
+        "STRAT-SI-004"
+      ]
+    },
+    {
+      "id": "OBS-011",
+      "category": "schema_validation",
+      "priority": "medium",
+      "node_id": "agent_analyst",
+      "node_label": "Financial Analyst",
+      "description": "Data flow from 'Financial Analyst' to 'Trade Executor' has no schema contract.",
+      "rationale": "Unvalidated inter-agent data flows can silently pass malformed data that causes downstream failures.",
+      "suggested_implementation": "Add output_pydantic on the upstream agent (CrewAI) or TypedDict State (LangGraph) to enforce schema contracts.",
+      "related_findings": [
+        "STRAT-SI-004"
+      ]
+    }
+  ],
+  "security_risk_score": 65,
   "reliability_risk_score": 100,
   "gap_classification": "both_poor",
   "repo_profile": {
     "framework": "CrewAI",
-    "agent_count": 1,
+    "agent_count": 3,
     "tool_count": 5,
     "data_store_count": 3,
     "external_service_count": 2,
     "mcp_server_count": 0,
-    "max_chain_depth": 0,
-    "graph_density": 0.0818,
+    "max_chain_depth": 3,
+    "graph_density": 0.2756,
     "security_findings": {
       "CRITICAL": 2,
       "HIGH": 0,
@@ -1196,24 +2682,40 @@
     ],
     "reliability_findings": {
       "CRITICAL": 3,
-      "HIGH": 0,
-      "MEDIUM": 1,
-      "LOW": 5
+      "HIGH": 15,
+      "MEDIUM": 3,
+      "LOW": 1
     },
     "reliability_risk_score": 100.0,
     "reliability_finding_ids": [
-      "STRAT-ANOMALY-EMPTY-AGENT",
-      "STRAT-ANOMALY-ORPHAN-CAP",
-      "STRAT-ANOMALY-ZSCORE",
-      "STRAT-DC-002"
+      "STRAT-AB-001",
+      "STRAT-AB-003",
+      "STRAT-AB-006",
+      "STRAT-AB-007",
+      "STRAT-ANOMALY-WRITEONLY",
+      "STRAT-DC-001",
+      "STRAT-DC-002",
+      "STRAT-DC-008",
+      "STRAT-EA-001",
+      "STRAT-EA-004",
+      "STRAT-OC-002",
+      "STRAT-SI-001",
+      "STRAT-SI-002",
+      "STRAT-SI-004",
+      "STRAT-SI-005"
     ],
     "composite_findings": {
-      "CRITICAL": 0,
+      "CRITICAL": 4,
       "HIGH": 0,
       "MEDIUM": 0,
       "LOW": 0
     },
-    "composite_finding_ids": [],
+    "composite_finding_ids": [
+      "STRAT-COMP-001",
+      "STRAT-COMP-003",
+      "STRAT-COMP-004",
+      "STRAT-COMP-006"
+    ],
     "gap_classification": "both_poor"
   }
 }

@@ -1,12 +1,12 @@
 {
-  "scan_id": "d97d7e80",
+  "scan_id": "47b400e8",
   "directory": "C:\\Users\\dpowe\\OneDrive\\Documents\\Coding Projects\\stratum-cli-operational\\stratum-cli\\eval_outputs\\test_fixtures\\simple_crew",
-  "security_score": 48,
+  "security_score": 65,
   "reliability_score": 100,
   "gap_classification": "both_poor",
-  "security_finding_count": 11,
-  "reliability_finding_count": 9,
-  "composite_finding_count": 0,
+  "security_finding_count": 16,
+  "reliability_finding_count": 22,
+  "composite_finding_count": 4,
   "security_findings": [
     {
       "id": "STRATUM-002",
@@ -14,9 +14,19 @@
       "title": "Destructive action, no human gate"
     },
     {
+      "id": "STRATUM-CR05",
+      "severity": "CRITICAL",
+      "title": "Shared tool blast radius: psycopg2 -> 3 agents in crew 'crew'"
+    },
+    {
+      "id": "STRATUM-CR05.1",
+      "severity": "CRITICAL",
+      "title": "Shared tool blast radius: smtplib -> 3 agents in crew 'crew'"
+    },
+    {
       "id": "STRATUM-001",
       "severity": "HIGH",
-      "title": "Unguarded data-to-external path (2 paths)"
+      "title": "Unguarded data-to-external path (4 paths)"
     },
     {
       "id": "STRATUM-BR01",
@@ -24,9 +34,24 @@
       "title": "Agent sends external messages without human review"
     },
     {
+      "id": "STRATUM-CR06",
+      "severity": "HIGH",
+      "title": "'Financial Analyst' bypasses 'Senior Research Analyst' -- reads PostgreSQL directly"
+    },
+    {
+      "id": "STRATUM-CR06.1",
+      "severity": "HIGH",
+      "title": "'Trade Executor' bypasses 'Senior Research Analyst' -- reads PostgreSQL directly"
+    },
+    {
+      "id": "STRATUM-CR06.2",
+      "severity": "HIGH",
+      "title": "'Trade Executor' bypasses 'Financial Analyst' -- reads PostgreSQL directly"
+    },
+    {
       "id": "STRATUM-008",
       "severity": "MEDIUM",
-      "title": "No error handling on 4 external calls"
+      "title": "No error handling on 3 external calls"
     },
     {
       "id": "STRATUM-010",
@@ -66,23 +91,152 @@
   ],
   "reliability_findings": [
     {
-      "id": "STRAT-DC-002",
-      "severity": "CRITICAL",
-      "title": "Irreversible Action Without Approval Gate",
-      "path": "smtplib"
+      "id": "STRAT-DC-001",
+      "severity": "HIGH",
+      "title": "Unsupervised Multi-Step Decision Chain",
+      "path": "Senior Research Analyst \u2192 Financial Analyst \u2192 Trade Executor"
     },
     {
       "id": "STRAT-DC-002",
       "severity": "CRITICAL",
       "title": "Irreversible Action Without Approval Gate",
-      "path": "SerperDevTool"
+      "path": "Senior Research Analyst \u2192 smtplib"
     },
     {
-      "id": "STRAT-DC-002",
+      "id": "STRAT-DC-008",
+      "severity": "HIGH",
+      "title": "No Timeout or Circuit Breaker on Agent Chain",
+      "path": "Senior Research Analyst \u2192 Financial Analyst \u2192 Trade Executor"
+    },
+    {
+      "id": "STRAT-OC-002",
+      "severity": "MEDIUM",
+      "title": "Competing Resource Consumers Without Prioritization",
+      "path": "Trade Executor \u2192 Financial Analyst \u2192 Senior Research Analyst \u2192 Email (SMTP)"
+    },
+    {
+      "id": "STRAT-SI-001",
       "severity": "CRITICAL",
-      "title": "Irreversible Action Without Approval Gate",
-      "path": "FileReadTool"
+      "title": "Silent Error Propagation Across Agent Boundary",
+      "path": "Senior Research Analyst \u2192 Financial Analyst"
+    },
+    {
+      "id": "STRAT-SI-001",
+      "severity": "CRITICAL",
+      "title": "Silent Error Propagation Across Agent Boundary",
+      "path": "Financial Analyst \u2192 Trade Executor"
+    },
+    {
+      "id": "STRAT-SI-002",
+      "severity": "HIGH",
+      "title": "Confidence Laundering Through Agent Chain",
+      "path": "Senior Research Analyst \u2192 Financial Analyst"
+    },
+    {
+      "id": "STRAT-SI-002",
+      "severity": "HIGH",
+      "title": "Confidence Laundering Through Agent Chain",
+      "path": "Senior Research Analyst \u2192 Financial Analyst \u2192 Trade Executor"
+    },
+    {
+      "id": "STRAT-SI-002",
+      "severity": "HIGH",
+      "title": "Confidence Laundering Through Agent Chain",
+      "path": "Financial Analyst \u2192 Trade Executor"
+    },
+    {
+      "id": "STRAT-SI-004",
+      "severity": "HIGH",
+      "title": "Schema Mismatch on Data Flow",
+      "path": "Trade Executor \u2192 Financial Analyst \u2192 Senior Research Analyst"
+    },
+    {
+      "id": "STRAT-SI-005",
+      "severity": "HIGH",
+      "title": "Unvalidated External Data Ingestion",
+      "path": "Email (SMTP) \u2192 smtplib \u2192 Senior Research Analyst"
+    },
+    {
+      "id": "STRAT-SI-005",
+      "severity": "HIGH",
+      "title": "Unvalidated External Data Ingestion",
+      "path": "Serper API \u2192 SerperDevTool \u2192 Senior Research Analyst"
+    },
+    {
+      "id": "STRAT-EA-001",
+      "severity": "HIGH",
+      "title": "Implicit Authority Escalation Through Delegation",
+      "path": "Financial Analyst \u2192 FileReadTool \u2192 SerperDevTool"
+    },
+    {
+      "id": "STRAT-EA-004",
+      "severity": "MEDIUM",
+      "title": "Transitive Data Access Through Delegation",
+      "path": "Financial Analyst \u2192 Crewai Tools"
+    },
+    {
+      "id": "STRAT-AB-001",
+      "severity": "HIGH",
+      "title": "Unbounded Autonomous Volume",
+      "path": "Senior Research Analyst \u2192 smtplib"
+    },
+    {
+      "id": "STRAT-AB-001",
+      "severity": "HIGH",
+      "title": "Unbounded Autonomous Volume",
+      "path": "Financial Analyst \u2192 smtplib"
+    },
+    {
+      "id": "STRAT-AB-001",
+      "severity": "HIGH",
+      "title": "Unbounded Autonomous Volume",
+      "path": "Trade Executor \u2192 smtplib"
+    },
+    {
+      "id": "STRAT-AB-003",
+      "severity": "HIGH",
+      "title": "Regulatory Exposure Without Audit Trail",
+      "path": "Senior Research Analyst \u2192 smtplib"
+    },
+    {
+      "id": "STRAT-AB-003",
+      "severity": "HIGH",
+      "title": "Regulatory Exposure Without Audit Trail",
+      "path": "Senior Research Analyst \u2192 SerperDevTool"
+    },
+    {
+      "id": "STRAT-AB-006",
+      "severity": "HIGH",
+      "title": "No Rollback on Multi-Step Workflow",
+      "path": "Senior Research Analyst \u2192 Financial Analyst \u2192 Trade Executor"
+    },
+    {
+      "id": "STRAT-AB-007",
+      "severity": "MEDIUM",
+      "title": "Concentration of External Dependencies",
+      "path": "Trade Executor \u2192 Financial Analyst \u2192 Senior Research Analyst \u2192 Email (SMTP)"
     }
   ],
-  "composite_findings": []
+  "composite_findings": [
+    {
+      "id": "STRAT-COMP-001",
+      "severity": "CRITICAL",
+      "title": "Unsupervised Chain With Silent Error Propagation"
+    },
+    {
+      "id": "STRAT-COMP-003",
+      "severity": "CRITICAL",
+      "title": "Unsupervised Chain With Implicit Authority Escalation"
+    },
+    {
+      "id": "STRAT-COMP-004",
+      "severity": "CRITICAL",
+      "title": "Silent Errors Across Unvalidated Data Boundaries"
+    },
+    {
+      "id": "STRAT-COMP-006",
+      "severity": "CRITICAL",
+      "title": "Unbounded Autonomous Execution of Irreversible Actions"
+    }
+  ]
 }

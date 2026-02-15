@@ -243,6 +243,7 @@ def scan(path: str) -> ScanResult:
     # ── Framework dispatch: CrewAI ──
     from stratum.parsers.agents import (
         extract_crew_definitions, detect_shared_tools, detect_cross_crew_flows,
+        extract_task_context_flows, extract_delegation_relationships,
     )
     crew_definitions = []
     all_agent_relationships = []
@@ -254,7 +255,13 @@ def scan(path: str) -> ScanResult:
         cross_crew_rels = detect_cross_crew_flows(
             crewai_crews, [(os.path.relpath(fp, abs_path), c) for fp, c in py_files],
         )
-        all_agent_relationships.extend(shared_tool_rels + cross_crew_rels)
+        # Task context flows (feeds_into from Task.context)
+        context_rels = extract_task_context_flows(py_files_with_ast)
+        # Delegation relationships (delegates_to from allow_delegation=True)
+        delegation_rels = extract_delegation_relationships(py_files_with_ast, all_agent_defs)
+        all_agent_relationships.extend(
+            shared_tool_rels + cross_crew_rels + context_rels + delegation_rels
+        )
 
     # ── Framework dispatch: LangGraph ──
     if "LangGraph" in all_frameworks:

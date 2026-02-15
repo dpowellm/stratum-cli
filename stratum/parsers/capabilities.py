@@ -181,19 +181,28 @@ def _build_var_origin(
     var_origin: dict[str, str] = {}
 
     for node in ast.walk(func_node):
-        if not isinstance(node, ast.Assign):
-            continue
-        if len(node.targets) != 1:
-            continue
-        target = node.targets[0]
-        if not isinstance(target, ast.Name):
-            continue
-        var_name = target.id
-        value = node.value
+        if isinstance(node, ast.Assign):
+            if len(node.targets) != 1:
+                continue
+            target = node.targets[0]
+            if not isinstance(target, ast.Name):
+                continue
+            var_name = target.id
+            value = node.value
 
-        origin = _resolve_value_origin(value, known_imports, alias_map, var_origin)
-        if origin:
-            var_origin[var_name] = origin
+            origin = _resolve_value_origin(value, known_imports, alias_map, var_origin)
+            if origin:
+                var_origin[var_name] = origin
+
+        elif isinstance(node, ast.With):
+            # Handle `with smtplib.SMTP(...) as server:` patterns
+            for item in node.items:
+                if item.optional_vars and isinstance(item.optional_vars, ast.Name):
+                    origin = _resolve_value_origin(
+                        item.context_expr, known_imports, alias_map, var_origin,
+                    )
+                    if origin:
+                        var_origin[item.optional_vars.id] = origin
 
     return var_origin
 

@@ -19,11 +19,18 @@ from stratum.models import TrustLevel
 
 # Tools/libraries that produce irreversible side effects
 IRREVERSIBLE_PATTERNS = {
-    "outbound", "financial",  # capability kinds
+    "financial",  # capability kinds (NOT "outbound" — search tools are outbound but reversible)
 }
 IRREVERSIBLE_LIBRARIES = {
-    "requests", "httpx", "urllib", "smtplib", "stripe", "paypalrestsdk",
+    "smtplib", "stripe", "paypalrestsdk",
     "square", "braintree", "twilio", "sendgrid",
+}
+# Read-only / search tools that should be classified as reversible
+REVERSIBLE_TOOLS = {
+    "SerperDevTool", "FileReadTool", "DirectoryReadTool",
+    "CSVSearchTool", "JSONSearchTool", "PDFSearchTool",
+    "TXTSearchTool", "MDXSearchTool", "WebsiteSearchTool",
+    "search", "web_search", "google_search", "file_read",
 }
 CONDITIONAL_LIBRARIES = {
     "psycopg2", "sqlalchemy", "pymongo", "sqlite3", "redis",
@@ -67,13 +74,23 @@ def _enrich_capabilities(graph: RiskGraph) -> None:
             cap_id = node.id
             kind = cap_id.rsplit("_", 1)[-1] if "_" in cap_id else ""
             lib = node.framework.lower() if node.framework else ""
+            label = node.label
 
-            if kind in IRREVERSIBLE_PATTERNS or lib in IRREVERSIBLE_LIBRARIES:
+            # Check reversible tools first (read-only, search, file read)
+            if label in REVERSIBLE_TOOLS or any(rt in label for rt in REVERSIBLE_TOOLS):
+                node.reversibility = "reversible"
+            elif kind in IRREVERSIBLE_PATTERNS or lib in IRREVERSIBLE_LIBRARIES:
                 node.reversibility = "irreversible"
             elif lib in CONDITIONAL_LIBRARIES or kind == "destructive":
                 node.reversibility = "conditional"
             elif kind in ("data_access", "file_system"):
                 node.reversibility = "reversible"
+            elif kind == "outbound" and lib in ("requests", "httpx", "urllib"):
+                # HTTP libraries: conservative but not search tools
+                node.reversibility = "irreversible"
+            elif kind == "outbound":
+                # Other outbound: default to irreversible
+                node.reversibility = "irreversible"
             else:
                 node.reversibility = "irreversible"  # default conservative
 
@@ -188,15 +205,14 @@ def _enrich_agents(graph: RiskGraph, py_files: list[tuple[str, str]] | None = No
             if m:
                 node.max_iterations = int(m.group(1))
 
-        # delegation_enabled detection
-        if not node.delegation_enabled and content:
-            if re.search(r"(?i)(allow_delegation\s*=\s*True|delegation_enabled\s*=\s*True)", content):
-                node.delegation_enabled = True
-
-        # human_input_enabled detection
-        if not node.human_input_enabled and content:
-            if re.search(r"(?i)(human_input\s*=\s*True|interrupt_before|human_in_the_loop)", content):
-                node.human_input_enabled = True
+        # Per-agent delegation_enabled and human_input_enabled via AST
+        if content:
+            agent_var = node.id.removeprefix("agent_")
+            agent_kws = _extract_agent_keywords(content, agent_var)
+            if not node.delegation_enabled:
+                node.delegation_enabled = agent_kws.get("allow_delegation", False)
+            if not node.human_input_enabled:
+                node.human_input_enabled = agent_kws.get("human_input", False)
 
         # LLM model detection
         if not node.llm_model and content:
@@ -227,6 +243,34 @@ def _enrich_agents(graph: RiskGraph, py_files: list[tuple[str, str]] | None = No
         if not node.memory_enabled and content:
             if re.search(r"(?i)(memory\s*=\s*True|MemorySaver|ConversationBufferMemory)", content):
                 node.memory_enabled = True
+
+
+def _extract_agent_keywords(content: str, agent_var: str) -> dict[str, bool]:
+    """Extract per-agent boolean keywords from the Agent() call assigned to *agent_var*.
+
+    Returns a dict like {"allow_delegation": True, "human_input": False}.
+    """
+    result: dict[str, bool] = {}
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return result
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
+            continue
+        if node.targets[0].id != agent_var:
+            continue
+        if not isinstance(node.value, ast.Call):
+            continue
+
+        for kw in node.value.keywords:
+            if kw.arg in ("allow_delegation", "human_input") and isinstance(kw.value, ast.Constant):
+                result[kw.arg] = bool(kw.value.value)
+
+    return result
 
 
 def _detect_error_pattern(content: str) -> str:

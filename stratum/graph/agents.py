@@ -148,25 +148,50 @@ def extract_agents_from_python(source: str, file_path: str) -> list[AgentDefinit
     # Strategy 2: Generic Agent/AgentExecutor/AssistantAgent calls
     # (only if no @agent-decorated methods found)
     if not agents:
+        # Build module-level variable → class name mapping for tool resolution
+        # e.g., search_tool = SerperDevTool() → {"search_tool": "SerperDevTool"}
+        module_vars: dict[str, str] = {}
         for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
+            if isinstance(node, ast.Assign) and len(node.targets) == 1:
+                target = node.targets[0]
+                if isinstance(target, ast.Name) and isinstance(node.value, ast.Call):
+                    call_name = ""
+                    if isinstance(node.value.func, ast.Name):
+                        call_name = node.value.func.id
+                    elif isinstance(node.value.func, ast.Attribute):
+                        call_name = node.value.func.attr
+                    if call_name:
+                        module_vars[target.id] = call_name
+
+        agent_constructors = {"Agent", "AgentExecutor", "AssistantAgent", "UserProxyAgent"}
+
+        # Walk Assign nodes to capture the variable name as agent name
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Assign):
                 continue
+            if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
+                continue
+            if not isinstance(node.value, ast.Call):
+                continue
+
+            var_name = node.targets[0].id
+            call = node.value
 
             func_name = ""
-            if isinstance(node.func, ast.Name):
-                func_name = node.func.id
-            elif isinstance(node.func, ast.Attribute):
-                func_name = node.func.attr
+            if isinstance(call.func, ast.Name):
+                func_name = call.func.id
+            elif isinstance(call.func, ast.Attribute):
+                func_name = call.func.attr
 
-            if func_name not in ("Agent", "AgentExecutor", "AssistantAgent", "UserProxyAgent"):
+            if func_name not in agent_constructors:
                 continue
 
-            name = func_name
+            name = var_name  # Use variable name, not constructor name
             role = ""
             tool_names_generic: list[str] = []
             framework = "unknown"
 
-            for keyword in node.keywords:
+            for keyword in call.keywords:
                 if keyword.arg == "role" and isinstance(keyword.value, ast.Constant):
                     role = keyword.value.value
                 elif keyword.arg == "name" and isinstance(keyword.value, ast.Constant):
@@ -179,7 +204,9 @@ def extract_agents_from_python(source: str, file_path: str) -> list[AgentDefinit
                             elif isinstance(elt.func, ast.Attribute):
                                 tool_names_generic.append(elt.func.attr)
                         elif isinstance(elt, ast.Name):
-                            tool_names_generic.append(elt.id)
+                            # Resolve variable to class name if possible
+                            resolved = module_vars.get(elt.id, elt.id)
+                            tool_names_generic.append(resolved)
 
             if func_name == "Agent":
                 framework = "CrewAI"

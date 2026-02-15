@@ -89,7 +89,8 @@ CODE_EXEC_FUNCTIONS: dict[str, list[str]] = {
 }
 CODE_EXEC_BUILTINS = {"exec", "eval"}
 
-DESTRUCTIVE_SQL_KEYWORDS = ["DELETE FROM", "DROP TABLE", "DROP DATABASE", "TRUNCATE"]
+DESTRUCTIVE_SQL_KEYWORDS = ["DELETE FROM", "DROP TABLE", "DROP DATABASE", "TRUNCATE",
+                            "INSERT INTO", "UPDATE"]
 DESTRUCTIVE_METHODS = ["delete", "delete_one", "delete_many", "drop", "remove"]
 
 FINANCIAL_IMPORTS = ["stripe", "paypalrestsdk", "square", "braintree", "adyen"]

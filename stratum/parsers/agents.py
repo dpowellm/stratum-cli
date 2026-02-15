@@ -282,3 +282,128 @@ def _infer_crew_from_method_body(method: ast.FunctionDef, tree: ast.Module) -> s
                     if isinstance(node.func.value.func, ast.Name):
                         return node.func.value.func.id
     return ""
+
+
+# ---------------------------------------------------------------------------
+# Task context and allow_delegation parsing
+# ---------------------------------------------------------------------------
+
+def extract_task_context_flows(
+    python_files: list[tuple[str, str, ast.Module]],
+) -> list[AgentRelationship]:
+    """Extract data flows from Task(context=[...]) references.
+
+    Returns AgentRelationship entries of type "feeds_into" for each
+    context reference that connects two different agents.
+    """
+    relationships: list[AgentRelationship] = []
+
+    for file_path, content, tree in python_files:
+        # Build task_var → agent_var mapping from Task(agent=X) calls
+        task_to_agent: dict[str, str] = {}
+        # Build task_var → context list mapping from Task(context=[...])
+        task_contexts: dict[str, list[str]] = {}
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Assign):
+                continue
+            if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
+                continue
+            if not isinstance(node.value, ast.Call):
+                continue
+
+            call = node.value
+            func_name = ""
+            if isinstance(call.func, ast.Name):
+                func_name = call.func.id
+            elif isinstance(call.func, ast.Attribute):
+                func_name = call.func.attr
+
+            if func_name != "Task":
+                continue
+
+            task_var = node.targets[0].id
+
+            for kw in call.keywords:
+                if kw.arg == "agent" and isinstance(kw.value, ast.Name):
+                    task_to_agent[task_var] = kw.value.id
+                elif kw.arg == "context" and isinstance(kw.value, ast.List):
+                    ctx_names = []
+                    for elt in kw.value.elts:
+                        if isinstance(elt, ast.Name):
+                            ctx_names.append(elt.id)
+                    task_contexts[task_var] = ctx_names
+
+        # Build feeds_into relationships from context references
+        for task_var, ctx_tasks in task_contexts.items():
+            target_agent = task_to_agent.get(task_var)
+            if not target_agent:
+                continue
+            for ctx_task_var in ctx_tasks:
+                source_agent = task_to_agent.get(ctx_task_var)
+                if source_agent and source_agent != target_agent:
+                    relationships.append(AgentRelationship(
+                        source_agent=source_agent,
+                        target_agent=target_agent,
+                        relationship_type="feeds_into",
+                        source_file=file_path,
+                    ))
+
+    return relationships
+
+
+def extract_delegation_relationships(
+    python_files: list[tuple[str, str, ast.Module]],
+    agent_defs: list | None = None,
+) -> list[AgentRelationship]:
+    """Extract delegates_to relationships from allow_delegation=True agents.
+
+    An agent with allow_delegation=True can delegate to all other agents
+    in the same crew/file.
+    """
+    relationships: list[AgentRelationship] = []
+
+    for file_path, content, tree in python_files:
+        # Find all Agent assignments with allow_delegation
+        agents_in_file: list[tuple[str, bool]] = []  # (var_name, allows_delegation)
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Assign):
+                continue
+            if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
+                continue
+            if not isinstance(node.value, ast.Call):
+                continue
+
+            call = node.value
+            func_name = ""
+            if isinstance(call.func, ast.Name):
+                func_name = call.func.id
+            elif isinstance(call.func, ast.Attribute):
+                func_name = call.func.attr
+
+            if func_name != "Agent":
+                continue
+
+            var_name = node.targets[0].id
+            allows = False
+            for kw in call.keywords:
+                if kw.arg == "allow_delegation":
+                    if isinstance(kw.value, ast.Constant) and kw.value.value is True:
+                        allows = True
+            agents_in_file.append((var_name, allows))
+
+        # Create delegates_to for agents with allow_delegation=True
+        for agent_var, allows in agents_in_file:
+            if not allows:
+                continue
+            for other_var, _ in agents_in_file:
+                if other_var != agent_var:
+                    relationships.append(AgentRelationship(
+                        source_agent=agent_var,
+                        target_agent=other_var,
+                        relationship_type="delegates_to",
+                        source_file=file_path,
+                    ))
+
+    return relationships

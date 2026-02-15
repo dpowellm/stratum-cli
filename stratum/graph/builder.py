@@ -162,8 +162,15 @@ def build_graph(result: ScanResult) -> RiskGraph:
                     has_control=False,
                 ))
 
+    # Step 3.5b: File-based fallback — assign unmatched capabilities to agents
+    # in the same source file
+    _assign_unmatched_capabilities(graph)
+
     # Step 3.6: Agent relationship edges (FEEDS_INTO, DELEGATES_TO, SHARES_TOOL)
     _add_agent_relationship_edges(graph, result)
+
+    # Step 3.7: Agent-level reads_from/writes_to edges
+    _add_agent_data_access_edges(graph)
 
     # Step 4: Connect data-reading capabilities to outbound capabilities
     # (implicit: the agent can use any tool, so data flows from reads to sends)
@@ -414,6 +421,112 @@ def _connect_agent_data_flows(graph: RiskGraph, capabilities: list[Capability]) 
 
 
 # ---------------------------------------------------------------------------
+# Unmatched capability assignment (file-based fallback)
+# ---------------------------------------------------------------------------
+
+def _assign_unmatched_capabilities(graph: RiskGraph) -> None:
+    """Assign capabilities without tool_of edges to agents in the same source file.
+
+    After primary tool_of matching by name, some capabilities may remain unowned
+    (e.g., Python functions using psycopg2 that aren't in any agent's tools list).
+    As a fallback, assign them to all agents in the same source file.
+    """
+    # Find capabilities that already have a tool_of edge
+    owned_caps: set[str] = set()
+    for edge in graph.edges:
+        if edge.edge_type == EdgeType.TOOL_OF:
+            owned_caps.add(edge.source)
+
+    # Build source_file -> agents map
+    file_agents: dict[str, list[str]] = {}
+    for nid, node in graph.nodes.items():
+        if node.node_type == NodeType.AGENT and node.source_file:
+            file_agents.setdefault(node.source_file, []).append(nid)
+
+    # Assign unowned capabilities to agents in the same file
+    for nid, node in graph.nodes.items():
+        if node.node_type != NodeType.CAPABILITY:
+            continue
+        if nid in owned_caps:
+            continue
+        if not node.source_file:
+            continue
+        agents = file_agents.get(node.source_file, [])
+        for agent_id in agents:
+            graph.edges.append(GraphEdge(
+                source=nid,
+                target=agent_id,
+                edge_type=EdgeType.TOOL_OF,
+                has_control=False,
+            ))
+
+
+# ---------------------------------------------------------------------------
+# Agent-level data access edges
+# ---------------------------------------------------------------------------
+
+def _add_agent_data_access_edges(graph: RiskGraph) -> None:
+    """Create agent-level reads_from and writes_to edges.
+
+    For each capability that reads/writes a data store, follow its tool_of edge
+    back to the owning agent and create an agent→data_store edge.
+    """
+    # Build capability -> owning agents map
+    cap_to_agents: dict[str, list[str]] = {}
+    for edge in graph.edges:
+        if edge.edge_type == EdgeType.TOOL_OF:
+            cap_to_agents.setdefault(edge.source, []).append(edge.target)
+
+    for edge in list(graph.edges):
+        if edge.edge_type == EdgeType.READS_FROM:
+            # READS_FROM: data_store → capability
+            cap_id = edge.target
+            ds_id = edge.source
+            ds_node = graph.nodes.get(ds_id)
+            if not ds_node or ds_node.node_type != NodeType.DATA_STORE:
+                continue
+            for agent_id in cap_to_agents.get(cap_id, []):
+                # Create agent → data_store reads_from
+                _add_edge_if_new(graph, agent_id, ds_id, EdgeType.READS_FROM)
+
+        elif edge.edge_type == EdgeType.WRITES_TO:
+            # WRITES_TO: capability → data_store
+            cap_id = edge.source
+            ds_id = edge.target
+            ds_node = graph.nodes.get(ds_id)
+            if not ds_node or ds_node.node_type != NodeType.DATA_STORE:
+                continue
+            for agent_id in cap_to_agents.get(cap_id, []):
+                # Create agent → data_store writes_to
+                _add_edge_if_new(graph, agent_id, ds_id, EdgeType.WRITES_TO)
+
+        elif edge.edge_type == EdgeType.SENDS_TO:
+            # SENDS_TO: capability → external_service
+            cap_id = edge.source
+            ext_id = edge.target
+            ext_node = graph.nodes.get(ext_id)
+            if not ext_node or ext_node.node_type != NodeType.EXTERNAL_SERVICE:
+                continue
+            for agent_id in cap_to_agents.get(cap_id, []):
+                _add_edge_if_new(graph, agent_id, ext_id, EdgeType.SENDS_TO)
+
+
+def _add_edge_if_new(
+    graph: RiskGraph, source: str, target: str, edge_type: EdgeType,
+) -> None:
+    """Add an edge only if it doesn't already exist."""
+    for e in graph.edges:
+        if e.source == source and e.target == target and e.edge_type == edge_type:
+            return
+    graph.edges.append(GraphEdge(
+        source=source,
+        target=target,
+        edge_type=edge_type,
+        has_control=False,
+    ))
+
+
+# ---------------------------------------------------------------------------
 # Agent relationship edges
 # ---------------------------------------------------------------------------
 
@@ -443,7 +556,7 @@ def _same_project_dir(graph: RiskGraph, agent_id_a: str, agent_id_b: str) -> boo
 
 def _add_agent_relationship_edges(graph: RiskGraph, result: ScanResult) -> None:
     """Add FEEDS_INTO, DELEGATES_TO, SHARES_TOOL edges from crew/relationship data."""
-    # FEEDS_INTO edges from sequential crew definitions
+    # TASK_SEQUENCE edges from sequential crew definitions
     for crew in getattr(result, 'crew_definitions', []):
         if crew.process_type == "sequential" and len(crew.agent_names) > 1:
             for i in range(len(crew.agent_names) - 1):
@@ -453,7 +566,7 @@ def _add_agent_relationship_edges(graph: RiskGraph, result: ScanResult) -> None:
                     if _same_project_dir(graph, src, tgt):
                         graph.edges.append(GraphEdge(
                             source=src, target=tgt,
-                            edge_type=EdgeType.FEEDS_INTO, has_control=False,
+                            edge_type=EdgeType.TASK_SEQUENCE, has_control=False,
                         ))
 
         # Hierarchical: manager delegates to all agents
