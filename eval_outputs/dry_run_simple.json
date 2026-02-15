@@ -1,5 +1,5 @@
 {
-  "scan_id": "47b400e8",
+  "scan_id": "bb42a8f4",
   "directory": "C:\\Users\\dpowe\\OneDrive\\Documents\\Coding Projects\\stratum-cli-operational\\stratum-cli\\eval_outputs\\test_fixtures\\simple_crew",
   "security_score": 65,
   "reliability_score": 100,
@@ -112,7 +112,7 @@
       "id": "STRAT-OC-002",
       "severity": "MEDIUM",
       "title": "Competing Resource Consumers Without Prioritization",
-      "path": "Trade Executor \u2192 Financial Analyst \u2192 Senior Research Analyst \u2192 Email (SMTP)"
+      "path": "Senior Research Analyst \u2192 Financial Analyst \u2192 Trade Executor \u2192 Email (SMTP)"
     },
     {
       "id": "STRAT-SI-001",
@@ -148,7 +148,7 @@
       "id": "STRAT-SI-004",
       "severity": "HIGH",
       "title": "Schema Mismatch on Data Flow",
-      "path": "Trade Executor \u2192 Financial Analyst \u2192 Senior Research Analyst"
+      "path": "Senior Research Analyst \u2192 Financial Analyst \u2192 Trade Executor"
     },
     {
       "id": "STRAT-SI-005",
@@ -214,7 +214,7 @@
       "id": "STRAT-AB-007",
       "severity": "MEDIUM",
       "title": "Concentration of External Dependencies",
-      "path": "Trade Executor \u2192 Financial Analyst \u2192 Senior Research Analyst \u2192 Email (SMTP)"
+      "path": "Senior Research Analyst \u2192 Financial Analyst \u2192 Trade Executor \u2192 Email (SMTP)"
     }
   ],
   "composite_findings": [

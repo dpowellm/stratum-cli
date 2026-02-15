@@ -1,136 +1,307 @@
 {
-  "scan_id": "47b400e8",
+  "scan_id": "5263e040",
   "graph": {
     "nodes": [
       {
         "id": "cap_psycopg2_data_access",
         "label": "psycopg2",
         "node_type": "capability",
+        "trust_level": "internal",
         "source_file": "crew.py",
-        "makes_decisions": false,
-        "error_handling_pattern": "",
-        "betweenness_centrality": 0.0,
-        "reversibility": "conditional"
+        "data_sensitivity": "internal",
+        "framework": "psycopg2",
+        "has_error_handling": true,
+        "has_timeout": false,
+        "reversibility": "conditional",
+        "subtype": "general",
+        "regulatory_category": "",
+        "side_effects": [],
+        "idempotent": null,
+        "rate_limited": false,
+        "timeout_configured": false,
+        "validation_on_input": false,
+        "validation_on_output": false,
+        "cap_error_handling": "",
+        "external_service": false,
+        "data_mutation": true,
+        "human_visible": false
       },
       {
         "id": "ds_postgresql",
         "label": "PostgreSQL",
         "node_type": "data_store",
+        "trust_level": "internal",
         "source_file": "",
-        "makes_decisions": false,
-        "error_handling_pattern": "",
-        "betweenness_centrality": 0.0,
-        "reversibility": ""
+        "data_sensitivity": "internal",
+        "framework": "",
+        "has_error_handling": false,
+        "has_timeout": false,
+        "concurrency_control": "version",
+        "freshness_mechanism": "none",
+        "store_domain": "",
+        "persistence": "persistent",
+        "access_pattern": "read_only",
+        "concurrent_writers": 0,
+        "concurrent_readers": 0
       },
       {
         "id": "cap_psycopg2_destructive",
         "label": "psycopg2",
         "node_type": "capability",
+        "trust_level": "internal",
         "source_file": "crew.py",
-        "makes_decisions": false,
-        "error_handling_pattern": "",
-        "betweenness_centrality": 0.0,
-        "reversibility": "conditional"
+        "data_sensitivity": "internal",
+        "framework": "psycopg2",
+        "has_error_handling": true,
+        "has_timeout": false,
+        "reversibility": "conditional",
+        "subtype": "general",
+        "regulatory_category": "",
+        "side_effects": [],
+        "idempotent": false,
+        "rate_limited": false,
+        "timeout_configured": false,
+        "validation_on_input": false,
+        "validation_on_output": false,
+        "cap_error_handling": "",
+        "external_service": false,
+        "data_mutation": true,
+        "human_visible": false
       },
       {
         "id": "ds_psycopg2_write",
         "label": "PostgreSQL (write)",
         "node_type": "data_store",
+        "trust_level": "internal",
         "source_file": "",
-        "makes_decisions": false,
-        "error_handling_pattern": "",
-        "betweenness_centrality": 0.0,
-        "reversibility": ""
+        "data_sensitivity": "internal",
+        "framework": "",
+        "has_error_handling": false,
+        "has_timeout": false,
+        "concurrency_control": "version",
+        "freshness_mechanism": "none",
+        "store_domain": "",
+        "persistence": "persistent",
+        "access_pattern": "write_only",
+        "concurrent_writers": 0,
+        "concurrent_readers": 0
       },
       {
         "id": "cap_smtplib_outbound",
         "label": "smtplib",
         "node_type": "capability",
+        "trust_level": "external",
         "source_file": "crew.py",
-        "makes_decisions": false,
-        "error_handling_pattern": "",
-        "betweenness_centrality": 0.0,
-        "reversibility": "irreversible"
+        "data_sensitivity": "internal",
+        "framework": "smtplib",
+        "has_error_handling": false,
+        "has_timeout": false,
+        "reversibility": "irreversible",
+        "subtype": "general",
+        "regulatory_category": "communications",
+        "side_effects": [],
+        "idempotent": false,
+        "rate_limited": false,
+        "timeout_configured": false,
+        "validation_on_input": false,
+        "validation_on_output": false,
+        "cap_error_handling": "",
+        "external_service": true,
+        "data_mutation": false,
+        "human_visible": false
       },
       {
         "id": "ext_email_smtp",
         "label": "Email (SMTP)",
         "node_type": "external",
+        "trust_level": "external",
         "source_file": "",
-        "makes_decisions": false,
-        "error_handling_pattern": "",
-        "betweenness_centrality": 0.0,
-        "reversibility": ""
+        "data_sensitivity": "personal",
+        "framework": "",
+        "has_error_handling": false,
+        "has_timeout": false
       },
       {
         "id": "cap_SerperDevTool_outbound",
         "label": "SerperDevTool",
         "node_type": "capability",
+        "trust_level": "external",
         "source_file": "crew.py",
-        "makes_decisions": false,
-        "error_handling_pattern": "",
-        "betweenness_centrality": 0.0,
-        "reversibility": "reversible"
+        "data_sensitivity": "internal",
+        "framework": "crewai_tools",
+        "has_error_handling": false,
+        "has_timeout": false,
+        "reversibility": "reversible",
+        "subtype": "general",
+        "regulatory_category": "communications",
+        "side_effects": [],
+        "idempotent": false,
+        "rate_limited": false,
+        "timeout_configured": false,
+        "validation_on_input": false,
+        "validation_on_output": false,
+        "cap_error_handling": "",
+        "external_service": true,
+        "data_mutation": false,
+        "human_visible": false
       },
       {
         "id": "ext_serper_api",
         "label": "Serper API",
         "node_type": "external",
+        "trust_level": "external",
         "source_file": "",
-        "makes_decisions": false,
-        "error_handling_pattern": "",
-        "betweenness_centrality": 0.0,
-        "reversibility": ""
+        "data_sensitivity": "public",
+        "framework": "",
+        "has_error_handling": false,
+        "has_timeout": false
       },
       {
         "id": "cap_FileReadTool_data_access",
         "label": "FileReadTool",
         "node_type": "capability",
+        "trust_level": "internal",
         "source_file": "crew.py",
-        "makes_decisions": false,
-        "error_handling_pattern": "",
-        "betweenness_centrality": 0.0,
-        "reversibility": "reversible"
+        "data_sensitivity": "internal",
+        "framework": "crewai_tools",
+        "has_error_handling": false,
+        "has_timeout": false,
+        "reversibility": "reversible",
+        "subtype": "general",
+        "regulatory_category": "",
+        "side_effects": [],
+        "idempotent": null,
+        "rate_limited": false,
+        "timeout_configured": false,
+        "validation_on_input": false,
+        "validation_on_output": false,
+        "cap_error_handling": "",
+        "external_service": false,
+        "data_mutation": false,
+        "human_visible": false
       },
       {
         "id": "ds_crewai_tools",
         "label": "Crewai Tools",
         "node_type": "data_store",
+        "trust_level": "external",
         "source_file": "",
-        "makes_decisions": false,
-        "error_handling_pattern": "",
-        "betweenness_centrality": 0.0,
-        "reversibility": ""
+        "data_sensitivity": "internal",
+        "framework": "",
+        "has_error_handling": false,
+        "has_timeout": false,
+        "concurrency_control": "none",
+        "freshness_mechanism": "none",
+        "store_domain": "",
+        "persistence": "persistent",
+        "access_pattern": "read_only",
+        "concurrent_writers": 0,
+        "concurrent_readers": 0
       },
       {
         "id": "agent_researcher",
         "label": "Senior Research Analyst",
         "node_type": "agent",
+        "trust_level": "internal",
         "source_file": "crew.py",
-        "makes_decisions": false,
+        "data_sensitivity": "internal",
+        "framework": "CrewAI",
+        "has_error_handling": false,
+        "has_timeout": false,
+        "delegation_enabled": false,
+        "human_input_enabled": false,
         "error_handling_pattern": "default_on_error",
+        "makes_decisions": false,
+        "model_pinned": false,
+        "timeout_config": false,
+        "objective_tag": "maximize_portfolio",
+        "max_iterations": null,
         "betweenness_centrality": 0.0952,
-        "reversibility": ""
+        "closeness_centrality": 0.6471,
+        "pagerank": 0.0586,
+        "tools_count": 0,
+        "delegation_depth_downstream": 0,
+        "critical_capabilities_reachable": 1,
+        "implicit_authorities": 0,
+        "error_blast_radius": 2,
+        "memory_enabled": false,
+        "llm_model": null,
+        "temperature": null,
+        "output_schema": null,
+        "prompt_dynamic": false,
+        "agent_domain": "",
+        "business_priority": "",
+        "duty_class": ""
       },
       {
         "id": "agent_analyst",
         "label": "Financial Analyst",
         "node_type": "agent",
+        "trust_level": "internal",
         "source_file": "crew.py",
-        "makes_decisions": false,
+        "data_sensitivity": "internal",
+        "framework": "CrewAI",
+        "has_error_handling": false,
+        "has_timeout": false,
+        "delegation_enabled": true,
+        "human_input_enabled": false,
         "error_handling_pattern": "default_on_error",
+        "makes_decisions": false,
+        "model_pinned": false,
+        "timeout_config": false,
+        "objective_tag": "maximize_portfolio",
+        "max_iterations": null,
         "betweenness_centrality": 0.0714,
-        "reversibility": ""
+        "closeness_centrality": 0.6111,
+        "pagerank": 0.0343,
+        "tools_count": 0,
+        "delegation_depth_downstream": 1,
+        "critical_capabilities_reachable": 1,
+        "implicit_authorities": 1,
+        "error_blast_radius": 1,
+        "memory_enabled": false,
+        "llm_model": null,
+        "temperature": null,
+        "output_schema": null,
+        "prompt_dynamic": false,
+        "agent_domain": "",
+        "business_priority": "",
+        "duty_class": ""
       },
       {
         "id": "agent_executor",
         "label": "Trade Executor",
         "node_type": "agent",
+        "trust_level": "internal",
         "source_file": "crew.py",
-        "makes_decisions": false,
+        "data_sensitivity": "internal",
+        "framework": "CrewAI",
+        "has_error_handling": false,
+        "has_timeout": false,
+        "delegation_enabled": false,
+        "human_input_enabled": false,
         "error_handling_pattern": "default_on_error",
+        "makes_decisions": false,
+        "model_pinned": false,
+        "timeout_config": false,
+        "objective_tag": "maximize_portfolio",
+        "max_iterations": null,
         "betweenness_centrality": 0.0,
-        "reversibility": ""
+        "closeness_centrality": 0.5238,
+        "pagerank": 0.0309,
+        "tools_count": 0,
+        "delegation_depth_downstream": 0,
+        "critical_capabilities_reachable": 1,
+        "implicit_authorities": 0,
+        "error_blast_radius": 0,
+        "memory_enabled": false,
+        "llm_model": null,
+        "temperature": null,
+        "output_schema": null,
+        "prompt_dynamic": false,
+        "agent_domain": "",
+        "business_priority": "",
+        "duty_class": ""
       }
     ],
     "edges": [
@@ -139,301 +310,387 @@
         "target": "cap_psycopg2_data_access",
         "edge_type": "reads_from",
         "trust_crossing": false,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "cap_psycopg2_destructive",
         "target": "ds_psycopg2_write",
         "edge_type": "writes_to",
         "trust_crossing": false,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "cap_smtplib_outbound",
         "target": "ext_email_smtp",
         "edge_type": "sends_to",
         "trust_crossing": false,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "cap_SerperDevTool_outbound",
         "target": "ext_serper_api",
         "edge_type": "sends_to",
         "trust_crossing": false,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "ds_crewai_tools",
         "target": "cap_FileReadTool_data_access",
         "edge_type": "reads_from",
         "trust_crossing": true,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "cap_SerperDevTool_outbound",
         "target": "agent_researcher",
         "edge_type": "tool_of",
         "trust_crossing": true,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "cap_FileReadTool_data_access",
         "target": "agent_researcher",
         "edge_type": "tool_of",
         "trust_crossing": false,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "cap_psycopg2_data_access",
         "target": "agent_researcher",
         "edge_type": "tool_of",
         "trust_crossing": false,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "cap_psycopg2_data_access",
         "target": "agent_analyst",
         "edge_type": "tool_of",
         "trust_crossing": false,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "cap_psycopg2_data_access",
         "target": "agent_executor",
         "edge_type": "tool_of",
         "trust_crossing": false,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "cap_psycopg2_destructive",
         "target": "agent_researcher",
         "edge_type": "tool_of",
         "trust_crossing": false,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "cap_psycopg2_destructive",
         "target": "agent_analyst",
         "edge_type": "tool_of",
         "trust_crossing": false,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "cap_psycopg2_destructive",
         "target": "agent_executor",
         "edge_type": "tool_of",
         "trust_crossing": false,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "cap_smtplib_outbound",
         "target": "agent_researcher",
         "edge_type": "tool_of",
         "trust_crossing": true,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "cap_smtplib_outbound",
         "target": "agent_analyst",
         "edge_type": "tool_of",
         "trust_crossing": true,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "cap_smtplib_outbound",
         "target": "agent_executor",
         "edge_type": "tool_of",
         "trust_crossing": true,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "agent_researcher",
         "target": "agent_analyst",
         "edge_type": "task_sequence",
         "trust_crossing": false,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "agent_analyst",
         "target": "agent_executor",
         "edge_type": "task_sequence",
         "trust_crossing": false,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "agent_researcher",
         "target": "agent_analyst",
         "edge_type": "feeds_into",
         "trust_crossing": false,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "agent_analyst",
         "target": "agent_executor",
         "edge_type": "feeds_into",
         "trust_crossing": false,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "agent_analyst",
         "target": "agent_researcher",
         "edge_type": "delegates_to",
         "trust_crossing": false,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": true,
+        "conditional": false
       },
       {
         "source": "agent_analyst",
         "target": "agent_executor",
         "edge_type": "delegates_to",
         "trust_crossing": false,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": true,
+        "conditional": false
       },
       {
         "source": "agent_researcher",
         "target": "ds_postgresql",
         "edge_type": "reads_from",
         "trust_crossing": false,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "agent_analyst",
         "target": "ds_postgresql",
         "edge_type": "reads_from",
         "trust_crossing": false,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "agent_executor",
         "target": "ds_postgresql",
         "edge_type": "reads_from",
         "trust_crossing": false,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "agent_researcher",
         "target": "ds_psycopg2_write",
         "edge_type": "writes_to",
         "trust_crossing": false,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "agent_analyst",
         "target": "ds_psycopg2_write",
         "edge_type": "writes_to",
         "trust_crossing": false,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "agent_executor",
         "target": "ds_psycopg2_write",
         "edge_type": "writes_to",
         "trust_crossing": false,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "agent_researcher",
         "target": "ext_email_smtp",
         "edge_type": "sends_to",
         "trust_crossing": true,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "agent_analyst",
         "target": "ext_email_smtp",
         "edge_type": "sends_to",
         "trust_crossing": true,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "agent_executor",
         "target": "ext_email_smtp",
         "edge_type": "sends_to",
         "trust_crossing": true,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "agent_researcher",
         "target": "ext_serper_api",
         "edge_type": "sends_to",
         "trust_crossing": true,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "agent_researcher",
         "target": "ds_crewai_tools",
         "edge_type": "reads_from",
         "trust_crossing": true,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "cap_FileReadTool_data_access",
         "target": "cap_SerperDevTool_outbound",
         "edge_type": "shares_with",
         "trust_crossing": true,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "cap_FileReadTool_data_access",
         "target": "cap_smtplib_outbound",
         "edge_type": "shares_with",
         "trust_crossing": true,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "cap_psycopg2_data_access",
         "target": "cap_SerperDevTool_outbound",
         "edge_type": "shares_with",
         "trust_crossing": true,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "cap_psycopg2_data_access",
         "target": "cap_smtplib_outbound",
         "edge_type": "shares_with",
         "trust_crossing": true,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "agent_analyst",
         "target": "cap_SerperDevTool_outbound",
         "edge_type": "implicit_authority_over",
         "trust_crossing": false,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "agent_researcher",
         "target": "agent_analyst",
         "edge_type": "error_boundary",
         "trust_crossing": false,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "agent_analyst",
         "target": "agent_executor",
         "edge_type": "error_boundary",
         "trust_crossing": false,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "agent_analyst",
         "target": "agent_executor",
         "edge_type": "shared_state_conflict",
         "trust_crossing": false,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "agent_analyst",
         "target": "agent_researcher",
         "edge_type": "shared_state_conflict",
         "trust_crossing": false,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       },
       {
         "source": "agent_executor",
         "target": "agent_researcher",
         "edge_type": "shared_state_conflict",
         "trust_crossing": false,
-        "schema_validated": false
+        "schema_validated": false,
+        "scoped": false,
+        "conditional": false
       }
     ]
   },
@@ -513,7 +770,7 @@
       "id": "STRAT-DC-001",
       "severity": "HIGH",
       "title": "Unsupervised Multi-Step Decision Chain",
-      "path": "Senior Research Analyst \u2192 Financial Analyst \u2192 Trade Executor",
+      "path": "Senior Research Analyst → Financial Analyst → Trade Executor",
       "description": "Delegation chain of 3 agents with no human checkpoint. Decisions cascade without human review.",
       "evidence": [
         "crew.py"
@@ -524,7 +781,7 @@
       "id": "STRAT-DC-002",
       "severity": "CRITICAL",
       "title": "Irreversible Action Without Approval Gate",
-      "path": "Senior Research Analyst \u2192 smtplib",
+      "path": "Senior Research Analyst → smtplib",
       "description": "smtplib is irreversible with no human approval gate.",
       "evidence": [
         "crew.py",
@@ -536,7 +793,7 @@
       "id": "STRAT-DC-008",
       "severity": "HIGH",
       "title": "No Timeout or Circuit Breaker on Agent Chain",
-      "path": "Senior Research Analyst \u2192 Financial Analyst \u2192 Trade Executor",
+      "path": "Senior Research Analyst → Financial Analyst → Trade Executor",
       "description": "Chain of 3 agents with no timeout configuration. Chain can hang indefinitely.",
       "evidence": [
         "crew.py"
@@ -547,8 +804,8 @@
       "id": "STRAT-OC-002",
       "severity": "MEDIUM",
       "title": "Competing Resource Consumers Without Prioritization",
-      "path": "Trade Executor \u2192 Financial Analyst \u2192 Senior Research Analyst \u2192 Email (SMTP)",
-      "description": "3 agents call Email (SMTP) with no shared rate coordination: Trade Executor, Financial Analyst, Senior Research Analyst.",
+      "path": "Financial Analyst → Trade Executor → Senior Research Analyst → Email (SMTP)",
+      "description": "3 agents call Email (SMTP) with no shared rate coordination: Financial Analyst, Trade Executor, Senior Research Analyst.",
       "evidence": [
         "crew.py"
       ],
@@ -558,7 +815,7 @@
       "id": "STRAT-SI-001",
       "severity": "CRITICAL",
       "title": "Silent Error Propagation Across Agent Boundary",
-      "path": "Senior Research Analyst \u2192 Financial Analyst",
+      "path": "Senior Research Analyst → Financial Analyst",
       "description": "Senior Research Analyst returns defaults on error (pattern: default_on_error) and feeds into Financial Analyst with no input validation. Error signal is permanently lost.",
       "evidence": [
         "crew.py"
@@ -569,7 +826,7 @@
       "id": "STRAT-SI-001",
       "severity": "CRITICAL",
       "title": "Silent Error Propagation Across Agent Boundary",
-      "path": "Financial Analyst \u2192 Trade Executor",
+      "path": "Financial Analyst → Trade Executor",
       "description": "Financial Analyst returns defaults on error (pattern: default_on_error) and feeds into Trade Executor with no input validation. Error signal is permanently lost.",
       "evidence": [
         "crew.py"
@@ -580,7 +837,7 @@
       "id": "STRAT-SI-002",
       "severity": "HIGH",
       "title": "Confidence Laundering Through Agent Chain",
-      "path": "Senior Research Analyst \u2192 Financial Analyst",
+      "path": "Senior Research Analyst → Financial Analyst",
       "description": "Chain of 2 agents via feeds_into with no confidence/uncertainty metadata preserved. Downstream decisions treat uncertain data as certain.",
       "evidence": [
         "crew.py"
@@ -591,7 +848,7 @@
       "id": "STRAT-SI-002",
       "severity": "HIGH",
       "title": "Confidence Laundering Through Agent Chain",
-      "path": "Senior Research Analyst \u2192 Financial Analyst \u2192 Trade Executor",
+      "path": "Senior Research Analyst → Financial Analyst → Trade Executor",
       "description": "Chain of 3 agents via feeds_into with no confidence/uncertainty metadata preserved. Downstream decisions treat uncertain data as certain.",
       "evidence": [
         "crew.py"
@@ -602,7 +859,7 @@
       "id": "STRAT-SI-002",
       "severity": "HIGH",
       "title": "Confidence Laundering Through Agent Chain",
-      "path": "Financial Analyst \u2192 Trade Executor",
+      "path": "Financial Analyst → Trade Executor",
       "description": "Chain of 2 agents via feeds_into with no confidence/uncertainty metadata preserved. Downstream decisions treat uncertain data as certain.",
       "evidence": [
         "crew.py"
@@ -613,8 +870,8 @@
       "id": "STRAT-SI-004",
       "severity": "HIGH",
       "title": "Schema Mismatch on Data Flow",
-      "path": "Trade Executor \u2192 Financial Analyst \u2192 Senior Research Analyst",
-      "description": "2 inter-agent data flows lack schema contracts: Senior Research Analyst \u2192 Financial Analyst, Financial Analyst \u2192 Trade Executor.",
+      "path": "Financial Analyst → Trade Executor → Senior Research Analyst",
+      "description": "2 inter-agent data flows lack schema contracts: Senior Research Analyst → Financial Analyst, Financial Analyst → Trade Executor.",
       "evidence": [
         "crew.py"
       ],
@@ -624,7 +881,7 @@
       "id": "STRAT-SI-005",
       "severity": "HIGH",
       "title": "Unvalidated External Data Ingestion",
-      "path": "Email (SMTP) \u2192 smtplib \u2192 Senior Research Analyst",
+      "path": "Email (SMTP) → smtplib → Senior Research Analyst",
       "description": "External data flows through smtplib to agent without input validation.",
       "evidence": [
         "crew.py:76",
@@ -636,7 +893,7 @@
       "id": "STRAT-SI-005",
       "severity": "HIGH",
       "title": "Unvalidated External Data Ingestion",
-      "path": "Serper API \u2192 SerperDevTool \u2192 Senior Research Analyst",
+      "path": "Serper API → SerperDevTool → Senior Research Analyst",
       "description": "External data flows through SerperDevTool to agent without input validation.",
       "evidence": [
         "crew.py"
@@ -647,11 +904,11 @@
       "id": "STRAT-EA-001",
       "severity": "HIGH",
       "title": "Implicit Authority Escalation Through Delegation",
-      "path": "Financial Analyst \u2192 FileReadTool \u2192 SerperDevTool",
+      "path": "Financial Analyst → FileReadTool → SerperDevTool",
       "description": "Financial Analyst has 3 direct capabilities but can reach 5 through delegation. Escalated: FileReadTool, SerperDevTool.",
       "evidence": [
         "crew.py",
-        "Direct: psycopg2, smtplib, psycopg2",
+        "Direct: psycopg2, psycopg2, smtplib",
         "Escalated: FileReadTool, SerperDevTool"
       ],
       "remediation": "Implement capability scoping on delegation. Use tools= parameter on Task to limit delegate capabilities."
@@ -660,7 +917,7 @@
       "id": "STRAT-EA-004",
       "severity": "MEDIUM",
       "title": "Transitive Data Access Through Delegation",
-      "path": "Financial Analyst \u2192 Crewai Tools",
+      "path": "Financial Analyst → Crewai Tools",
       "description": "Financial Analyst can reach 1 data stores via delegation that it has no direct access to: Crewai Tools.",
       "evidence": [
         "crew.py"
@@ -671,7 +928,7 @@
       "id": "STRAT-AB-001",
       "severity": "HIGH",
       "title": "Unbounded Autonomous Volume",
-      "path": "Senior Research Analyst \u2192 smtplib",
+      "path": "Senior Research Analyst → smtplib",
       "description": "Senior Research Analyst has irreversible capabilities [smtplib] with no rate limiting or human checkpoint.",
       "evidence": [
         "crew.py",
@@ -683,7 +940,7 @@
       "id": "STRAT-AB-001",
       "severity": "HIGH",
       "title": "Unbounded Autonomous Volume",
-      "path": "Financial Analyst \u2192 smtplib",
+      "path": "Financial Analyst → smtplib",
       "description": "Financial Analyst has irreversible capabilities [smtplib] with no rate limiting or human checkpoint.",
       "evidence": [
         "crew.py",
@@ -695,7 +952,7 @@
       "id": "STRAT-AB-001",
       "severity": "HIGH",
       "title": "Unbounded Autonomous Volume",
-      "path": "Trade Executor \u2192 smtplib",
+      "path": "Trade Executor → smtplib",
       "description": "Trade Executor has irreversible capabilities [smtplib] with no rate limiting or human checkpoint.",
       "evidence": [
         "crew.py",
@@ -707,7 +964,7 @@
       "id": "STRAT-AB-003",
       "severity": "HIGH",
       "title": "Regulatory Exposure Without Audit Trail",
-      "path": "Senior Research Analyst \u2192 smtplib",
+      "path": "Senior Research Analyst → smtplib",
       "description": "smtplib has regulatory category 'communications' but agent Senior Research Analyst has no observability/audit trail.",
       "evidence": [
         "crew.py",
@@ -719,7 +976,7 @@
       "id": "STRAT-AB-003",
       "severity": "HIGH",
       "title": "Regulatory Exposure Without Audit Trail",
-      "path": "Senior Research Analyst \u2192 SerperDevTool",
+      "path": "Senior Research Analyst → SerperDevTool",
       "description": "SerperDevTool has regulatory category 'communications' but agent Senior Research Analyst has no observability/audit trail.",
       "evidence": [
         "crew.py"
@@ -730,7 +987,7 @@
       "id": "STRAT-AB-006",
       "severity": "HIGH",
       "title": "No Rollback on Multi-Step Workflow",
-      "path": "Senior Research Analyst \u2192 Financial Analyst \u2192 Trade Executor",
+      "path": "Senior Research Analyst → Financial Analyst → Trade Executor",
       "description": "Multi-step workflow of 3 agents includes irreversible actions with no compensating transaction or rollback mechanism.",
       "evidence": [
         "crew.py"
@@ -741,8 +998,8 @@
       "id": "STRAT-AB-007",
       "severity": "MEDIUM",
       "title": "Concentration of External Dependencies",
-      "path": "Trade Executor \u2192 Financial Analyst \u2192 Senior Research Analyst \u2192 Email (SMTP)",
-      "description": "3 agents depend on Email (SMTP) with no fallback. Dependent agents: Trade Executor, Financial Analyst, Senior Research Analyst.",
+      "path": "Financial Analyst → Trade Executor → Senior Research Analyst → Email (SMTP)",
+      "description": "3 agents depend on Email (SMTP) with no fallback. Dependent agents: Financial Analyst, Trade Executor, Senior Research Analyst.",
       "evidence": [
         "crew.py"
       ],
@@ -754,25 +1011,51 @@
       "id": "STRAT-COMP-001",
       "severity": "CRITICAL",
       "title": "Unsupervised Chain With Silent Error Propagation",
-      "description": "Unsupervised decision chain WITH silent error propagation through the same chain. The chain can make bad decisions AND no one sees the errors."
+      "description": "Unsupervised decision chain WITH silent error propagation through the same chain. The chain can make bad decisions AND no one sees the errors.",
+      "evidence": [
+        "Constituent A: STRAT-DC-001 (Unsupervised Multi-Step Decision Chain)",
+        "Constituent B: STRAT-SI-001 (Silent Error Propagation Across Agent Boundary)",
+        "crew.py",
+        "crew.py"
+      ]
     },
     {
       "id": "STRAT-COMP-003",
       "severity": "CRITICAL",
       "title": "Unsupervised Chain With Implicit Authority Escalation",
-      "description": "Unsupervised chain where agents exercise authority they weren't directly granted. Escalation without oversight."
+      "description": "Unsupervised chain where agents exercise authority they weren't directly granted. Escalation without oversight.",
+      "evidence": [
+        "Constituent A: STRAT-DC-001 (Unsupervised Multi-Step Decision Chain)",
+        "Constituent B: STRAT-EA-001 (Implicit Authority Escalation Through Delegation)",
+        "crew.py",
+        "crew.py",
+        "Direct: psycopg2, psycopg2, smtplib"
+      ]
     },
     {
       "id": "STRAT-COMP-004",
       "severity": "CRITICAL",
       "title": "Silent Errors Across Unvalidated Data Boundaries",
-      "description": "Errors propagate silently across unvalidated data boundaries. No schema contracts AND no error visibility."
+      "description": "Errors propagate silently across unvalidated data boundaries. No schema contracts AND no error visibility.",
+      "evidence": [
+        "Constituent A: STRAT-SI-001 (Silent Error Propagation Across Agent Boundary)",
+        "Constituent B: STRAT-SI-004 (Schema Mismatch on Data Flow)",
+        "crew.py",
+        "crew.py"
+      ]
     },
     {
       "id": "STRAT-COMP-006",
       "severity": "CRITICAL",
       "title": "Unbounded Autonomous Execution of Irreversible Actions",
-      "description": "Unbounded autonomous execution of irreversible actions. No rate limiting AND no approval gate on destructive capabilities."
+      "description": "Unbounded autonomous execution of irreversible actions. No rate limiting AND no approval gate on destructive capabilities.",
+      "evidence": [
+        "Constituent A: STRAT-AB-001 (Unbounded Autonomous Volume)",
+        "Constituent B: STRAT-DC-002 (Irreversible Action Without Approval Gate)",
+        "crew.py",
+        "crew.py:76",
+        "crew.py"
+      ]
     }
   ],
   "structural_anomalies": [

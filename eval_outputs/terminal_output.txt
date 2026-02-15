@@ -1,78 +1,149 @@
-============================================================
-STRATUM SCAN — simple_crew fixture
-============================================================
 
-Security Score: 65/100
-Security Findings: 16
-  CRITICAL  STRATUM-002  Destructive action, no human gate
-  CRITICAL  STRATUM-CR05  Shared tool blast radius: psycopg2 -> 3 agents in crew 'crew'
-  CRITICAL  STRATUM-CR05.1  Shared tool blast radius: smtplib -> 3 agents in crew 'crew'
-  HIGH      STRATUM-001  Unguarded data-to-external path (4 paths)
-  HIGH      STRATUM-BR01  Agent sends external messages without human review
+ ╔=================================================================╗
+ ║  STRATUM SCAN                                                   ║
+ ║  simple_crew · 1 files · 1 crews · 3 agents                     ║
+ ║  Frameworks: CrewAI                                             ║
+ ╚=================================================================╝
 
-------------------------------------------------------------
-RELIABILITY ANALYSIS
-------------------------------------------------------------
+ ─── YOUR AGENT ARCHITECTURE ─────────────────────────────────────
 
-Graph Topology: 3 agents | 5 capabilities | 3 data stores | 43 edges
-Delegation Depth: 2 | Feedback Loops: 1 | Trust Crossings: 14
+ crew (3 agents, sequential)  49/100
+ ┌───────────────────────────────────────────────────────────────────┐
+ │                                                                   │
+ │   researcher ──▶ analyst ──▶ executor                             │
+ │     researcher: SerperDevTool, FileReadTool                       │
+ │                                                                   │
+ │   ☢ STRATUM-CR05: Shared tool blast radius: psycopg2 -> 3 agents  │
+ │   ☢ STRATUM-CR05.1: Shared tool blast radius: smtplib -> 3 agents │
+ │   ⚠ STRATUM-CR06: 'Financial Analyst' bypasses 'Senior Research A │
+ │   ⚠ BYPASS: Financial Analyst reads PostgreSQL directly           │
+ │   ⚠ BYPASS: Trade Executor reads PostgreSQL directly              │
+ │   ⚠ BYPASS: Trade Executor reads PostgreSQL directly              │
+ │   🔴 psycopg2 shared by 3 agents                                   │
+ │   🔴 smtplib shared by 3 agents                                    │
+ │   📎 Matches: ServiceNow Now Assist Privilege Escalation           │
+ │                                                                   │
+ └───────────────────────────────────────────────────────────────────┘
 
-Reliability Risk Score: 100/100
+ RISK SCORE ██████████████████████████░░░░░░░░░░░░░░  65 / 100
+            ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+            3 critical · 5 high · 7 medium · 1 low
 
-  HIGH      STRAT-DC-001  Unsupervised Multi-Step Decision Chain
-           Senior Research Analyst → Financial Analyst → Trade Executor
+
+ ─── RELIABILITY ANALYSIS ────────────────────────────────────────
+
+ Graph Topology: 3 agents │ 5 capabilities │ 3 data stores │ 43 edges
+ Delegation Depth: 2 │ Feedback Loops: 1 (1 undampened) │ Trust Crossings: 14
+
+ Reliability Risk Score: 100/100  ████████████████████
+
   CRITICAL  STRAT-DC-002  Irreversible Action Without Approval Gate
            Senior Research Analyst → smtplib
+  CRITICAL  STRAT-SI-001  Silent Error Propagation Across Agent Boundary
+           Senior Research Analyst → Financial Analyst
+  CRITICAL  STRAT-SI-001  Silent Error Propagation Across Agent Boundary
+           Financial Analyst → Trade Executor
+  HIGH      STRAT-DC-001  Unsupervised Multi-Step Decision Chain
+           Senior Research Analyst → Financial Analyst → Trade Executor
   HIGH      STRAT-DC-008  No Timeout or Circuit Breaker on Agent Chain
            Senior Research Analyst → Financial Analyst → Trade Executor
-  MEDIUM    STRAT-OC-002  Competing Resource Consumers Without Prioritization
-           Trade Executor → Financial Analyst → Senior Research Analyst
-  CRITICAL  STRAT-SI-001  Silent Error Propagation Across Agent Boundary
-           Senior Research Analyst → Financial Analyst
-  CRITICAL  STRAT-SI-001  Silent Error Propagation Across Agent Boundary
-           Financial Analyst → Trade Executor
-  HIGH      STRAT-SI-002  Confidence Laundering Through Agent Chain
-           Senior Research Analyst → Financial Analyst
-  HIGH      STRAT-SI-002  Confidence Laundering Through Agent Chain
-           Senior Research Analyst → Financial Analyst → Trade Executor
-  HIGH      STRAT-SI-002  Confidence Laundering Through Agent Chain
-           Financial Analyst → Trade Executor
-  HIGH      STRAT-SI-004  Schema Mismatch on Data Flow
-           Trade Executor → Financial Analyst → Senior Research Analyst
-  HIGH      STRAT-SI-005  Unvalidated External Data Ingestion
-           Email (SMTP) → smtplib → Senior Research Analyst
-  HIGH      STRAT-SI-005  Unvalidated External Data Ingestion
-           Serper API → SerperDevTool → Senior Research Analyst
-  HIGH      STRAT-EA-001  Implicit Authority Escalation Through Delegation
-           Financial Analyst → FileReadTool → SerperDevTool
-  MEDIUM    STRAT-EA-004  Transitive Data Access Through Delegation
-           Financial Analyst → Crewai Tools
-  HIGH      STRAT-AB-001  Unbounded Autonomous Volume
-           Senior Research Analyst → smtplib
-  HIGH      STRAT-AB-001  Unbounded Autonomous Volume
-           Financial Analyst → smtplib
-  HIGH      STRAT-AB-001  Unbounded Autonomous Volume
-           Trade Executor → smtplib
-  HIGH      STRAT-AB-003  Regulatory Exposure Without Audit Trail
-           Senior Research Analyst → smtplib
-  HIGH      STRAT-AB-003  Regulatory Exposure Without Audit Trail
-           Senior Research Analyst → SerperDevTool
-  HIGH      STRAT-AB-006  No Rollback on Multi-Step Workflow
-           Senior Research Analyst → Financial Analyst → Trade Executor
-  MEDIUM    STRAT-AB-007  Concentration of External Dependencies
-           Trade Executor → Financial Analyst → Senior Research Analyst
+  ... and 16 more
 
-COMPOSITIONS
-  CRITICAL+     STRAT-COMP-001  Unsupervised Chain With Silent Error Propagation
-  CRITICAL+     STRAT-COMP-003  Unsupervised Chain With Implicit Authority Escalation
-  CRITICAL+     STRAT-COMP-004  Silent Errors Across Unvalidated Data Boundaries
-  CRITICAL+     STRAT-COMP-006  Unbounded Autonomous Execution of Irreversible Actions
+  COMPOSITIONS
+  CRITICAL+       STRAT-COMP-001  Unsupervised Chain With Silent Error 
+Propagation
+  CRITICAL+       STRAT-COMP-003  Unsupervised Chain With Implicit Authority 
+Escalation
+  CRITICAL+       STRAT-COMP-004  Silent Errors Across Unvalidated Data 
+Boundaries
 
   1 structural anomalies detected (advisory)
 
-------------------------------------------------------------
-DUAL-AXIS SUMMARY
-------------------------------------------------------------
-Security Score:    65/100
-Reliability Score: 100/100
-Classification:    Both axes need attention
+
+ ─── FIX THESE FIRST ─────────────────────────────────────────────
+
+ ① Add input validation on shared tools                   ░ 30 min
+   Resolves 2 findings (2 critical)
+
+   Financial Analyst is shared by 3 agents in crew. If
+   Financial Analyst returns poisoned results (SEO spam, prompt
+   injection in API response), all 3 agents process that
+   payload. One compromised API response corrupts your entire
+   crew in a single request.
+
+   Fix:
+   ┌────────────────────────────────────────────────────────┐
+   │ class ValidatedSearch(BaseTool):                       │
+   │       def _run(self, query: str) -> str:               │
+   │           raw = SerperDevTool()._run(query)            │
+   │  +        if contains_injection_patterns(raw):         │
+   │  +            raise ValueError("Suspicious content")   │
+   │           return raw                                   │
+   └────────────────────────────────────────────────────────┘
+
+   📎 Matches real breach: ServiceNow Now Assist Shared Resource
+      Your agent's shared resource amplifies compromise matches
+      the pattern from ServiceNow Now Assist Shared Resource
+      (March 2025).
+
+
+ ② Add human review on outbound tasks                      ░ 5 min
+   Resolves 3 findings (1 critical + 2 high)
+
+   Your crew reads external input and sends to external service
+   with no human check between them. If someone sends a prompt
+   injection via external input, your agent will send data to
+   whatever destination the injection specifies. This matches
+   the EchoLeak breach pattern (March 2024), where a crafted
+   email caused an agent to exfiltrate an entire inbox to an
+   external server.
+
+   Fix:
+   ┌──────────────────────────────────────────────────────────┐
+   │ task = Task(                                             │
+   │       description="...",                                 │
+   │  +    human_input=True   # review before external calls  │
+   │   )                                                      │
+   └──────────────────────────────────────────────────────────┘
+
+   📎 Matches real breach: Microsoft Copilot EchoLeak
+      Your agent's data-to-external without review matches the
+      pattern from Microsoft Copilot EchoLeak (March 2024).
+
+
+ ③ Fix data access bypass                                 ░ 15 min
+   Resolves 3 findings (3 high)
+
+   You built researcher as a filter to sanitize inputs before
+   analyst processes them. But analyst has direct access to the
+   same data source data source. It reads raw data without
+   going through your filter. Your filter is architecturally
+   irrelevant — it runs, but the unfiltered path exists in
+   parallel.
+
+
+
+ ─── ALSO WORTH FIXING ───────────────────────────────────────────
+
+ · 4 external API calls have no error handling
+ · Your 3-agent pipeline has no checkpointing
+ · 3-agent chain with no validation between steps
+
+ ─── DUAL-AXIS SUMMARY ───────────────────────────────────────────
+
+ Security Score:    65/100 ●●●○○  (critical gaps)
+ Reliability Score: 100/100 ●●●●●  (critical gaps)
+ Classification:    Both axes need attention
+
+
+ ─── 9 architecture risks · 4 operational recommendations · 3 hygiene items · 
+Full details: stratum scan . --verbose
+
+ → Run stratum scan . --fix to auto-fix 5 of 16 findings
+
+ .stratum/history.jsonl saved (2 scans)
+
+                                     stratum v0.2 · 
+github.com/stratum-systems/stratum-cli
+  Run 'stratum scan . --fix' to auto-fix 5 findings.
+
