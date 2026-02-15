@@ -294,8 +294,24 @@ def build_profile(result: ScanResult) -> TelemetryProfile:
             for p in (result.graph.uncontrolled_paths if result.graph else [])
             for flag in p.regulatory_flags
         }),
-        schema_version="0.2",
+        schema_version="0.4.0",
     )
+
+    # === Toxic Combinations (schema_id 6) ===
+    tc_matches = getattr(result, 'tc_matches', [])
+    if tc_matches:
+        profile.tc_count = len(tc_matches)
+        profile.tc_ids = [tc.tc_id for tc in tc_matches]
+        tc_sev_counts: dict[str, int] = {}
+        for tc in tc_matches:
+            tc_sev_counts[tc.severity] = tc_sev_counts.get(tc.severity, 0) + 1
+        profile.tc_severities = tc_sev_counts
+        severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+        profile.tc_max_severity = min(
+            tc_sev_counts.keys(), key=lambda s: severity_order.get(s, 99)
+        )
+        profile.compound_risk_score = getattr(result, 'compound_risk_score', result.risk_score)
+        profile.compound_risk_delta = profile.compound_risk_score - result.risk_score
 
     return _validate_profile(profile)
 
@@ -981,6 +997,22 @@ def build_scan_profile(
         p.new_finding_count = len(p.new_finding_ids)
         p.resolved_finding_count = len(p.resolved_finding_ids)
         p.maturity_score_delta = p.maturity_score - previous_profile.maturity_score
+
+    # ── Toxic combinations ──
+    tc_matches = getattr(result, 'tc_matches', [])
+    if tc_matches:
+        p.tc_count = len(tc_matches)
+        p.tc_ids = [tc.tc_id for tc in tc_matches]
+        tc_sev_counts: dict[str, int] = {}
+        for tc in tc_matches:
+            tc_sev_counts[tc.severity] = tc_sev_counts.get(tc.severity, 0) + 1
+        p.tc_severities = tc_sev_counts
+        severity_order_tc = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+        p.tc_max_severity = min(
+            tc_sev_counts.keys(), key=lambda s: severity_order_tc.get(s, 99)
+        )
+        p.compound_risk_score = getattr(result, 'compound_risk_score', result.risk_score)
+        p.compound_risk_delta = p.compound_risk_score - result.risk_score
 
     # ── What-if ──
     p.what_if_controls = compute_what_if_controls(

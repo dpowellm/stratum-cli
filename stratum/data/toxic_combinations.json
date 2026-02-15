@@ -1,0 +1,317 @@
+{
+  "catalog_version": "1.0.0",
+  "catalog_date": "2026-03-01",
+  "schema_version": "1.0",
+  "toxic_combinations": [
+    {
+      "tc_id": "STRATUM-TC-001",
+      "name": "Unsupervised Delegation to Credential-Exposed Worker",
+      "description": "An orchestrator agent delegates to a worker agent with no control gate. The worker has access to exposed credentials (via MCP or environment). A prompt injection at the orchestrator level can cause the worker to exfiltrate credentials through any of its outbound tools.",
+      "severity": "CRITICAL",
+      "finding_components": ["STRATUM-002", "STRATUM-005"],
+      "owasp_ids": ["LLM04", "LLM08"],
+      "pattern": {
+        "nodes": [
+          {"var": "orchestrator", "type": "agent", "constraints": {}},
+          {"var": "worker", "type": "agent", "constraints": {}},
+          {"var": "cred_source", "type": ["data_store", "mcp_server"], "constraints": {"data_sensitivity": "credentials"}}
+        ],
+        "edges": [
+          {"from": "orchestrator", "to": "worker", "type": "delegates_to", "constraints": {"has_control": false}},
+          {"from": "cred_source", "to": "worker", "type": ["tool_of", "calls", "reads_from"], "constraints": {}}
+        ],
+        "negative_constraints": [
+          {"edge_on_path": ["orchestrator", "worker"], "has_control": true}
+        ]
+      },
+      "remediation": {
+        "description": "Add a human-in-the-loop or approval callback on the delegation edge between orchestrator and worker.",
+        "effort": "low",
+        "framework_specific": {
+          "CrewAI": "crew = Crew(\n    agents=[orchestrator, worker],\n    process=Process.hierarchical,\n    manager_llm=llm,\n    step_callback=approval_gate\n)",
+          "LangGraph": "graph.add_edge(orchestrator, worker, interrupt_before=[\"worker\"])"
+        }
+      }
+    },
+    {
+      "tc_id": "STRATUM-TC-002",
+      "name": "PII Exfiltration Through Delegation Chain",
+      "description": "A data store containing PII feeds into an agent that delegates to another agent with outbound access. No control gate exists on the full path. The data source and the exfiltration sink are in different agents, connected by unsupervised delegation \u2014 harder to spot because no single agent 'does' the bad thing.",
+      "severity": "CRITICAL",
+      "finding_components": ["STRATUM-001"],
+      "owasp_ids": ["LLM06", "LLM08"],
+      "pattern": {
+        "nodes": [
+          {"var": "pii_source", "type": "data_store", "constraints": {"data_sensitivity": "personal"}},
+          {"var": "reader_agent", "type": "agent", "constraints": {}},
+          {"var": "writer_agent", "type": "agent", "constraints": {}},
+          {"var": "ext_sink", "type": "external", "constraints": {}}
+        ],
+        "edges": [
+          {"from": "pii_source", "to": "reader_agent", "type": ["reads_from", "tool_of", "calls"], "constraints": {}},
+          {"from": "reader_agent", "to": "writer_agent", "type": "delegates_to", "constraints": {"has_control": false}},
+          {"from": "writer_agent", "to": "ext_sink", "type": ["sends_to", "writes_to", "calls"], "constraints": {}}
+        ],
+        "negative_constraints": [
+          {"edge_on_path": ["reader_agent", "writer_agent"], "has_control": true}
+        ]
+      },
+      "remediation": {
+        "description": "Add output filtering on the delegation edge or input validation on the writer agent to prevent PII from reaching external services.",
+        "effort": "med",
+        "framework_specific": {
+          "CrewAI": "task = Task(\n    description=\"...\",\n    output_pydantic=SanitizedOutput,  # validates no PII in output\n)",
+          "LangGraph": "graph.add_node(\"pii_filter\", pii_filter_fn)\ngraph.add_edge(\"reader\", \"pii_filter\")\ngraph.add_edge(\"pii_filter\", \"writer\")"
+        }
+      }
+    },
+    {
+      "tc_id": "STRATUM-TC-003",
+      "name": "Code Execution Reachable From External Input",
+      "description": "An external service feeds data into an agent that has code execution capability with no human approval gate on the path. This is the remote code execution pattern \u2014 code execution tools are sometimes intentional, but when reachable from external input without approval, they become critical.",
+      "severity": "CRITICAL",
+      "finding_components": ["STRATUM-003"],
+      "owasp_ids": ["LLM04", "LLM02"],
+      "pattern": {
+        "nodes": [
+          {"var": "ext_input", "type": "external", "constraints": {}},
+          {"var": "exec_agent", "type": "agent", "constraints": {}},
+          {"var": "exec_cap", "type": "capability", "constraints": {}}
+        ],
+        "edges": [
+          {"from": "ext_input", "to": "exec_agent", "type": ["sends_to", "reads_from", "calls", "feeds_into"], "constraints": {}},
+          {"from": "exec_cap", "to": "exec_agent", "type": "tool_of", "constraints": {}}
+        ],
+        "negative_constraints": [
+          {"node": "exec_agent", "has_guardrail_type": "hitl"}
+        ]
+      },
+      "remediation": {
+        "description": "Add human-in-the-loop approval before code execution, or sandbox the execution environment.",
+        "effort": "med",
+        "framework_specific": {
+          "CrewAI": "task = Task(\n    description=\"...\",\n    human_input=True,  # requires approval before execution\n)",
+          "LangGraph": "graph.add_edge(\"agent\", \"code_exec\", interrupt_before=[\"code_exec\"])"
+        }
+      }
+    },
+    {
+      "tc_id": "STRATUM-TC-004",
+      "name": "Financial Operation Through Shared Context",
+      "description": "An agent with access to external data shares a tool or context with another agent that performs financial operations without validation. Prompt injection can flow through shared context into financial operations.",
+      "severity": "CRITICAL",
+      "finding_components": ["STRATUM-007", "STRATUM-CR01"],
+      "owasp_ids": ["LLM04", "LLM08"],
+      "pattern": {
+        "nodes": [
+          {"var": "ext_agent", "type": "agent", "constraints": {}},
+          {"var": "fin_agent", "type": "agent", "constraints": {}},
+          {"var": "fin_cap", "type": "capability", "constraints": {}},
+          {"var": "ext_sink", "type": "external", "constraints": {}}
+        ],
+        "edges": [
+          {"from": "ext_agent", "to": "fin_agent", "type": ["shares_tool", "feeds_into", "delegates_to"], "constraints": {}},
+          {"from": "fin_cap", "to": "fin_agent", "type": "tool_of", "constraints": {}},
+          {"from": "fin_agent", "to": "ext_sink", "type": ["sends_to", "calls"], "constraints": {}}
+        ],
+        "negative_constraints": [
+          {"node": "fin_agent", "has_guardrail_type": "hitl"},
+          {"node": "fin_agent", "has_guardrail_type": "validation"}
+        ]
+      },
+      "remediation": {
+        "description": "Add human-in-the-loop or structured output validation on the financial agent before any financial API call.",
+        "effort": "low",
+        "framework_specific": {
+          "CrewAI": "task = Task(\n    description=\"Execute financial transaction\",\n    human_input=True,\n    output_pydantic=TransactionRequest,\n)",
+          "LangGraph": "graph.add_edge(\"fin_agent\", \"fin_api\", interrupt_before=[\"fin_api\"])"
+        }
+      }
+    },
+    {
+      "tc_id": "STRATUM-TC-005",
+      "name": "Inbox-to-Outbound Pipeline (EchoLeak Pattern)",
+      "description": "An agent reads email or PII-containing data and routes it to outbound services with no output filter. This is the specific compound pattern from the EchoLeak incident \u2014 adversarial instructions embedded in email content cause the agent to exfiltrate sensitive data.",
+      "severity": "CRITICAL",
+      "finding_components": ["STRATUM-001"],
+      "owasp_ids": ["LLM06", "LLM01"],
+      "pattern": {
+        "nodes": [
+          {"var": "inbox", "type": "data_store", "constraints": {}},
+          {"var": "reader_cap", "type": "capability", "constraints": {}},
+          {"var": "agent", "type": "agent", "constraints": {}},
+          {"var": "outbound_cap", "type": "capability", "constraints": {}},
+          {"var": "ext_sink", "type": "external", "constraints": {}}
+        ],
+        "edges": [
+          {"from": "inbox", "to": "reader_cap", "type": "reads_from", "constraints": {}},
+          {"from": "reader_cap", "to": "agent", "type": "tool_of", "constraints": {}},
+          {"from": "outbound_cap", "to": "agent", "type": "tool_of", "constraints": {}},
+          {"from": "outbound_cap", "to": "ext_sink", "type": "sends_to", "constraints": {}}
+        ],
+        "negative_constraints": [
+          {"node": "agent", "has_guardrail_type": "output_filter"}
+        ]
+      },
+      "remediation": {
+        "description": "Add output filtering between the inbox reader and outbound services to prevent sensitive data exfiltration.",
+        "effort": "med",
+        "framework_specific": {
+          "CrewAI": "# Add output filtering guardrail\nfrom crewai import Task\ntask = Task(\n    description=\"Process email\",\n    output_pydantic=FilteredOutput,  # strips sensitive content\n)",
+          "LangGraph": "graph.add_node(\"output_filter\", filter_pii_fn)\ngraph.add_edge(\"agent\", \"output_filter\")\ngraph.add_edge(\"output_filter\", \"outbound\")"
+        }
+      }
+    },
+    {
+      "tc_id": "STRATUM-TC-006",
+      "name": "MCP Credential Cascade",
+      "description": "An unauthenticated MCP server connects to an agent that also has access to a second MCP server with exposed credentials. An attacker can pivot through the unauthenticated server to reach the credentialed one.",
+      "severity": "HIGH",
+      "finding_components": ["STRATUM-005", "STRATUM-006"],
+      "owasp_ids": ["LLM04", "LLM08"],
+      "pattern": {
+        "nodes": [
+          {"var": "mcp_noauth", "type": "mcp_server", "constraints": {"mcp_auth": false}},
+          {"var": "agent", "type": "agent", "constraints": {}},
+          {"var": "mcp_creds", "type": "mcp_server", "constraints": {}}
+        ],
+        "edges": [
+          {"from": "mcp_noauth", "to": "agent", "type": ["calls", "tool_of"], "constraints": {}},
+          {"from": "mcp_creds", "to": "agent", "type": ["calls", "tool_of"], "constraints": {}}
+        ],
+        "negative_constraints": []
+      },
+      "remediation": {
+        "description": "Add authentication to the unauthenticated MCP server, or isolate the agent so it cannot access both servers simultaneously.",
+        "effort": "low",
+        "framework_specific": {
+          "CrewAI": "# Configure MCP server with authentication\nserver = MCPServer(\n    name=\"...\",\n    auth={\"type\": \"bearer\", \"token\": os.environ[\"MCP_TOKEN\"]}\n)",
+          "LangGraph": "# Add auth middleware to MCP server connection\nmcp_client = MCPClient(url=\"...\", auth=BearerAuth(token=os.environ[\"MCP_TOKEN\"]))"
+        }
+      }
+    },
+    {
+      "tc_id": "STRATUM-TC-007",
+      "name": "Blast Radius Amplification via Shared Tool",
+      "description": "A single tool is shared by 3+ agents with no guardrails on any of the tool_of edges. A compromised input to the shared tool propagates to all sharing agents, multiplying the blast radius.",
+      "severity": "HIGH",
+      "finding_components": ["STRATUM-CR05"],
+      "owasp_ids": ["LLM04"],
+      "pattern": {
+        "nodes": [
+          {"var": "shared_tool", "type": "capability", "constraints": {}},
+          {"var": "agent_1", "type": "agent", "constraints": {}},
+          {"var": "agent_2", "type": "agent", "constraints": {}},
+          {"var": "agent_3", "type": "agent", "constraints": {}}
+        ],
+        "edges": [
+          {"from": "shared_tool", "to": "agent_1", "type": "tool_of", "constraints": {}},
+          {"from": "shared_tool", "to": "agent_2", "type": "tool_of", "constraints": {}},
+          {"from": "shared_tool", "to": "agent_3", "type": "tool_of", "constraints": {}}
+        ],
+        "negative_constraints": [
+          {"node": "shared_tool", "has_guardrail_type": "validation"},
+          {"node": "shared_tool", "has_guardrail_type": "rate_limit"}
+        ]
+      },
+      "remediation": {
+        "description": "Add input validation or rate limiting on the shared tool, or reduce tool sharing by giving each agent its own tool instance.",
+        "effort": "med",
+        "framework_specific": {
+          "CrewAI": "# Add input validation to shared tool\n@tool\ndef shared_tool(input: ValidatedInput) -> str:\n    # Pydantic model validates input before execution\n    ...",
+          "LangGraph": "# Wrap tool with validation middleware\ndef validated_tool(state):\n    validate_input(state)\n    return original_tool(state)"
+        }
+      }
+    },
+    {
+      "tc_id": "STRATUM-TC-008",
+      "name": "Checkpoint-Free Destructive Pipeline",
+      "description": "A pipeline of 3+ agents feeding into each other terminates in a destructive operation with no checkpointing. If any agent in the chain makes a bad decision, there is no rollback point and the destructive action fires.",
+      "severity": "HIGH",
+      "finding_components": ["STRATUM-010", "STRATUM-002"],
+      "owasp_ids": ["LLM04", "LLM10"],
+      "pattern": {
+        "nodes": [
+          {"var": "agent_1", "type": "agent", "constraints": {}},
+          {"var": "agent_2", "type": "agent", "constraints": {}},
+          {"var": "agent_3", "type": "agent", "constraints": {}}
+        ],
+        "edges": [
+          {"from": "agent_1", "to": "agent_2", "type": "feeds_into", "constraints": {}},
+          {"from": "agent_2", "to": "agent_3", "type": "feeds_into", "constraints": {}}
+        ],
+        "negative_constraints": [
+          {"node": "agent_3", "has_guardrail_type": "hitl"}
+        ]
+      },
+      "remediation": {
+        "description": "Add checkpointing to the pipeline so state can be rolled back, or add HITL on the final destructive step.",
+        "effort": "med",
+        "framework_specific": {
+          "CrewAI": "crew = Crew(\n    agents=[a1, a2, a3],\n    process=Process.sequential,\n    step_callback=checkpoint_fn,  # saves state between steps\n)",
+          "LangGraph": "# Add persistent checkpointing\nfrom langgraph.checkpoint.sqlite import SqliteSaver\ngraph = builder.compile(checkpointer=SqliteSaver.from_conn_string(\":memory:\"))"
+        }
+      }
+    },
+    {
+      "tc_id": "STRATUM-TC-009",
+      "name": "Cross-Crew Data Sensitivity Escalation",
+      "description": "An agent in a low-sensitivity crew has a data flow edge to an agent in a high-sensitivity crew with no access control. Data flows across the implicit crew trust boundary from low to high sensitivity without validation.",
+      "severity": "HIGH",
+      "finding_components": ["STRATUM-CR02"],
+      "owasp_ids": ["LLM08"],
+      "pattern": {
+        "nodes": [
+          {"var": "low_agent", "type": "agent", "constraints": {}},
+          {"var": "high_agent", "type": "agent", "constraints": {}}
+        ],
+        "edges": [
+          {"from": "low_agent", "to": "high_agent", "type": ["feeds_into", "delegates_to", "shares_tool"], "constraints": {"has_control": false}}
+        ],
+        "negative_constraints": [
+          {"edge_on_path": ["low_agent", "high_agent"], "has_control": true}
+        ]
+      },
+      "remediation": {
+        "description": "Add access control or input validation on cross-crew data flow edges to prevent sensitivity escalation.",
+        "effort": "med",
+        "framework_specific": {
+          "CrewAI": "task = Task(\n    description=\"...\",\n    output_pydantic=CrossCrewPayload,  # validates data before cross-crew transfer\n)",
+          "LangGraph": "# Add validation node between crews\ngraph.add_node(\"cross_crew_gate\", validate_cross_crew)\ngraph.add_edge(\"low_crew_out\", \"cross_crew_gate\")\ngraph.add_edge(\"cross_crew_gate\", \"high_crew_in\")"
+        }
+      }
+    },
+    {
+      "tc_id": "STRATUM-TC-010",
+      "name": "Autonomous Loop With External Write Access",
+      "description": "An agent in a retry or reflection loop has write access to external systems or destructive capabilities. Without an iteration limit or HITL gate, the loop can execute destructive or financial operations repeatedly. One bad reasoning step becomes N bad steps.",
+      "severity": "HIGH",
+      "finding_components": ["STRATUM-002", "STRATUM-007"],
+      "owasp_ids": ["LLM04", "LLM10"],
+      "pattern": {
+        "nodes": [
+          {"var": "loop_agent", "type": "agent", "constraints": {}},
+          {"var": "write_cap", "type": "capability", "constraints": {}},
+          {"var": "ext_target", "type": ["external", "data_store"], "constraints": {}}
+        ],
+        "edges": [
+          {"from": "loop_agent", "to": "loop_agent", "type": ["feeds_into", "delegates_to"], "constraints": {}},
+          {"from": "write_cap", "to": "loop_agent", "type": "tool_of", "constraints": {}},
+          {"from": "write_cap", "to": "ext_target", "type": ["sends_to", "writes_to"], "constraints": {}}
+        ],
+        "negative_constraints": [
+          {"node": "loop_agent", "has_guardrail_type": "hitl"},
+          {"node": "loop_agent", "has_guardrail_type": "rate_limit"}
+        ]
+      },
+      "remediation": {
+        "description": "Add an iteration limit or HITL gate to the agent loop, especially before write operations.",
+        "effort": "low",
+        "framework_specific": {
+          "CrewAI": "crew = Crew(\n    agents=[agent],\n    max_iter=5,  # limit autonomous iterations\n    step_callback=approval_gate,\n)",
+          "LangGraph": "# Add iteration limit to loop\ndef should_continue(state):\n    if state['iterations'] >= 5:\n        return 'end'\n    return 'continue'"
+        }
+      }
+    }
+  ]
+}

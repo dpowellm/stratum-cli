@@ -535,6 +535,25 @@ def scan(path: str) -> ScanResult:
     # Calculate risk score with asymptotic normalization (v5)
     result.risk_score = calculate_risk_score(all_findings_final)
 
+    # === TOXIC COMBINATION DETECTION ===
+    tc_matches = []
+    if result.graph is not None:
+        try:
+            from stratum.graph.toxic_combinations import match_all as match_toxic_combinations
+            tc_matches = match_toxic_combinations(result.graph)
+        except Exception:
+            logger.warning("TC matching failed, continuing without toxic combinations")
+
+    result.tc_matches = tc_matches
+
+    # Compute compound risk score (TC-adjusted)
+    if tc_matches:
+        result.compound_risk_score = compute_compound_risk_score(
+            all_findings_final, tc_matches, result.risk_score,
+        )
+    else:
+        result.compound_risk_score = result.risk_score
+
     # Compute per-crew scores using crew_id on findings (v4)
     per_crew_scores_map: dict[str, int] = {}
     for crew in crew_definitions:
@@ -820,6 +839,60 @@ def calculate_risk_score(all_findings: list[Finding]) -> int:
 
     # Step 4: Round to integer, cap at 100
     return min(100, round(score))
+
+
+# ---------------------------------------------------------------------------
+# Compound risk scoring (toxic combinations)
+# ---------------------------------------------------------------------------
+
+TC_SEVERITY_WEIGHTS = {
+    "CRITICAL": 20,
+    "HIGH": 12,
+    "MEDIUM": 6,
+}
+
+COMPONENT_MULTIPLIER = 0.2  # +20% per component beyond 2
+
+FINDING_SEVERITY_WEIGHTS = {
+    "CRITICAL": 12,
+    "HIGH": 8,
+    "MEDIUM": 5,
+    "LOW": 2,
+}
+
+
+def compute_compound_risk_score(findings, tc_matches, base_score: int) -> int:
+    """Compute risk score that accounts for toxic combinations.
+
+    The compound score is always >= the base score and <= 100.
+    TCs add risk on top of individual findings, with partial
+    deduction to avoid fully double-counting.
+    """
+    if not tc_matches:
+        return base_score
+
+    # TC bonus
+    tc_bonus = 0
+    for tc in tc_matches:
+        component_count = len(tc.finding_components)
+        weight = TC_SEVERITY_WEIGHTS.get(tc.severity, 0)
+        multiplier = 1 + COMPONENT_MULTIPLIER * max(0, component_count - 2)
+        tc_bonus += weight * multiplier
+
+    # Partial deduction for double-counting: component findings are already
+    # counted in the base score. Deduct 50% of their individual weights.
+    component_finding_ids = set()
+    for tc in tc_matches:
+        component_finding_ids.update(tc.finding_components)
+
+    double_count_deduction = 0
+    for finding in findings:
+        if finding.id in component_finding_ids:
+            sev = finding.severity.value if hasattr(finding.severity, 'value') else str(finding.severity)
+            double_count_deduction += FINDING_SEVERITY_WEIGHTS.get(sev, 0) * 0.5
+
+    raw = base_score + tc_bonus - double_count_deduction
+    return min(max(int(raw), base_score), 100)  # Never lower than base, never above 100
 
 
 def _load_gitignore(directory: str) -> list[str]:

@@ -46,6 +46,8 @@ def cli() -> None:
               help="Generate stratum-badge.svg in the scanned directory")
 @click.option("--profile-output", type=click.Path(),
               help="Write ScanProfile as standalone JSON to this path")
+@click.option("--export-graph", "export_graph_flag", is_flag=True,
+              help="Export full scan graph to .stratum/graph.json for analysis")
 @click.option("--quiet", is_flag=True,
               help="Minimal output: score + top 3 actions")
 @click.option("--upload", is_flag=True,
@@ -57,6 +59,7 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
              security_mode: bool, output_format: str, apply_fix: bool,
              patch_output: str | None, generate_badge: bool,
              profile_output: str | None,
+             export_graph_flag: bool = False,
              quiet: bool = False,
              upload: bool = False, api_token: str | None = None) -> None:
     """Run a security audit on an AI agent project."""
@@ -182,6 +185,20 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
                 click.echo(f"  Profile uploaded to Stratum dashboard.")
             else:
                 click.echo(f"  Upload failed: {msg}", err=True)
+
+    # --export-graph: serialize full scan graph to .stratum/graph.json
+    if export_graph_flag and result.graph is not None:
+        try:
+            from stratum.graph.export import export_graph
+            all_findings_for_export = result.top_paths + result.signals
+            tc_matches = getattr(result, 'tc_matches', [])
+            graph_path = export_graph(
+                result.graph, all_findings_for_export, tc_matches,
+                result.scan_id, stratum_dir,
+            )
+            click.echo(f"  Graph exported: {graph_path}")
+        except Exception as e:
+            click.echo(f"  Failed to export graph: {e}", err=True)
 
     # Populate citation field on findings for JSON output
     from stratum.research.citations import get_citation

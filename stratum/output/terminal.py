@@ -89,6 +89,12 @@ def render(result: ScanResult, verbose: bool = False,
 
     _render_risk_bar_section(result, all_findings)
 
+    # Toxic combinations section (after risk bar, before actions)
+    tc_matches = getattr(result, "tc_matches", [])
+    if tc_matches:
+        framework = result.detected_frameworks[0] if result.detected_frameworks else ""
+        _render_toxic_combinations(tc_matches, framework)
+
     if primary:
         _render_section_header("FIX THESE FIRST")
         for i, group in enumerate(primary):
@@ -236,6 +242,45 @@ def _render_risk_bar_section(result: ScanResult, all_findings: list) -> None:
     lines = render_risk_bar(result.risk_score, all_findings)
     for line in lines:
         console.print(line)
+
+
+# ── Toxic Combinations ────────────────────────────────────────────────────────
+
+def _render_toxic_combinations(tc_matches, framework: str) -> None:
+    """Render the TOXIC COMBINATIONS section."""
+    if not tc_matches:
+        return
+
+    _render_section_header(f"TOXIC COMBINATIONS ({len(tc_matches)} detected)")
+
+    for tc in tc_matches:
+        severity_color = {"CRITICAL": "red", "HIGH": "yellow", "MEDIUM": "blue"}.get(tc.severity, "white")
+        console.print(f"  [{severity_color}]{tc.severity}[/]  {tc.tc_id}  {tc.name}")
+        console.print()
+
+        # Render the matched path
+        path_str = " \u2192 ".join(tc.matched_path)
+        console.print(f"    {path_str}")
+        console.print()
+
+        # Description (word-wrapped)
+        wrapped = _wrap_text(tc.description, 62, indent="    ")
+        console.print(f"[dim]{wrapped}[/dim]")
+        console.print()
+
+        # Framework-specific remediation
+        remediation = tc.remediation
+        if remediation:
+            effort = remediation.get("effort", "unknown")
+            console.print(f"    FIX (effort: {effort}):")
+
+            fw_specific = remediation.get("framework_specific", {})
+            code = fw_specific.get(framework, remediation.get("description", ""))
+            if code:
+                for line in code.split("\n"):
+                    console.print(f"      {line}")
+
+        console.print()
 
 
 # ── Section Headers ───────────────────────────────────────────────────────────

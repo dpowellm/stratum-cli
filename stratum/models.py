@@ -6,6 +6,21 @@ from datetime import datetime, timezone
 import uuid
 
 
+@dataclass
+class TCMatch:
+    """A matched toxic combination in a customer's scan graph."""
+    tc_id: str
+    name: str
+    severity: str
+    description: str
+    finding_components: list[str]
+    owasp_ids: list[str]
+    matched_nodes: dict[str, str]    # {pattern_var: graph_node_id}
+    matched_edges: list[tuple[str, str, str]]  # [(source, target, edge_type), ...]
+    matched_path: list[str]          # Ordered node IDs forming the risk path
+    remediation: dict                # {description, effort, framework_specific}
+
+
 class Severity(str, Enum):
     CRITICAL = "CRITICAL"
     HIGH = "HIGH"
@@ -366,7 +381,15 @@ class TelemetryProfile:
     blast_radius_distribution: list[int] = field(default_factory=list)       # [scale]
     guardrail_linked_count: int = 0                                          # [scale]
     regulatory_surface: list[str] = field(default_factory=list)              # [structural]
-    schema_version: str = "0.2"                                              # [structural]
+    schema_version: str = "0.4.0"                                            # [structural]
+
+    # === Toxic Combinations (schema_id 6) ===
+    tc_count: int = 0                                                         # [scale]
+    tc_ids: list[str] = field(default_factory=list)                          # [structural]
+    tc_severities: dict[str, int] = field(default_factory=dict)              # [scale]
+    tc_max_severity: str = ""                                                 # [structural]
+    compound_risk_score: int = 0                                              # [scale]
+    compound_risk_delta: int = 0                                              # [scale]
 
 
 # ── ScanProfile (Enterprise Intelligence Schema) ──────────────────────
@@ -564,6 +587,14 @@ class ScanProfile:
     avg_node_degree: float = 0.0
     max_node_degree: int = 0
     isolated_agent_count: int = 0
+
+    # ─── TOXIC COMBINATIONS ────────────────────────────────────
+    tc_count: int = 0
+    tc_ids: list[str] = field(default_factory=list)
+    tc_severities: dict[str, int] = field(default_factory=dict)
+    tc_max_severity: str = ""
+    compound_risk_score: int = 0
+    compound_risk_delta: int = 0
 
     # ─── DELTA ──────────────────────────────────────────────────
     has_previous_scan: bool = False
