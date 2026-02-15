@@ -58,6 +58,9 @@ def cli() -> None:
               help="Include reliability findings in output (auto-enabled for multi-agent)")
 @click.option("--security-only", "security_only", is_flag=True, default=False,
               help="Disable reliability scanner, backward-compatible schema_id 7 output")
+@click.option("--output-dir", "output_dir", type=click.Path(),
+              default=None,
+              help="Write full ReliabilityScanOutput to <output-dir>/graphs/<repo_id>.json")
 def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
              no_telemetry: bool, offline: bool, fail_above: int | None,
              security_mode: bool, output_format: str, apply_fix: bool,
@@ -67,7 +70,8 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
              quiet: bool = False,
              upload: bool = False, api_token: str | None = None,
              reliability_mode: bool = False,
-             security_only: bool = False) -> None:
+             security_only: bool = False,
+             output_dir: str | None = None) -> None:
     """Run a security audit on an AI agent project."""
     # --ci implies --security ordering
     if ci:
@@ -215,6 +219,97 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
             click.echo(f"  Graph exported: {graph_path}")
         except Exception as e:
             click.echo(f"  Failed to export graph: {e}", err=True)
+
+    # --output-dir: write full ReliabilityScanOutput to <output-dir>/graphs/<repo_id>.json
+    if output_dir and not security_only:
+        try:
+            import dataclasses as dc
+            from datetime import datetime, timezone
+            from stratum.reliability.schema import ReliabilityScanOutput
+            from stratum.reliability.metrics_compute import classify_gap
+
+            _rel_findings_out = getattr(result, 'reliability_findings', [])
+            _comp_findings_out = getattr(result, 'composite_findings', [])
+            _rel_score_out = getattr(result, 'reliability_score', 0)
+            _obs_points_out = getattr(result, 'observation_points', [])
+            _motifs_out = getattr(result, 'graph_motifs', [])
+            _metrics_out = getattr(result, 'reliability_metrics', {})
+            _per_node_out = getattr(result, 'per_node_metrics', [])
+
+            # Serialize graph
+            _graph_dict = {}
+            if result.graph:
+                _graph_dict = {
+                    "nodes": [
+                        {
+                            "id": nid,
+                            "label": n.label,
+                            "node_type": n.node_type.value if hasattr(n.node_type, 'value') else str(n.node_type),
+                            "source_file": n.source_file or "",
+                        }
+                        for nid, n in result.graph.nodes.items()
+                    ],
+                    "edges": [
+                        {
+                            "source": e.source,
+                            "target": e.target,
+                            "edge_type": e.edge_type.value if hasattr(e.edge_type, 'value') else str(e.edge_type),
+                        }
+                        for e in result.graph.edges
+                    ],
+                }
+
+            # Serialize findings
+            def _finding_to_dict(f):
+                return {
+                    "id": f.id,
+                    "severity": f.severity.value if hasattr(f.severity, 'value') else str(f.severity),
+                    "title": f.title,
+                    "path": f.path,
+                    "description": f.description,
+                    "evidence": f.evidence[:5],
+                    "remediation": f.remediation,
+                }
+
+            _sec_findings_out = result.top_paths + result.signals
+            _gap = classify_gap(float(result.risk_score), float(_rel_score_out))
+
+            rel_output = ReliabilityScanOutput(
+                repo_id=result.scan_id,
+                framework=result.detected_frameworks[0] if result.detected_frameworks else "unknown",
+                scan_timestamp=datetime.now(timezone.utc).isoformat(),
+                scanner_version=__version__,
+                schema_id=8,
+                graph=_graph_dict,
+                structural_metrics={
+                    "global": _metrics_out,
+                    "per_node": _per_node_out,
+                },
+                preconditions=[
+                    _finding_to_dict(f) for f in _rel_findings_out
+                    if not f.id.startswith("STRAT-ANOMALY") and not f.id.startswith("STRAT-COMP") and not f.id.startswith("STRAT-XCOMP")
+                ],
+                compositions=[_finding_to_dict(f) for f in _comp_findings_out],
+                structural_anomalies=[
+                    _finding_to_dict(f) for f in _rel_findings_out
+                    if f.id.startswith("STRAT-ANOMALY")
+                ],
+                graph_motifs=_motifs_out,
+                observation_points=_obs_points_out,
+                security_risk_score=float(result.risk_score),
+                reliability_risk_score=float(_rel_score_out),
+                gap_classification=_gap,
+                security_findings=[_finding_to_dict(f) for f in _sec_findings_out],
+            )
+
+            graphs_dir = os.path.join(output_dir, "graphs")
+            os.makedirs(graphs_dir, exist_ok=True)
+            out_path = os.path.join(graphs_dir, f"{result.scan_id}.json")
+            with open(out_path, "w", encoding="utf-8") as f:
+                json.dump(dc.asdict(rel_output), f, indent=2)
+            click.echo(f"  ReliabilityScanOutput written: {out_path}")
+        except Exception as e:
+            click.echo(f"  Failed to write reliability output: {e}", err=True)
 
     # Populate citation field on findings for JSON output
     from stratum.research.citations import get_citation

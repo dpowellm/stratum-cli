@@ -429,7 +429,7 @@ def scan(path: str) -> ScanResult:
             compute_global_metrics, compute_per_node_metrics,
             compute_risk_score as _compute_rel_score, build_repo_profile,
         )
-        from stratum.reliability.anomalies import detect_structural_anomalies
+        from stratum.reliability.anomalies import detect_structural_anomalies, extract_motifs
         from stratum.reliability.observations import (
             generate_observation_points, observation_points_to_dict,
         )
@@ -443,7 +443,7 @@ def scan(path: str) -> ScanResult:
         if _stratum_cfg.has_config:
             apply_config_to_graph(_stratum_cfg, result.graph)
 
-        # Step 3: Run 18 Bucket A reliability rules
+        # Step 3: Run 27 Bucket A reliability rules
         result.reliability_findings = _evaluate_reliability(result.graph)
 
         # Step 4: Run compositions (within-reliability + cross-dataset)
@@ -462,19 +462,26 @@ def scan(path: str) -> ScanResult:
         _anomaly_findings = detect_structural_anomalies(result.graph)
         result.reliability_findings.extend(_anomaly_findings)
 
+        # Step 6b: Extract graph motifs for novel pattern detection
+        result.graph_motifs = extract_motifs(result.graph)
+
         # Step 7: Generate observation points
         _all_rel_findings = result.reliability_findings + result.composite_findings
         _obs_points = generate_observation_points(result.graph, _all_rel_findings)
         result.observation_points = observation_points_to_dict(_obs_points)
 
-        # Step 8: Compute reliability score
-        result.reliability_score = int(_compute_rel_score(result.reliability_findings))
+        # Step 8: Compute reliability score (spec formula)
+        _anomaly_count = len(_anomaly_findings) if _anomaly_findings else 0
+        result.reliability_score = int(_compute_rel_score(
+            result.reliability_findings, result.composite_findings, _anomaly_count,
+        ))
 
         # Step 9: Build repo profile
         fw_name = result.detected_frameworks[0] if result.detected_frameworks else "unknown"
         result.repo_profile = build_repo_profile(
             result.graph, _security_findings, result.reliability_findings,
             result.composite_findings, framework=fw_name,
+            anomaly_count=_anomaly_count,
         )
 
     except Exception as _rel_err:

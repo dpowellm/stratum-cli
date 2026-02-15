@@ -1,13 +1,14 @@
-"""Reliability finding engine — 18 Bucket A rules.
+"""Reliability finding engine — 27 Bucket A + 2 partial Bucket B rules.
 
 Each rule uses graph traversal primitives. Rules are labeling functions
 that run AFTER graph construction and enrichment. They annotate the graph.
 
 Categories:
-- DC: Decision Chain Risk (8 rules)
-- OC: Objective & Incentive Conflict (3 static rules)
-- SI: Signal Integrity & Error Propagation (4 static rules)
-- EA: Emergent Authority & Scope Creep (3 rules)
+- DC: Decision Chain Risk (8 Bucket A)
+- OC: Objective & Incentive Conflict (2 Bucket A + 2 Bucket B partial)
+- SI: Signal Integrity & Error Propagation (7 Bucket A)
+- EA: Emergent Authority & Scope Creep (5 Bucket A)
+- AB: Aggregate Behavioral Exposure (5 Bucket A)
 """
 from __future__ import annotations
 
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 def evaluate(graph: RiskGraph) -> list[Finding]:
-    """Run all 18 Bucket A reliability rules on the enriched graph.
+    """Run all 27 Bucket A + 2 partial Bucket B reliability rules.
 
     Returns list of reliability findings. Does NOT modify security findings.
     """
@@ -34,31 +35,44 @@ def evaluate(graph: RiskGraph) -> list[Finding]:
 
     findings: list[Finding] = []
 
-    # Decision Chain Risk
+    # Decision Chain Risk (8)
     findings.extend(_dc001_unsupervised_chain(graph))
-    findings.extend(_dc002_irreversible_no_checkpoint(graph))
-    findings.extend(_dc003_depth_exceeds_observability(graph))
-    findings.extend(_dc004_circular_delegation(graph))
+    findings.extend(_dc002_irreversible_no_approval(graph))
+    findings.extend(_dc003_unobserved_decision_point(graph))
+    findings.extend(_dc004_cascading_autonomous_decisions(graph))
     findings.extend(_dc005_bottleneck(graph))
-    findings.extend(_dc006_fanout_no_consolidation(graph))
-    findings.extend(_dc007_no_rollback(graph))
+    findings.extend(_dc006_recursive_delegation(graph))
+    findings.extend(_dc007_trust_boundary_chain(graph))
     findings.extend(_dc008_no_timeout(graph))
 
-    # Objective & Incentive Conflict (static subset)
-    findings.extend(_oc002_uncoordinated_writes(graph))
-    findings.extend(_oc003_feedback_loop(graph))
-    findings.extend(_oc005_resource_contention(graph))
+    # Objective & Incentive Conflict (2 A + 2 partial)
+    findings.extend(_oc001_conflicting_objectives(graph))
+    findings.extend(_oc002_competing_resources(graph))
+    findings.extend(_oc003_undampened_feedback(graph))
+    findings.extend(_oc004_incentive_misalignment(graph))
 
-    # Signal Integrity
+    # Signal Integrity (7)
     findings.extend(_si001_error_laundering(graph))
-    findings.extend(_si004_unvalidated_schema(graph))
-    findings.extend(_si006_untyped_channel(graph))
-    findings.extend(_si007_single_data_source(graph))
+    findings.extend(_si002_confidence_laundering(graph))
+    findings.extend(_si003_stale_data(graph))
+    findings.extend(_si004_schema_mismatch(graph))
+    findings.extend(_si005_unvalidated_external(graph))
+    findings.extend(_si006_error_swallowing_trust(graph))
+    findings.extend(_si007_aggregation_no_provenance(graph))
 
-    # Emergent Authority
-    findings.extend(_ea001_transitive_escalation(graph))
-    findings.extend(_ea002_unbounded_delegation(graph))
-    findings.extend(_ea003_mcp_aggregation(graph))
+    # Emergent Authority (5)
+    findings.extend(_ea001_implicit_authority(graph))
+    findings.extend(_ea002_capability_aggregation(graph))
+    findings.extend(_ea003_unconstrained_delegation(graph))
+    findings.extend(_ea004_transitive_data_access(graph))
+    findings.extend(_ea006_cross_crew_leakage(graph))
+
+    # Aggregate Behavioral (5)
+    findings.extend(_ab001_unbounded_volume(graph))
+    findings.extend(_ab003_regulatory_no_audit(graph))
+    findings.extend(_ab004_monoculture(graph))
+    findings.extend(_ab006_no_rollback(graph))
+    findings.extend(_ab007_external_concentration(graph))
 
     return findings
 
@@ -67,30 +81,10 @@ def evaluate(graph: RiskGraph) -> list[Finding]:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _agent_has_hitl(graph: RiskGraph, agent_id: str) -> bool:
-    """Check if an agent has a human-in-the-loop gate."""
-    for edge in graph.edges:
-        if edge.source == agent_id and edge.edge_type == EdgeType.GATED_BY:
-            guard = graph.nodes.get(edge.target)
-            if guard and guard.guardrail_kind in ("hitl", "human_in_the_loop"):
-                return True
-    return False
-
-
 def _agent_tools(graph: RiskGraph, agent_id: str) -> list[str]:
     """Get tool node IDs owned by an agent."""
     return [e.source for e in graph.edges
             if e.edge_type == EdgeType.TOOL_OF and e.target == agent_id]
-
-
-def _tool_kinds(graph: RiskGraph, tool_ids: list[str]) -> set[str]:
-    """Extract capability kinds from tool node IDs."""
-    kinds = set()
-    for tid in tool_ids:
-        if "_" in tid:
-            kind = tid.rsplit("_", 1)[-1]
-            kinds.add(kind)
-    return kinds
 
 
 def _node_source_locations(graph: RiskGraph, node_ids: list[str]) -> list[str]:
@@ -106,6 +100,27 @@ def _node_source_locations(graph: RiskGraph, node_ids: list[str]) -> list[str]:
             seen.add(ref)
             evidence.append(ref)
     return evidence
+
+
+def _has_observed_by(graph: RiskGraph, agent_id: str) -> bool:
+    """Check if an agent has any observed_by edges."""
+    return any(
+        e.source == agent_id and e.edge_type == EdgeType.OBSERVED_BY
+        for e in graph.edges
+    )
+
+
+def _has_approval_gate(graph: RiskGraph, node_id: str) -> bool:
+    """Check if a node has approval_required or guarded_by edge to approval guardrail."""
+    for edge in graph.edges:
+        if edge.source == node_id:
+            if edge.edge_type == EdgeType.APPROVAL_REQUIRED:
+                return True
+            if edge.edge_type == EdgeType.GATED_BY:
+                guard = graph.nodes.get(edge.target)
+                if guard and guard.guardrail_kind in ("hitl", "human_in_the_loop", "approval"):
+                    return True
+    return False
 
 
 def _make_finding(
@@ -154,32 +169,33 @@ def _make_finding(
 
 
 # ===========================================================================
-# DECISION CHAIN RISK (DC)
+# DECISION CHAIN RISK (DC) — 8 rules
 # ===========================================================================
 
 def _dc001_unsupervised_chain(graph: RiskGraph) -> list[Finding]:
-    """STRAT-DC-001: Unsupervised Multi-Agent Decision Chain.
+    """STRAT-DC-001: Unsupervised Multi-Step Decision Chain.
 
-    Path of length >= 3 through delegates_to/feeds_into with zero HITL gates.
-    CRITICAL if terminal agent has financial/destructive/outbound tools, else HIGH.
+    Path of 3+ delegates_to edges with no human_input_enabled agent in the path.
     """
-    chain_edges = {EdgeType.DELEGATES_TO.value, EdgeType.FEEDS_INTO.value}
+    chain_edges = {EdgeType.DELEGATES_TO.value}
     paths = find_paths(graph, chain_edges, source_filter="agent", min_length=3, max_length=8)
 
     findings: list[Finding] = []
     seen_paths: set[tuple[str, ...]] = set()
 
     for path in paths:
-        # All nodes must be agents
         if not all(
             graph.nodes.get(nid) and graph.nodes[nid].node_type == NodeType.AGENT
             for nid in path
         ):
             continue
 
-        # Check for HITL gates on any node in the path
-        has_gate = any(_agent_has_hitl(graph, nid) for nid in path)
-        if has_gate:
+        # Check for human_input_enabled on any agent in the path
+        has_human = any(
+            graph.nodes.get(nid) and graph.nodes[nid].human_input_enabled
+            for nid in path
+        )
+        if has_human:
             continue
 
         path_key = tuple(path)
@@ -187,165 +203,171 @@ def _dc001_unsupervised_chain(graph: RiskGraph) -> list[Finding]:
             continue
         seen_paths.add(path_key)
 
-        # Check terminal agent capabilities
-        terminal = path[-1]
-        tools = _agent_tools(graph, terminal)
-        kinds = _tool_kinds(graph, tools)
-        high_risk = kinds & {"financial", "destructive", "outbound"}
-
-        severity = Severity.CRITICAL if high_risk else Severity.HIGH
-
         findings.append(_make_finding(
             "STRAT-DC-001",
-            "Unsupervised Multi-Agent Decision Chain",
-            severity,
+            "Unsupervised Multi-Step Decision Chain",
+            Severity.HIGH,
             "DC",
             path,
             graph,
-            f"Decision chain of {len(path)} agents with 0 human gates. "
-            f"Terminal capabilities: {', '.join(high_risk) if high_risk else 'none flagged'}.",
+            f"Delegation chain of {len(path)} agents with no human checkpoint. "
+            f"Decisions cascade without human review.",
             "Add human_input=True (CrewAI) or interrupt_before (LangGraph) "
-            "before agents with consequential capabilities.",
+            "at critical points in the delegation chain.",
             subgraph_type="path",
             chain=path,
         ))
 
-    # Keep only the longest non-overlapping chains
     findings.sort(key=lambda f: len(f.evidence), reverse=True)
     return findings[:3]
 
 
-def _dc002_irreversible_no_checkpoint(graph: RiskGraph) -> list[Finding]:
-    """STRAT-DC-002: Irreversible Action Without Checkpoint.
+def _dc002_irreversible_no_approval(graph: RiskGraph) -> list[Finding]:
+    """STRAT-DC-002: Irreversible Action Without Approval Gate.
 
-    Agent with irreversible capabilities and no upstream HITL gate.
+    Capability with reversibility=irreversible and no approval_required or
+    guarded_by edge to an approval-type guardrail.
     """
     findings: list[Finding] = []
 
     for nid, node in graph.nodes.items():
-        if node.node_type != NodeType.AGENT:
+        if node.node_type != NodeType.CAPABILITY:
+            continue
+        if node.reversibility != "irreversible":
             continue
 
-        # Get agent's tools and check for irreversible ones
-        tools = _agent_tools(graph, nid)
-        irreversible = []
-        for tid in tools:
-            tool_node = graph.nodes.get(tid)
-            if tool_node and tool_node.reversibility == "irreversible":
-                irreversible.append(tid)
+        # Find owning agent
+        agent_id = None
+        for edge in graph.edges:
+            if edge.edge_type == EdgeType.TOOL_OF and edge.source == nid:
+                agent_id = edge.target
+                break
 
-        if not irreversible:
+        # Check for approval gate on the capability or its agent
+        if _has_approval_gate(graph, nid):
+            continue
+        if agent_id and _has_approval_gate(graph, agent_id):
             continue
 
-        # Check for HITL gate
-        if _agent_has_hitl(graph, nid):
-            continue
+        affected = [nid]
+        if agent_id:
+            affected.insert(0, agent_id)
 
-        irreversible_labels = [
-            graph.nodes[tid].label for tid in irreversible if tid in graph.nodes
-        ]
         findings.append(_make_finding(
             "STRAT-DC-002",
-            "Irreversible Action Without Checkpoint",
+            "Irreversible Action Without Approval Gate",
             Severity.CRITICAL,
             "DC",
-            [nid] + irreversible,
+            affected,
             graph,
-            f"{node.label} has irreversible capabilities "
-            f"[{', '.join(irreversible_labels)}] with no human approval gate.",
-            "Add human_input=True on the Task or interrupt_before at compile time.",
+            f"{node.label} is irreversible with no human approval gate.",
+            "Add approval_required guardrail or human_input=True on the Task.",
             subgraph_type="node",
         ))
 
     return findings[:5]
 
 
-def _dc003_depth_exceeds_observability(graph: RiskGraph) -> list[Finding]:
-    """STRAT-DC-003: Decision Depth Exceeds Observability.
+def _dc003_unobserved_decision_point(graph: RiskGraph) -> list[Finding]:
+    """STRAT-DC-003: Unobserved Decision Point.
 
-    Chain of depth >= 3 where some agents lack observed_by edges.
+    Agent with betweenness_centrality > 0.3 and zero observed_by edges.
     """
-    chain_edges = {EdgeType.DELEGATES_TO.value, EdgeType.FEEDS_INTO.value}
-    paths = find_paths(graph, chain_edges, source_filter="agent", min_length=3, max_length=8)
+    centrality = compute_centrality(graph)
+    if not centrality:
+        return []
 
     findings: list[Finding] = []
 
-    for path in paths:
-        if not all(
-            graph.nodes.get(nid) and graph.nodes[nid].node_type == NodeType.AGENT
-            for nid in path
-        ):
+    for agent_id, score in centrality.items():
+        if score <= 0.3:
             continue
 
-        # Check which agents lack observed_by edges
-        unobserved = []
-        for nid in path:
-            has_obs = any(
-                e.source == nid and e.edge_type == EdgeType.OBSERVED_BY
-                for e in graph.edges
-            )
-            if not has_obs:
-                unobserved.append(nid)
-
-        if not unobserved:
+        node = graph.nodes.get(agent_id)
+        if not node or node.node_type != NodeType.AGENT:
             continue
 
-        unobserved_labels = [graph.nodes[nid].label for nid in unobserved if nid in graph.nodes]
+        if _has_observed_by(graph, agent_id):
+            continue
+
         findings.append(_make_finding(
             "STRAT-DC-003",
-            "Decision Depth Exceeds Observability",
+            "Unobserved Decision Point",
             Severity.HIGH,
             "DC",
-            path,
+            [agent_id],
             graph,
-            f"Chain of {len(path)} agents; {len(unobserved)} unobserved: "
-            f"{', '.join(unobserved_labels)}.",
-            "Add per-agent logging callbacks. Configure RunnableConfig with "
-            "callbacks at each node, not just the graph.",
-            subgraph_type="path",
-            chain=path,
+            f"{node.label} has betweenness centrality {score:.2f} (high decision influence) "
+            f"but zero observability coverage.",
+            "Add per-agent logging callbacks or tracing instrumentation.",
+            subgraph_type="node",
+            extra_evidence=[f"betweenness_centrality={score:.4f}"],
         ))
 
     return findings[:3]
 
 
-def _dc004_circular_delegation(graph: RiskGraph) -> list[Finding]:
-    """STRAT-DC-004: Circular Delegation Path.
+def _dc004_cascading_autonomous_decisions(graph: RiskGraph) -> list[Finding]:
+    """STRAT-DC-004: Cascading Autonomous Decisions.
 
-    Cycles in the delegation graph without termination conditions.
+    Chain of 2+ agents where each makes a selection/routing decision
+    (capability.subtype in [selection_tool, categorize, route, approve, reject])
+    with no human in chain.
     """
-    cycles = detect_cycles(graph, node_type_filter="agent")
+    decision_subtypes = {"selection_tool", "categorize", "route", "approve", "reject"}
+
+    # Find agents that make decisions (have decision-type capabilities)
+    decision_agents: set[str] = set()
+    for nid, node in graph.nodes.items():
+        if node.node_type != NodeType.AGENT:
+            continue
+        tools = _agent_tools(graph, nid)
+        for tid in tools:
+            tool_node = graph.nodes.get(tid)
+            if tool_node and tool_node.subtype in decision_subtypes:
+                decision_agents.add(nid)
+                break
+
+    if len(decision_agents) < 2:
+        return []
+
+    # Find chains of decision agents
+    chain_edges = {EdgeType.DELEGATES_TO.value, EdgeType.FEEDS_INTO.value}
+    paths = find_paths(graph, chain_edges, source_filter="agent", min_length=2, max_length=6)
 
     findings: list[Finding] = []
+    seen: set[tuple[str, ...]] = set()
 
-    for cycle in cycles:
-        # Check for termination conditions (max_iter, convergence check)
-        has_termination = any(
-            graph.nodes.get(nid) and graph.nodes[nid].timeout_config
-            for nid in cycle[:-1]
-        )
-        has_gate = any(_agent_has_hitl(graph, nid) for nid in cycle[:-1])
-
-        if has_termination and has_gate:
+    for path in paths:
+        # All nodes must be decision agents
+        if not all(nid in decision_agents for nid in path):
             continue
 
-        severity = Severity.CRITICAL if not has_termination and not has_gate else Severity.HIGH
+        # No human in chain
+        has_human = any(
+            graph.nodes.get(nid) and graph.nodes[nid].human_input_enabled
+            for nid in path
+        )
+        if has_human:
+            continue
 
-        cycle_labels = [graph.nodes[nid].label for nid in cycle if nid in graph.nodes]
+        path_key = tuple(path)
+        if path_key in seen:
+            continue
+        seen.add(path_key)
+
         findings.append(_make_finding(
             "STRAT-DC-004",
-            "Circular Delegation Path",
-            severity,
+            "Cascading Autonomous Decisions",
+            Severity.HIGH,
             "DC",
-            cycle[:-1],
+            path,
             graph,
-            f"Cycle: {' \u2192 '.join(cycle_labels)}. "
-            f"Termination: {'yes' if has_termination else 'none'}. "
-            f"Human gate: {'yes' if has_gate else 'none'}.",
-            "Set max_iter on the Crew or implement a should_continue conditional "
-            "with iteration counting.",
-            subgraph_type="cycle",
-            chain=cycle,
+            f"Chain of {len(path)} decision-making agents with no human review. "
+            f"Each agent makes selection/routing decisions autonomously.",
+            "Add human checkpoints between sequential decision points.",
+            subgraph_type="path",
+            chain=path,
         ))
 
     return findings[:3]
@@ -354,151 +376,143 @@ def _dc004_circular_delegation(graph: RiskGraph) -> list[Finding]:
 def _dc005_bottleneck(graph: RiskGraph) -> list[Finding]:
     """STRAT-DC-005: Single-Agent Bottleneck in Critical Path.
 
-    Agent with high betweenness centrality on paths to critical capabilities.
+    Agent with betweenness_centrality > 0.5 AND all paths to critical
+    capabilities route through it.
     """
     centrality = compute_centrality(graph)
     if not centrality:
         return []
 
-    # Find agents with centrality above threshold
-    threshold = 0.3
-    max_centrality = max(centrality.values()) if centrality else 0
-
     findings: list[Finding] = []
 
     for agent_id, score in centrality.items():
-        if score < threshold or score < max_centrality * 0.7:
+        if score <= 0.5:
             continue
 
         node = graph.nodes.get(agent_id)
-        if not node:
+        if not node or node.node_type != NodeType.AGENT:
             continue
+
+        # Check for critical capabilities downstream
+        critical_downstream = 0
+        for cap_id, cap_node in graph.nodes.items():
+            if cap_node.node_type == NodeType.CAPABILITY and cap_node.reversibility == "irreversible":
+                critical_downstream += 1
 
         findings.append(_make_finding(
             "STRAT-DC-005",
             "Single-Agent Bottleneck in Critical Path",
-            Severity.MEDIUM,
+            Severity.HIGH,
             "DC",
             [agent_id],
             graph,
             f"{node.label} has betweenness centrality {score:.2f} — "
             f"all critical paths route through this agent.",
-            "Introduce redundancy or parallel evaluation paths. "
-            "Consider splitting into domain-specific sub-agents.",
+            "Introduce redundancy or parallel evaluation paths.",
             subgraph_type="node",
+            extra_evidence=[f"betweenness_centrality={score:.4f}"],
         ))
 
     return findings[:2]
 
 
-def _dc006_fanout_no_consolidation(graph: RiskGraph) -> list[Finding]:
-    """STRAT-DC-006: Fan-Out Delegation Without Consolidation.
+def _dc006_recursive_delegation(graph: RiskGraph) -> list[Finding]:
+    """STRAT-DC-006: Recursive Delegation Without Depth Bound.
 
-    Agent delegates to >= 3 agents with no downstream merge point.
+    Cycle in delegates_to subgraph AND no max_iterations set on agents in cycle.
     """
-    # Build delegation out-degree per agent
-    delegation_out: dict[str, list[str]] = defaultdict(list)
-    for edge in graph.edges:
-        if edge.edge_type in (EdgeType.DELEGATES_TO, EdgeType.FEEDS_INTO):
-            src = graph.nodes.get(edge.source)
-            if src and src.node_type == NodeType.AGENT:
-                delegation_out[edge.source].append(edge.target)
+    cycles = detect_cycles(
+        graph,
+        edge_types={EdgeType.DELEGATES_TO.value},
+        node_type_filter="agent",
+    )
 
     findings: list[Finding] = []
 
-    for agent_id, targets in delegation_out.items():
-        if len(targets) < 3:
+    for cycle in cycles:
+        cycle_nodes = cycle[:-1]  # Remove closing node
+
+        # Check if any agent in cycle has max_iterations set
+        has_bound = any(
+            graph.nodes.get(nid) and graph.nodes[nid].max_iterations is not None
+            for nid in cycle_nodes
+        )
+        if has_bound:
             continue
 
-        node = graph.nodes.get(agent_id)
-        if not node:
-            continue
-
-        # Check if any downstream node receives from multiple targets (consolidation)
-        delegation_in: dict[str, int] = defaultdict(int)
-        for t in targets:
-            for edge in graph.edges:
-                if edge.source == t and edge.edge_type in (EdgeType.DELEGATES_TO, EdgeType.FEEDS_INTO):
-                    delegation_in[edge.target] += 1
-
-        has_consolidation = any(c >= 2 for c in delegation_in.values())
-
-        if has_consolidation:
-            continue
-
-        target_labels = [graph.nodes[t].label for t in targets if t in graph.nodes]
+        cycle_labels = [graph.nodes[nid].label for nid in cycle if nid in graph.nodes]
         findings.append(_make_finding(
             "STRAT-DC-006",
-            "Fan-Out Delegation Without Consolidation",
+            "Recursive Delegation Without Depth Bound",
             Severity.HIGH,
             "DC",
-            [agent_id] + targets,
+            cycle_nodes,
             graph,
-            f"{node.label} delegates to {len(targets)} agents "
-            f"[{', '.join(target_labels[:4])}] with no consolidation node.",
-            "Add a consolidation agent that reconciles divergent outputs.",
-            subgraph_type="path",
+            f"Delegation cycle: {' \u2192 '.join(cycle_labels)}. "
+            f"No max_iterations set on any agent in the cycle.",
+            "Set max_iter on the Crew or implement iteration counting.",
+            subgraph_type="cycle",
+            chain=cycle,
         ))
 
     return findings[:3]
 
 
-def _dc007_no_rollback(graph: RiskGraph) -> list[Finding]:
-    """STRAT-DC-007: No Rollback Path for Multi-Agent Workflow.
+def _dc007_trust_boundary_chain(graph: RiskGraph) -> list[Finding]:
+    """STRAT-DC-007: Decision Chain Crossing Trust Boundaries Without Validation.
 
-    Multi-agent workflow with writes_to at >= 2 stages and no compensating pattern.
+    delegates_to path that crosses 2+ trust boundaries with no guardrail
+    edges on the crossing edges.
     """
-    chain_edges = {EdgeType.DELEGATES_TO.value, EdgeType.FEEDS_INTO.value}
-    paths = find_paths(graph, chain_edges, source_filter="agent", min_length=3, max_length=8)
+    chain_edges = {EdgeType.DELEGATES_TO.value}
+    paths = find_paths(graph, chain_edges, source_filter="agent", min_length=2, max_length=8)
 
     findings: list[Finding] = []
 
     for path in paths:
-        # Count agents that have write capabilities
-        writing_agents = []
-        for nid in path:
-            node = graph.nodes.get(nid)
-            if not node or node.node_type != NodeType.AGENT:
+        # Count trust boundary crossings without guardrails
+        unguarded_crossings = 0
+        for i in range(len(path) - 1):
+            src = graph.nodes.get(path[i])
+            tgt = graph.nodes.get(path[i + 1])
+            if not src or not tgt:
                 continue
-            tools = _agent_tools(graph, nid)
-            kinds = _tool_kinds(graph, tools)
-            if kinds & {"destructive", "financial"}:
-                writing_agents.append(nid)
-            # Also check for WRITES_TO edges from agent's tools
-            for tid in tools:
-                for e in graph.edges:
-                    if e.source == tid and e.edge_type == EdgeType.WRITES_TO:
-                        if nid not in writing_agents:
-                            writing_agents.append(nid)
-                        break
 
-        if len(writing_agents) < 2:
+            # Check if this edge crosses a trust boundary
+            for edge in graph.edges:
+                if (edge.source == path[i] and edge.target == path[i + 1]
+                        and edge.edge_type == EdgeType.DELEGATES_TO):
+                    if edge.trust_crossing and not edge.has_control:
+                        unguarded_crossings += 1
+
+        if unguarded_crossings < 2:
             continue
 
         findings.append(_make_finding(
             "STRAT-DC-007",
-            "No Rollback Path for Multi-Agent Workflow",
+            "Decision Chain Crossing Trust Boundaries",
             Severity.HIGH,
             "DC",
             path,
             graph,
-            f"Multi-agent workflow modifies state at {len(writing_agents)} stages "
-            f"with no compensating transaction or rollback mechanism.",
-            "Implement saga pattern or checkpoint/restore for multi-step workflows.",
+            f"Delegation chain crosses {unguarded_crossings} trust boundaries "
+            f"with no guardrails on crossing edges.",
+            "Add guardrails at trust boundary crossings in delegation chains.",
             subgraph_type="path",
             chain=path,
         ))
 
-    return findings[:2]
+    return findings[:3]
 
 
 def _dc008_no_timeout(graph: RiskGraph) -> list[Finding]:
     """STRAT-DC-008: No Timeout or Circuit Breaker on Agent Chain.
 
-    Agent chain >= 2 with no timeout_config on any agent.
+    Linear chain of 3+ agents via delegates_to or task_sequence where no
+    agent has timeout_configured=True.
     """
-    chain_edges = {EdgeType.DELEGATES_TO.value, EdgeType.FEEDS_INTO.value}
-    paths = find_paths(graph, chain_edges, source_filter="agent", min_length=2, max_length=8)
+    chain_edges = {EdgeType.DELEGATES_TO.value, EdgeType.TASK_SEQUENCE.value}
+    paths = find_paths(graph, chain_edges, source_filter="agent", min_length=3, max_length=8)
 
     findings: list[Finding] = []
     seen: set[tuple[str, ...]] = set()
@@ -510,7 +524,6 @@ def _dc008_no_timeout(graph: RiskGraph) -> list[Finding]:
         ):
             continue
 
-        # Check if ANY agent in the chain has timeout
         has_timeout = any(
             graph.nodes.get(nid) and graph.nodes[nid].timeout_config
             for nid in path
@@ -523,31 +536,16 @@ def _dc008_no_timeout(graph: RiskGraph) -> list[Finding]:
             continue
         seen.add(path_key)
 
-        # Check if any agent calls external service
-        calls_external = False
-        for nid in path:
-            tools = _agent_tools(graph, nid)
-            for tid in tools:
-                for e in graph.edges:
-                    if e.source == tid and e.edge_type in (EdgeType.SENDS_TO, EdgeType.CALLS):
-                        tgt = graph.nodes.get(e.target)
-                        if tgt and tgt.node_type in (NodeType.EXTERNAL_SERVICE, NodeType.MCP_SERVER):
-                            calls_external = True
-                            break
-
-        severity = Severity.HIGH if calls_external else Severity.MEDIUM
-
         findings.append(_make_finding(
             "STRAT-DC-008",
             "No Timeout or Circuit Breaker on Agent Chain",
-            severity,
+            Severity.HIGH,
             "DC",
             path,
             graph,
-            f"Chain of {len(path)} agents with no timeout config. "
-            f"External dependency: {'yes' if calls_external else 'no'}.",
-            "Set max_execution_time on each Task (CrewAI) or step_timeout (LangGraph). "
-            "Add timeout parameters to external API calls.",
+            f"Chain of {len(path)} agents with no timeout configuration. "
+            f"Chain can hang indefinitely.",
+            "Set max_execution_time on each Task or step_timeout on agent nodes.",
             subgraph_type="path",
             chain=path,
         ))
@@ -556,116 +554,87 @@ def _dc008_no_timeout(graph: RiskGraph) -> list[Finding]:
 
 
 # ===========================================================================
-# OBJECTIVE & INCENTIVE CONFLICT (OC)
+# OBJECTIVE & INCENTIVE CONFLICT (OC) — 2 Bucket A + 2 partial Bucket B
 # ===========================================================================
 
-def _oc002_uncoordinated_writes(graph: RiskGraph) -> list[Finding]:
-    """STRAT-OC-002: Uncoordinated Parallel Writes to Shared State.
+def _oc001_conflicting_objectives(graph: RiskGraph) -> list[Finding]:
+    """STRAT-OC-001: Conflicting Optimization Objectives on Shared State.
+    [Bucket B partial — fires when objective_tag can be inferred]
 
-    Multiple agents write to same data store without concurrency control.
+    2+ agents with different objective_tag values both writes_to same data_store,
+    AND no arbitrated_by edge.
     """
     pairs = find_pairs_shared_state(graph, require_write=True)
-
     findings: list[Finding] = []
 
     for agent_a, agent_b, shared_stores in pairs:
-        # Check concurrency control on shared stores
-        uncontrolled = []
-        for ds_id in shared_stores:
-            ds = graph.nodes.get(ds_id)
-            if ds and ds.concurrency_control in ("none", ""):
-                uncontrolled.append(ds_id)
-
-        if not uncontrolled:
-            continue
-
         node_a = graph.nodes.get(agent_a)
         node_b = graph.nodes.get(agent_b)
         if not node_a or not node_b:
             continue
 
-        ds_labels = [graph.nodes[d].label for d in uncontrolled if d in graph.nodes]
+        # Both must have meaningful objective tags
+        tag_a = node_a.objective_tag
+        tag_b = node_b.objective_tag
+        if not tag_a or not tag_b or tag_a == tag_b:
+            continue
+
+        # Check for arbitrated_by edge
+        has_arbitrator = any(
+            e.edge_type == EdgeType.ARBITRATED_BY
+            and ((e.source == agent_a) or (e.source == agent_b))
+            for e in graph.edges
+        )
+        if has_arbitrator:
+            continue
+
+        ds_labels = [graph.nodes[d].label for d in shared_stores if d in graph.nodes]
         findings.append(_make_finding(
-            "STRAT-OC-002",
-            "Uncoordinated Parallel Writes to Shared State",
+            "STRAT-OC-001",
+            "Conflicting Optimization Objectives on Shared State",
             Severity.HIGH,
             "OC",
-            [agent_a, agent_b] + uncontrolled,
+            [agent_a, agent_b] + shared_stores,
             graph,
-            f"{node_a.label} and {node_b.label} both write to "
-            f"{', '.join(ds_labels)} without concurrency control.",
-            "Add locking, versioning, or queue-based coordination on shared data stores.",
+            f"{node_a.label} (objective: {tag_a}) and {node_b.label} (objective: {tag_b}) "
+            f"both write to {', '.join(ds_labels)} with no arbitration.",
+            "Add arbitrated_by edge or explicit conflict resolution mechanism.",
             subgraph_type="pair",
         ))
 
     return findings[:3]
 
 
-def _oc003_feedback_loop(graph: RiskGraph) -> list[Finding]:
-    """STRAT-OC-003: Feedback Loop Without Dampening.
+def _oc002_competing_resources(graph: RiskGraph) -> list[Finding]:
+    """STRAT-OC-002: Competing Resource Consumers Without Prioritization.
 
-    Cycles in agent-data bipartite graph without dampening mechanisms.
+    2+ agents calling the same rate-limited capability or external service,
+    no priority/ordering mechanism.
     """
-    # Detect cycles through agents and data stores
-    all_edge_types = {
-        EdgeType.READS_FROM.value, EdgeType.WRITES_TO.value,
-        EdgeType.FEEDS_INTO.value,
-    }
-    cycles = detect_cycles(graph, edge_types=all_edge_types, node_type_filter=None)
-
-    findings: list[Finding] = []
-
-    for cycle in cycles:
-        # Filter to cycles that include both agents and data stores
-        agent_nodes = [nid for nid in cycle[:-1]
-                       if graph.nodes.get(nid) and graph.nodes[nid].node_type == NodeType.AGENT]
-        data_nodes = [nid for nid in cycle[:-1]
-                      if graph.nodes.get(nid) and graph.nodes[nid].node_type == NodeType.DATA_STORE]
-
-        if not agent_nodes or not data_nodes:
-            continue
-
-        findings.append(_make_finding(
-            "STRAT-OC-003",
-            "Feedback Loop Without Dampening",
-            Severity.HIGH,
-            "OC",
-            cycle[:-1],
-            graph,
-            f"Feedback loop detected through agents and data stores. "
-            f"No dampening mechanism (convergence check, decay factor, clamp).",
-            "Add convergence checks, output clamps, or decay factors. "
-            "Set max_iter as a circuit breaker.",
-            subgraph_type="cycle",
-            chain=cycle,
-        ))
-
-    return findings[:2]
-
-
-def _oc005_resource_contention(graph: RiskGraph) -> list[Finding]:
-    """STRAT-OC-005: Resource Contention Between Agents.
-
-    >= 2 agents calling same external service with no rate coordination.
-    """
-    # Build external service -> calling agents map
-    service_callers: dict[str, list[str]] = defaultdict(list)
+    # Build capability/external -> calling agents map
+    resource_callers: dict[str, list[str]] = defaultdict(list)
 
     for edge in graph.edges:
         if edge.edge_type in (EdgeType.SENDS_TO, EdgeType.CALLS):
             tgt = graph.nodes.get(edge.target)
             if tgt and tgt.node_type in (NodeType.EXTERNAL_SERVICE, NodeType.MCP_SERVER):
-                # Find which agent owns the calling tool
                 src = graph.nodes.get(edge.source)
                 if src and src.node_type == NodeType.CAPABILITY:
                     for tool_edge in graph.edges:
                         if (tool_edge.edge_type == EdgeType.TOOL_OF
                                 and tool_edge.source == edge.source):
-                            service_callers[edge.target].append(tool_edge.target)
+                            resource_callers[edge.target].append(tool_edge.target)
+
+    # Also check rate-limited capabilities
+    for nid, node in graph.nodes.items():
+        if node.node_type == NodeType.CAPABILITY and node.rate_limited:
+            for tool_edge in graph.edges:
+                if tool_edge.edge_type == EdgeType.TOOL_OF and tool_edge.source == nid:
+                    resource_callers[nid].append(tool_edge.target)
 
     findings: list[Finding] = []
 
-    for service_id, callers in service_callers.items():
+    for resource_id, callers in resource_callers.items():
         unique_callers = list(set(callers))
         if len(unique_callers) < 2:
             continue
@@ -679,21 +648,21 @@ def _oc005_resource_contention(graph: RiskGraph) -> list[Finding]:
         if has_rate_limit:
             continue
 
-        service = graph.nodes.get(service_id)
-        if not service:
+        resource = graph.nodes.get(resource_id)
+        if not resource:
             continue
 
         caller_labels = [
             graph.nodes[c].label for c in unique_callers[:4] if c in graph.nodes
         ]
         findings.append(_make_finding(
-            "STRAT-OC-005",
-            "Resource Contention Between Agents",
+            "STRAT-OC-002",
+            "Competing Resource Consumers Without Prioritization",
             Severity.MEDIUM,
             "OC",
-            unique_callers + [service_id],
+            unique_callers + [resource_id],
             graph,
-            f"{len(unique_callers)} agents call {service.label} with no "
+            f"{len(unique_callers)} agents call {resource.label} with no "
             f"shared rate coordination: {', '.join(caller_labels)}.",
             "Implement shared rate limiting or token bucket across agents.",
             subgraph_type="pair",
@@ -702,14 +671,118 @@ def _oc005_resource_contention(graph: RiskGraph) -> list[Finding]:
     return findings[:3]
 
 
+def _oc003_undampened_feedback(graph: RiskGraph) -> list[Finding]:
+    """STRAT-OC-003: Undampened Feedback Loop.
+
+    Cycle in feeds_into subgraph with no dampened_by edge.
+    """
+    cycles = detect_cycles(
+        graph,
+        edge_types={EdgeType.FEEDS_INTO.value},
+        node_type_filter=None,
+    )
+
+    findings: list[Finding] = []
+
+    for cycle in cycles:
+        cycle_nodes = cycle[:-1]
+
+        # Check for dampened_by edges on any edge in the cycle
+        has_dampener = False
+        for i in range(len(cycle_nodes)):
+            src = cycle_nodes[i]
+            tgt = cycle_nodes[(i + 1) % len(cycle_nodes)]
+            for edge in graph.edges:
+                if (edge.source == src and edge.target == tgt
+                        and edge.edge_type == EdgeType.FEEDS_INTO):
+                    # Check if this edge has a dampened_by
+                    for de in graph.edges:
+                        if de.edge_type == EdgeType.DAMPENED_BY and de.source == src:
+                            has_dampener = True
+                            break
+                if has_dampener:
+                    break
+            if has_dampener:
+                break
+
+        # Also check max_iterations as a dampener
+        if not has_dampener:
+            has_dampener = any(
+                graph.nodes.get(nid) and graph.nodes[nid].max_iterations is not None
+                for nid in cycle_nodes
+                if graph.nodes.get(nid) and graph.nodes[nid].node_type == NodeType.AGENT
+            )
+
+        if has_dampener:
+            continue
+
+        cycle_labels = [graph.nodes[nid].label for nid in cycle if nid in graph.nodes]
+        findings.append(_make_finding(
+            "STRAT-OC-003",
+            "Undampened Feedback Loop",
+            Severity.HIGH,
+            "OC",
+            cycle_nodes,
+            graph,
+            f"Feedback loop: {' \u2192 '.join(cycle_labels)}. "
+            f"No dampening mechanism (convergence check, max_iter, decay).",
+            "Add convergence checks, output clamps, or max_iter.",
+            subgraph_type="cycle",
+            chain=cycle,
+        ))
+
+    return findings[:2]
+
+
+def _oc004_incentive_misalignment(graph: RiskGraph) -> list[Finding]:
+    """STRAT-OC-004: Incentive Misalignment Between Manager and Worker.
+    [Bucket B partial — fires when objective_tag can be inferred]
+
+    Agent A delegates_to Agent B and their objective_tag values differ.
+    """
+    findings: list[Finding] = []
+
+    for edge in graph.edges:
+        if edge.edge_type != EdgeType.DELEGATES_TO:
+            continue
+
+        src = graph.nodes.get(edge.source)
+        tgt = graph.nodes.get(edge.target)
+        if not src or not tgt:
+            continue
+        if src.node_type != NodeType.AGENT or tgt.node_type != NodeType.AGENT:
+            continue
+
+        tag_src = src.objective_tag
+        tag_tgt = tgt.objective_tag
+        if not tag_src or not tag_tgt or tag_src == tag_tgt:
+            continue
+
+        findings.append(_make_finding(
+            "STRAT-OC-004",
+            "Incentive Misalignment Between Manager and Worker",
+            Severity.MEDIUM,
+            "OC",
+            [edge.source, edge.target],
+            graph,
+            f"{src.label} (objective: {tag_src}) delegates to "
+            f"{tgt.label} (objective: {tag_tgt}). Potential incentive tension.",
+            "Align objectives or add explicit output constraints on delegation.",
+            subgraph_type="pair",
+        ))
+
+    return findings[:3]
+
+
 # ===========================================================================
-# SIGNAL INTEGRITY & ERROR PROPAGATION (SI)
+# SIGNAL INTEGRITY & ERROR PROPAGATION (SI) — 7 rules
 # ===========================================================================
 
 def _si001_error_laundering(graph: RiskGraph) -> list[Finding]:
-    """STRAT-SI-001: Silent Error Laundering Across Agent Boundary.
+    """STRAT-SI-001: Silent Error Propagation Across Agent Boundary. [CROWN JEWEL]
 
-    Agent with default_on_error/fail_silent feeding downstream agents.
+    Agent A has error_handling_pattern = fail_silent or default_on_error AND
+    has feeds_into edge to Agent B, AND Agent B has no input validation.
     """
     findings: list[Finding] = []
 
@@ -719,13 +792,18 @@ def _si001_error_laundering(graph: RiskGraph) -> list[Finding]:
         if node.error_handling_pattern not in ("default_on_error", "fail_silent"):
             continue
 
-        # Find downstream agents
         downstream = []
         for edge in graph.edges:
             if edge.source == nid and edge.edge_type == EdgeType.FEEDS_INTO:
                 tgt = graph.nodes.get(edge.target)
                 if tgt and tgt.node_type == NodeType.AGENT:
-                    downstream.append(edge.target)
+                    # Check if target has input validation
+                    has_validation = any(
+                        graph.nodes.get(tid) and graph.nodes[tid].validation_on_input
+                        for tid in _agent_tools(graph, edge.target)
+                    )
+                    if not has_validation:
+                        downstream.append(edge.target)
 
         if not downstream:
             continue
@@ -733,14 +811,14 @@ def _si001_error_laundering(graph: RiskGraph) -> list[Finding]:
         downstream_labels = [graph.nodes[d].label for d in downstream if d in graph.nodes]
         findings.append(_make_finding(
             "STRAT-SI-001",
-            "Silent Error Laundering Across Agent Boundary",
+            "Silent Error Propagation Across Agent Boundary",
             Severity.CRITICAL,
             "SI",
             [nid] + downstream,
             graph,
             f"{node.label} returns defaults on error (pattern: {node.error_handling_pattern}) "
-            f"and feeds into {', '.join(downstream_labels)}. "
-            f"Error signal is permanently lost at agent boundary.",
+            f"and feeds into {', '.join(downstream_labels)} with no input validation. "
+            f"Error signal is permanently lost.",
             "Replace default-on-error with explicit error propagation. "
             "Return error types, not default values.",
             subgraph_type="path",
@@ -749,10 +827,118 @@ def _si001_error_laundering(graph: RiskGraph) -> list[Finding]:
     return findings[:3]
 
 
-def _si004_unvalidated_schema(graph: RiskGraph) -> list[Finding]:
-    """STRAT-SI-004: Unvalidated Cross-Agent Schema Assumption.
+def _si002_confidence_laundering(graph: RiskGraph) -> list[Finding]:
+    """STRAT-SI-002: Confidence Laundering Through Agent Chain.
 
-    feeds_into edge without schema_validated = True.
+    Chain of 2+ feeds_into edges where no agent adds confidence/uncertainty
+    metadata to output.
+    """
+    chain_edges = {EdgeType.FEEDS_INTO.value}
+    paths = find_paths(graph, chain_edges, source_filter="agent", min_length=2, max_length=6)
+
+    findings: list[Finding] = []
+    seen: set[tuple[str, ...]] = set()
+
+    for path in paths:
+        if not all(
+            graph.nodes.get(nid) and graph.nodes[nid].node_type == NodeType.AGENT
+            for nid in path
+        ):
+            continue
+
+        # Check if any edge preserves uncertainty
+        has_uncertainty = False
+        for i in range(len(path) - 1):
+            for edge in graph.edges:
+                if (edge.source == path[i] and edge.target == path[i + 1]
+                        and edge.edge_type == EdgeType.FEEDS_INTO
+                        and edge.preserves_uncertainty):
+                    has_uncertainty = True
+                    break
+            if has_uncertainty:
+                break
+
+        if has_uncertainty:
+            continue
+
+        path_key = tuple(path)
+        if path_key in seen:
+            continue
+        seen.add(path_key)
+
+        findings.append(_make_finding(
+            "STRAT-SI-002",
+            "Confidence Laundering Through Agent Chain",
+            Severity.HIGH,
+            "SI",
+            path,
+            graph,
+            f"Chain of {len(path)} agents via feeds_into with no confidence/uncertainty "
+            f"metadata preserved. Downstream decisions treat uncertain data as certain.",
+            "Add confidence scores to agent outputs. Use structured output with "
+            "confidence fields.",
+            subgraph_type="path",
+            chain=path,
+        ))
+
+    return findings[:3]
+
+
+def _si003_stale_data(graph: RiskGraph) -> list[Finding]:
+    """STRAT-SI-003: Stale Data Consumption.
+
+    Agent reads_from data_store with ttl_configured=False AND another agent
+    writes_to it.
+    """
+    findings: list[Finding] = []
+
+    for ds_id, ds_node in graph.nodes.items():
+        if ds_node.node_type != NodeType.DATA_STORE:
+            continue
+        if ds_node.ttl_configured:
+            continue
+
+        # Find readers and writers
+        readers: set[str] = set()
+        writers: set[str] = set()
+        for edge in graph.edges:
+            if edge.edge_type == EdgeType.READS_FROM:
+                if edge.source == ds_id:
+                    tgt = graph.nodes.get(edge.target)
+                    if tgt and tgt.node_type == NodeType.AGENT:
+                        readers.add(edge.target)
+            elif edge.edge_type == EdgeType.WRITES_TO:
+                if edge.target == ds_id:
+                    src = graph.nodes.get(edge.source)
+                    if src and src.node_type == NodeType.AGENT:
+                        writers.add(edge.source)
+
+        if not readers or not writers:
+            continue
+
+        reader_labels = [graph.nodes[r].label for r in list(readers)[:3] if r in graph.nodes]
+        writer_labels = [graph.nodes[w].label for w in list(writers)[:3] if w in graph.nodes]
+        findings.append(_make_finding(
+            "STRAT-SI-003",
+            "Stale Data Consumption",
+            Severity.MEDIUM,
+            "SI",
+            list(readers)[:2] + [ds_id] + list(writers)[:2],
+            graph,
+            f"Data store {ds_node.label} has no TTL. Writers: {', '.join(writer_labels)}. "
+            f"Readers: {', '.join(reader_labels)}. Data could go stale.",
+            "Configure TTL or freshness checks on the data store.",
+            subgraph_type="pair",
+        ))
+
+    return findings[:3]
+
+
+def _si004_schema_mismatch(graph: RiskGraph) -> list[Finding]:
+    """STRAT-SI-004: Schema Mismatch on Data Flow.
+
+    feeds_into edge where schema_validated=False AND source agent has no
+    output_schema OR target agent has no documented expected input.
     """
     findings: list[Finding] = []
 
@@ -766,12 +952,13 @@ def _si004_unvalidated_schema(graph: RiskGraph) -> list[Finding]:
         src = graph.nodes.get(edge.source)
         tgt = graph.nodes.get(edge.target)
         if src and tgt and src.node_type == NodeType.AGENT and tgt.node_type == NodeType.AGENT:
-            unvalidated_edges.append((edge.source, edge.target))
+            # Additional check: does source have output_schema?
+            if not src.output_schema:
+                unvalidated_edges.append((edge.source, edge.target))
 
     if not unvalidated_edges:
         return []
 
-    # Group into one finding
     all_agents = set()
     for src, tgt in unvalidated_edges:
         all_agents.add(src)
@@ -785,8 +972,8 @@ def _si004_unvalidated_schema(graph: RiskGraph) -> list[Finding]:
 
     findings.append(_make_finding(
         "STRAT-SI-004",
-        "Unvalidated Cross-Agent Schema Assumption",
-        Severity.MEDIUM,
+        "Schema Mismatch on Data Flow",
+        Severity.HIGH,
         "SI",
         list(all_agents),
         graph,
@@ -794,55 +981,112 @@ def _si004_unvalidated_schema(graph: RiskGraph) -> list[Finding]:
         f"{pairs_desc}.",
         "Add output_pydantic or output_json on upstream agents. "
         "Use TypedDict State for LangGraph.",
-        subgraph_type="edge",
+        subgraph_type="path",
     ))
 
     return findings
 
 
-def _si006_untyped_channel(graph: RiskGraph) -> list[Finding]:
-    """STRAT-SI-006: Untyped Inter-Agent Data Channel.
+def _si005_unvalidated_external(graph: RiskGraph) -> list[Finding]:
+    """STRAT-SI-005: Unvalidated External Data Ingestion.
 
-    feeds_into edges where neither source has structured output nor target has input parsing.
-    Same as SI-004 but focuses on complete absence of typing.
+    External service -> capability -> agent path with no validation_on_input
+    on the capability.
     """
-    # This finding is similar to SI-004 but with different severity context.
-    # We only fire it if there are no schema contracts at all across the system.
-    total_feeds = 0
-    validated_feeds = 0
+    findings: list[Finding] = []
+
+    for nid, node in graph.nodes.items():
+        if node.node_type != NodeType.CAPABILITY:
+            continue
+        if node.validation_on_input:
+            continue
+        if not node.external_service:
+            continue
+
+        # Find owning agent
+        agent_id = None
+        for edge in graph.edges:
+            if edge.edge_type == EdgeType.TOOL_OF and edge.source == nid:
+                agent_id = edge.target
+                break
+
+        if not agent_id:
+            continue
+
+        # Find connected external service
+        ext_id = None
+        for edge in graph.edges:
+            if edge.source == nid and edge.edge_type in (EdgeType.CALLS, EdgeType.SENDS_TO):
+                ext = graph.nodes.get(edge.target)
+                if ext and ext.node_type in (NodeType.EXTERNAL_SERVICE, NodeType.MCP_SERVER):
+                    ext_id = edge.target
+                    break
+
+        affected = [nid]
+        if ext_id:
+            affected.insert(0, ext_id)
+        affected.append(agent_id)
+
+        findings.append(_make_finding(
+            "STRAT-SI-005",
+            "Unvalidated External Data Ingestion",
+            Severity.HIGH,
+            "SI",
+            affected,
+            graph,
+            f"External data flows through {node.label} to agent without input validation.",
+            "Add input validation on capabilities that ingest external data.",
+            subgraph_type="path",
+        ))
+
+    return findings[:3]
+
+
+def _si006_error_swallowing_trust(graph: RiskGraph) -> list[Finding]:
+    """STRAT-SI-006: Error Swallowing at Trust Boundary.
+
+    Edge crossing trust boundary where the receiving agent has
+    error_handling_pattern=fail_silent.
+    """
+    findings: list[Finding] = []
 
     for edge in graph.edges:
-        if edge.edge_type == EdgeType.FEEDS_INTO:
-            src = graph.nodes.get(edge.source)
-            tgt = graph.nodes.get(edge.target)
-            if src and tgt and src.node_type == NodeType.AGENT and tgt.node_type == NodeType.AGENT:
-                total_feeds += 1
-                if edge.schema_validated:
-                    validated_feeds += 1
+        if not edge.trust_crossing:
+            continue
+        if edge.edge_type not in (EdgeType.FEEDS_INTO, EdgeType.DELEGATES_TO):
+            continue
 
-    if total_feeds == 0 or validated_feeds > 0:
-        return []
+        tgt = graph.nodes.get(edge.target)
+        if not tgt or tgt.node_type != NodeType.AGENT:
+            continue
+        if tgt.error_handling_pattern != "fail_silent":
+            continue
 
-    # All channels are untyped
-    agent_ids = [nid for nid, n in graph.nodes.items() if n.node_type == NodeType.AGENT]
-    return [_make_finding(
-        "STRAT-SI-006",
-        "Untyped Inter-Agent Data Channel",
-        Severity.MEDIUM,
-        "SI",
-        agent_ids[:5],
-        graph,
-        f"All {total_feeds} inter-agent data flows use unstructured strings. "
-        f"No schema contracts detected anywhere in the system.",
-        "Define output schemas (Pydantic models, TypedDict) on all inter-agent communication.",
-        subgraph_type="edge",
-    )]
+        src = graph.nodes.get(edge.source)
+        if not src:
+            continue
+
+        findings.append(_make_finding(
+            "STRAT-SI-006",
+            "Error Swallowing at Trust Boundary",
+            Severity.HIGH,
+            "SI",
+            [edge.source, edge.target],
+            graph,
+            f"{tgt.label} silently swallows errors at trust boundary crossing "
+            f"from {src.label}. Cross-boundary failures become invisible.",
+            "Replace fail_silent with explicit error propagation at trust boundaries.",
+            subgraph_type="path",
+        ))
+
+    return findings[:3]
 
 
-def _si007_single_data_source(graph: RiskGraph) -> list[Finding]:
-    """STRAT-SI-007: Single Data Source for Critical Decision.
+def _si007_aggregation_no_provenance(graph: RiskGraph) -> list[Finding]:
+    """STRAT-SI-007: Aggregation Without Provenance.
 
-    Agent with financial/destructive/outbound tools has only one reads_from edge.
+    Agent that reads_from 3+ data stores OR receives feeds_into from 3+ agents,
+    AND produces a single output with no source attribution in output schema.
     """
     findings: list[Finding] = []
 
@@ -850,37 +1094,36 @@ def _si007_single_data_source(graph: RiskGraph) -> list[Finding]:
         if node.node_type != NodeType.AGENT:
             continue
 
-        tools = _agent_tools(graph, nid)
-        kinds = _tool_kinds(graph, tools)
-
-        if not kinds & {"financial", "destructive", "outbound"}:
-            continue
-
-        # Count data sources (reads_from edges via tools)
+        # Count data sources
         data_sources: set[str] = set()
-        for tid in tools:
-            for edge in graph.edges:
-                if edge.target == tid and edge.edge_type == EdgeType.READS_FROM:
+        for edge in graph.edges:
+            if edge.target == nid and edge.edge_type == EdgeType.READS_FROM:
+                data_sources.add(edge.source)
+            elif edge.target == nid and edge.edge_type == EdgeType.FEEDS_INTO:
+                src = graph.nodes.get(edge.source)
+                if src and src.node_type == NodeType.AGENT:
                     data_sources.add(edge.source)
 
-        if len(data_sources) != 1:
+        if len(data_sources) < 3:
             continue
 
-        ds_id = next(iter(data_sources))
-        ds = graph.nodes.get(ds_id)
-        ds_label = ds.label if ds else ds_id
+        # Check for provenance in output schema
+        if node.output_schema and "source" in node.output_schema.lower():
+            continue
 
+        source_labels = [
+            graph.nodes[s].label for s in list(data_sources)[:4] if s in graph.nodes
+        ]
         findings.append(_make_finding(
             "STRAT-SI-007",
-            "Single Data Source for Critical Decision",
+            "Aggregation Without Provenance",
             Severity.MEDIUM,
             "SI",
-            [nid, ds_id],
+            [nid] + list(data_sources)[:3],
             graph,
-            f"{node.label} makes critical decisions "
-            f"({', '.join(kinds & {'financial', 'destructive', 'outbound'})}) "
-            f"based on single data source: {ds_label}.",
-            "Add corroborating data sources or validation against multiple inputs.",
+            f"{node.label} aggregates {len(data_sources)} sources "
+            f"({', '.join(source_labels)}) with no provenance tracking.",
+            "Add source attribution to output schema.",
             subgraph_type="node",
         ))
 
@@ -888,16 +1131,16 @@ def _si007_single_data_source(graph: RiskGraph) -> list[Finding]:
 
 
 # ===========================================================================
-# EMERGENT AUTHORITY & SCOPE CREEP (EA)
+# EMERGENT AUTHORITY & SCOPE CREEP (EA) — 5 rules
 # ===========================================================================
 
-def _ea001_transitive_escalation(graph: RiskGraph) -> list[Finding]:
-    """STRAT-EA-001: Transitive Authority Escalation via Delegation Chain.
+def _ea001_implicit_authority(graph: RiskGraph) -> list[Finding]:
+    """STRAT-EA-001: Implicit Authority Escalation Through Delegation.
 
-    Agent's effective capabilities exceed direct capabilities through delegation.
+    implicit_authority_over computed edges exist — agent can reach capabilities
+    through delegation that it wasn't directly assigned.
     """
     tc = compute_transitive_capabilities(graph)
-
     findings: list[Finding] = []
 
     for agent_id, (direct, effective) in tc.items():
@@ -905,22 +1148,12 @@ def _ea001_transitive_escalation(graph: RiskGraph) -> list[Finding]:
         if not escalated:
             continue
 
-        # Only flag high-risk escalations
-        high_risk_escalated = []
-        for tid in escalated:
-            kind = tid.rsplit("_", 1)[-1] if "_" in tid else ""
-            if kind in ("financial", "destructive", "outbound", "code_exec"):
-                high_risk_escalated.append(tid)
-
-        if not high_risk_escalated:
-            continue
-
         node = graph.nodes.get(agent_id)
         if not node:
             continue
 
         escalated_labels = [
-            graph.nodes[tid].label for tid in high_risk_escalated[:4]
+            graph.nodes[tid].label for tid in list(escalated)[:4]
             if tid in graph.nodes
         ]
         direct_labels = [
@@ -929,14 +1162,14 @@ def _ea001_transitive_escalation(graph: RiskGraph) -> list[Finding]:
 
         findings.append(_make_finding(
             "STRAT-EA-001",
-            "Transitive Authority Escalation via Delegation Chain",
-            Severity.CRITICAL,
+            "Implicit Authority Escalation Through Delegation",
+            Severity.HIGH,
             "EA",
-            [agent_id] + high_risk_escalated[:3],
+            [agent_id] + list(escalated)[:3],
             graph,
             f"{node.label} has {len(direct)} direct capabilities but can "
-            f"effectively trigger {len(effective)} through delegation. "
-            f"Escalated high-risk: {', '.join(escalated_labels)}.",
+            f"reach {len(effective)} through delegation. "
+            f"Escalated: {', '.join(escalated_labels)}.",
             "Implement capability scoping on delegation. "
             "Use tools= parameter on Task to limit delegate capabilities.",
             subgraph_type="transitive_closure",
@@ -949,127 +1182,475 @@ def _ea001_transitive_escalation(graph: RiskGraph) -> list[Finding]:
     return findings[:3]
 
 
-def _ea002_unbounded_delegation(graph: RiskGraph) -> list[Finding]:
-    """STRAT-EA-002: Unbounded Task Delegation Scope.
+def _ea002_capability_aggregation(graph: RiskGraph) -> list[Finding]:
+    """STRAT-EA-002: Capability Aggregation Exceeding Role Scope.
 
-    allow_delegation=True with no scoping, and delegate has high-risk capabilities.
+    Agent with tools spanning 3+ distinct regulatory_category values or
+    3+ distinct domain areas.
     """
     findings: list[Finding] = []
 
-    for edge in graph.edges:
-        if edge.edge_type != EdgeType.DELEGATES_TO:
-            continue
-        if edge.scoped:
-            continue  # Already scoped
-
-        src = graph.nodes.get(edge.source)
-        tgt = graph.nodes.get(edge.target)
-        if not src or not tgt:
-            continue
-        if src.node_type != NodeType.AGENT or tgt.node_type != NodeType.AGENT:
+    for nid, node in graph.nodes.items():
+        if node.node_type != NodeType.AGENT:
             continue
 
-        # Check delegate's capabilities
-        tools = _agent_tools(graph, edge.target)
-        kinds = _tool_kinds(graph, tools)
-        high_risk = kinds & {"financial", "destructive", "outbound", "code_exec"}
-
-        if not high_risk:
+        tools = _agent_tools(graph, nid)
+        if len(tools) < 3:
             continue
 
+        categories: set[str] = set()
+        for tid in tools:
+            tool_node = graph.nodes.get(tid)
+            if tool_node and tool_node.regulatory_category:
+                categories.add(tool_node.regulatory_category)
+
+        if len(categories) >= 3:
+            findings.append(_make_finding(
+                "STRAT-EA-002",
+                "Capability Aggregation Exceeding Role Scope",
+                Severity.MEDIUM,
+                "EA",
+                [nid] + tools[:3],
+                graph,
+                f"{node.label} has tools spanning {len(categories)} regulatory categories: "
+                f"{', '.join(sorted(categories))}.",
+                "Review capability assignments. Split into specialized sub-agents.",
+                subgraph_type="node",
+            ))
+
+    return findings[:3]
+
+
+def _ea003_unconstrained_delegation(graph: RiskGraph) -> list[Finding]:
+    """STRAT-EA-003: Unconstrained Task Delegation.
+
+    Agent with delegation_enabled=True AND scoped=False on its delegates_to
+    edges (can delegate to any agent with no scope constraint).
+    """
+    findings: list[Finding] = []
+
+    for nid, node in graph.nodes.items():
+        if node.node_type != NodeType.AGENT:
+            continue
+        if not node.delegation_enabled:
+            continue
+
+        # Check delegates_to edges for scoping
+        unscoped_targets = []
+        for edge in graph.edges:
+            if (edge.source == nid and edge.edge_type == EdgeType.DELEGATES_TO
+                    and not edge.scoped):
+                unscoped_targets.append(edge.target)
+
+        if not unscoped_targets:
+            continue
+
+        target_labels = [
+            graph.nodes[t].label for t in unscoped_targets[:4] if t in graph.nodes
+        ]
         findings.append(_make_finding(
-            "STRAT-EA-002",
-            "Unbounded Task Delegation Scope",
+            "STRAT-EA-003",
+            "Unconstrained Task Delegation",
             Severity.HIGH,
             "EA",
-            [edge.source, edge.target],
+            [nid] + unscoped_targets[:3],
             graph,
-            f"{src.label} delegates to {tgt.label} without capability scoping. "
-            f"Delegate has: {', '.join(high_risk)}.",
-            "Scope delegation by specifying which tools are available. "
-            "Use tools= parameter on Task.",
-            subgraph_type="edge",
+            f"{node.label} has delegation_enabled with no scope constraints. "
+            f"Unscoped targets: {', '.join(target_labels)}.",
+            "Scope delegation by specifying tools= on Task.",
+            subgraph_type="node",
         ))
 
     return findings[:3]
 
 
-def _ea003_mcp_aggregation(graph: RiskGraph) -> list[Finding]:
-    """STRAT-EA-003: MCP Server Capability Aggregation.
+def _ea004_transitive_data_access(graph: RiskGraph) -> list[Finding]:
+    """STRAT-EA-004: Transitive Data Access Through Delegation.
 
-    Agent connected to >= 2 MCP servers spanning >= 3 high-risk categories.
+    Agent A can reach data stores via delegation chain that it has no direct
+    reads_from/writes_to edges to.
     """
-    # Build agent -> MCP servers map
-    agent_mcp: dict[str, list[str]] = defaultdict(list)
+    # Build agent -> direct data stores
+    agent_direct_ds: dict[str, set[str]] = defaultdict(set)
     for edge in graph.edges:
-        if edge.edge_type == EdgeType.CALLS:
+        if edge.edge_type in (EdgeType.READS_FROM, EdgeType.WRITES_TO):
             src = graph.nodes.get(edge.source)
             tgt = graph.nodes.get(edge.target)
-            if not src or not tgt:
-                continue
-            if tgt.node_type == NodeType.MCP_SERVER:
-                # Find agent that owns this tool
-                for tool_edge in graph.edges:
-                    if tool_edge.source == edge.source and tool_edge.edge_type == EdgeType.TOOL_OF:
-                        agent_mcp[tool_edge.target].append(edge.target)
+            if src and src.node_type == NodeType.AGENT:
+                if tgt and tgt.node_type == NodeType.DATA_STORE:
+                    agent_direct_ds[edge.source].add(edge.target)
+            elif tgt and tgt.node_type == NodeType.AGENT:
+                if src and src.node_type == NodeType.DATA_STORE:
+                    agent_direct_ds[edge.target].add(edge.source)
 
-    # Also count agents with direct MCP connections
-    for nid, node in graph.nodes.items():
-        if node.node_type != NodeType.AGENT:
-            continue
-        for edge in graph.edges:
-            if edge.source == nid and edge.edge_type == EdgeType.CALLS:
-                tgt = graph.nodes.get(edge.target)
-                if tgt and tgt.node_type == NodeType.MCP_SERVER:
-                    if edge.target not in agent_mcp.get(nid, []):
-                        agent_mcp.setdefault(nid, []).append(edge.target)
+    # Build delegation adjacency
+    delegation_adj: dict[str, set[str]] = defaultdict(set)
+    for edge in graph.edges:
+        if edge.edge_type in (EdgeType.DELEGATES_TO, EdgeType.FEEDS_INTO):
+            delegation_adj[edge.source].add(edge.target)
 
     findings: list[Finding] = []
 
-    for agent_id, mcp_ids in agent_mcp.items():
-        unique_mcps = list(set(mcp_ids))
-        if len(unique_mcps) < 2:
+    for agent_id in list(agent_direct_ds.keys()):
+        node = graph.nodes.get(agent_id)
+        if not node or node.node_type != NodeType.AGENT:
             continue
 
-        # Aggregate capability categories across MCP servers
-        # Infer categories from MCP server labels and connected capabilities
-        categories: set[str] = set()
-        for mcp_id in unique_mcps:
-            mcp = graph.nodes.get(mcp_id)
-            if not mcp:
-                continue
-            label = mcp.label.lower()
-            if any(k in label for k in ("slack", "email", "discord", "teams")):
-                categories.add("outbound")
-            if any(k in label for k in ("github", "exec", "code")):
-                categories.add("code_exec")
-            if any(k in label for k in ("postgres", "mysql", "mongo", "redis", "database", "db")):
-                categories.add("data_access")
-            if any(k in label for k in ("stripe", "payment", "billing")):
-                categories.add("financial")
-            if any(k in label for k in ("file", "s3", "storage")):
-                categories.add("file_system")
+        direct_ds = agent_direct_ds.get(agent_id, set())
 
-        if len(categories) < 3:
+        # BFS through delegation
+        visited: set[str] = set()
+        queue = list(delegation_adj.get(agent_id, set()))
+        while queue:
+            current = queue.pop(0)
+            if current in visited:
+                continue
+            visited.add(current)
+            queue.extend(delegation_adj.get(current, set()) - visited)
+
+        # Collect data stores of reachable agents
+        transitive_ds: set[str] = set()
+        for reached_id in visited:
+            transitive_ds.update(agent_direct_ds.get(reached_id, set()))
+
+        escalated_ds = transitive_ds - direct_ds
+        if not escalated_ds:
+            continue
+
+        ds_labels = [graph.nodes[d].label for d in list(escalated_ds)[:4] if d in graph.nodes]
+        findings.append(_make_finding(
+            "STRAT-EA-004",
+            "Transitive Data Access Through Delegation",
+            Severity.MEDIUM,
+            "EA",
+            [agent_id] + list(escalated_ds)[:3],
+            graph,
+            f"{node.label} can reach {len(escalated_ds)} data stores via delegation "
+            f"that it has no direct access to: {', '.join(ds_labels)}.",
+            "Review delegation scope and data access boundaries.",
+            subgraph_type="transitive_closure",
+        ))
+
+    return findings[:3]
+
+
+def _ea006_cross_crew_leakage(graph: RiskGraph) -> list[Finding]:
+    """STRAT-EA-006: Cross-Crew Authority Leakage.
+
+    Agent in Crew A can reach agents in Crew B through delegation or data flow,
+    with no explicit cross-crew authorization.
+    """
+    # Build crew membership map
+    crew_map: dict[str, str] = {}
+    for nid, node in graph.nodes.items():
+        if node.node_type == NodeType.AGENT and node.agent_domain:
+            crew_map[nid] = node.agent_domain
+
+    if len(set(crew_map.values())) < 2:
+        return []  # Need at least 2 crews
+
+    # Build adjacency
+    adj: dict[str, set[str]] = defaultdict(set)
+    for edge in graph.edges:
+        if edge.edge_type in (EdgeType.DELEGATES_TO, EdgeType.FEEDS_INTO):
+            adj[edge.source].add(edge.target)
+
+    findings: list[Finding] = []
+
+    for agent_id, crew in crew_map.items():
+        # BFS to find reachable agents
+        visited: set[str] = set()
+        queue = list(adj.get(agent_id, set()))
+        while queue:
+            current = queue.pop(0)
+            if current in visited:
+                continue
+            visited.add(current)
+            queue.extend(adj.get(current, set()) - visited)
+
+        # Check for cross-crew reach
+        cross_crew = [
+            nid for nid in visited
+            if nid in crew_map and crew_map[nid] != crew
+        ]
+
+        if not cross_crew:
             continue
 
         node = graph.nodes.get(agent_id)
         if not node:
             continue
 
-        mcp_labels = [graph.nodes[m].label for m in unique_mcps if m in graph.nodes]
+        cross_labels = [graph.nodes[c].label for c in cross_crew[:3] if c in graph.nodes]
         findings.append(_make_finding(
-            "STRAT-EA-003",
-            "MCP Server Capability Aggregation",
+            "STRAT-EA-006",
+            "Cross-Crew Authority Leakage",
             Severity.HIGH,
             "EA",
-            [agent_id] + unique_mcps,
+            [agent_id] + cross_crew[:3],
             graph,
-            f"{node.label} connects to {len(unique_mcps)} MCP servers "
-            f"[{', '.join(mcp_labels)}] spanning {len(categories)} high-risk "
-            f"categories: {', '.join(sorted(categories))}.",
-            "Review aggregate capability profile holistically. "
-            "Split agent into specialized sub-agents.",
+            f"{node.label} (crew: {crew}) can reach agents in other crews: "
+            f"{', '.join(cross_labels)}.",
+            "Add explicit cross-crew authorization or isolation boundaries.",
+            subgraph_type="transitive_closure",
+        ))
+
+    return findings[:3]
+
+
+# ===========================================================================
+# AGGREGATE BEHAVIORAL EXPOSURE (AB) — 5 rules
+# ===========================================================================
+
+def _ab001_unbounded_volume(graph: RiskGraph) -> list[Finding]:
+    """STRAT-AB-001: Unbounded Autonomous Volume.
+
+    Agent with capabilities performing irreversible actions AND no
+    rate_limited_by edge AND no human checkpoint.
+    """
+    findings: list[Finding] = []
+
+    for nid, node in graph.nodes.items():
+        if node.node_type != NodeType.AGENT:
+            continue
+
+        # Check for irreversible capabilities
+        tools = _agent_tools(graph, nid)
+        irreversible = [
+            tid for tid in tools
+            if graph.nodes.get(tid) and graph.nodes[tid].reversibility == "irreversible"
+        ]
+        if not irreversible:
+            continue
+
+        # Check for rate limiting
+        has_rate_limit = any(
+            e.source == nid and e.edge_type == EdgeType.RATE_LIMITED_BY
+            for e in graph.edges
+        )
+        if has_rate_limit:
+            continue
+
+        # Check for human checkpoint
+        if node.human_input_enabled:
+            continue
+        if _has_approval_gate(graph, nid):
+            continue
+
+        irrev_labels = [
+            graph.nodes[tid].label for tid in irreversible[:3] if tid in graph.nodes
+        ]
+        findings.append(_make_finding(
+            "STRAT-AB-001",
+            "Unbounded Autonomous Volume",
+            Severity.HIGH,
+            "AB",
+            [nid] + irreversible[:3],
+            graph,
+            f"{node.label} has irreversible capabilities "
+            f"[{', '.join(irrev_labels)}] with no rate limiting or human checkpoint.",
+            "Add rate_limited_by guardrail or human_input on the agent.",
+            subgraph_type="node",
+        ))
+
+    return findings[:3]
+
+
+def _ab003_regulatory_no_audit(graph: RiskGraph) -> list[Finding]:
+    """STRAT-AB-003: Regulatory Exposure Without Audit Trail.
+
+    Capability with regulatory_category != null AND no observed_by edge
+    on the agent performing it.
+    """
+    findings: list[Finding] = []
+
+    for nid, node in graph.nodes.items():
+        if node.node_type != NodeType.CAPABILITY:
+            continue
+        if not node.regulatory_category:
+            continue
+
+        # Find owning agent
+        agent_id = None
+        for edge in graph.edges:
+            if edge.edge_type == EdgeType.TOOL_OF and edge.source == nid:
+                agent_id = edge.target
+                break
+
+        if not agent_id:
+            continue
+
+        # Check for observability on the agent
+        if _has_observed_by(graph, agent_id):
+            continue
+
+        agent_node = graph.nodes.get(agent_id)
+        agent_label = agent_node.label if agent_node else agent_id
+
+        findings.append(_make_finding(
+            "STRAT-AB-003",
+            "Regulatory Exposure Without Audit Trail",
+            Severity.HIGH,
+            "AB",
+            [agent_id, nid],
+            graph,
+            f"{node.label} has regulatory category '{node.regulatory_category}' "
+            f"but agent {agent_label} has no observability/audit trail.",
+            "Add observability sink (LangSmith, OpenTelemetry) covering this agent.",
+            subgraph_type="node",
+        ))
+
+    return findings[:3]
+
+
+def _ab004_monoculture(graph: RiskGraph) -> list[Finding]:
+    """STRAT-AB-004: Monoculture Risk — Single LLM Provider.
+
+    All agents in the system use the same llm_model provider.
+    """
+    agents_with_model: dict[str, str] = {}
+    for nid, node in graph.nodes.items():
+        if node.node_type != NodeType.AGENT and node.llm_model:
+            continue
+        if node.node_type == NodeType.AGENT and node.llm_model:
+            # Extract provider from model name
+            model = node.llm_model.lower()
+            if any(k in model for k in ("gpt", "openai", "o1", "o3")):
+                agents_with_model[nid] = "openai"
+            elif any(k in model for k in ("claude", "anthropic")):
+                agents_with_model[nid] = "anthropic"
+            elif any(k in model for k in ("gemini", "google", "palm")):
+                agents_with_model[nid] = "google"
+            elif any(k in model for k in ("llama", "meta")):
+                agents_with_model[nid] = "meta"
+            else:
+                agents_with_model[nid] = model.split("-")[0] if "-" in model else model
+
+    if len(agents_with_model) < 2:
+        return []
+
+    providers = set(agents_with_model.values())
+    if len(providers) > 1:
+        return []  # Multiple providers — no monoculture
+
+    provider = next(iter(providers))
+    agent_ids = list(agents_with_model.keys())
+
+    return [_make_finding(
+        "STRAT-AB-004",
+        "Monoculture Risk \u2014 Single LLM Provider",
+        Severity.MEDIUM,
+        "AB",
+        agent_ids[:5],
+        graph,
+        f"All {len(agent_ids)} agents use the same LLM provider ({provider}). "
+        f"System-wide correlated failure risk during provider incidents.",
+        "Consider using multiple LLM providers for resilience.",
+        subgraph_type="global",
+    )]
+
+
+def _ab006_no_rollback(graph: RiskGraph) -> list[Finding]:
+    """STRAT-AB-006: No Rollback on Multi-Step Workflow.
+
+    Sequence of 3+ agents via task_sequence edges where at least one
+    capability is irreversible AND no compensating/rollback mechanism detected.
+    """
+    chain_edges = {EdgeType.TASK_SEQUENCE.value}
+    paths = find_paths(graph, chain_edges, source_filter="agent", min_length=3, max_length=8)
+
+    # Also check delegates_to chains if no task_sequence found
+    if not paths:
+        chain_edges = {EdgeType.DELEGATES_TO.value, EdgeType.FEEDS_INTO.value}
+        paths = find_paths(graph, chain_edges, source_filter="agent", min_length=3, max_length=8)
+
+    findings: list[Finding] = []
+
+    for path in paths:
+        if not all(
+            graph.nodes.get(nid) and graph.nodes[nid].node_type == NodeType.AGENT
+            for nid in path
+        ):
+            continue
+
+        # Check for irreversible capabilities in the path
+        has_irreversible = False
+        for nid in path:
+            tools = _agent_tools(graph, nid)
+            for tid in tools:
+                tool_node = graph.nodes.get(tid)
+                if tool_node and tool_node.reversibility == "irreversible":
+                    has_irreversible = True
+                    break
+            if has_irreversible:
+                break
+
+        if not has_irreversible:
+            continue
+
+        findings.append(_make_finding(
+            "STRAT-AB-006",
+            "No Rollback on Multi-Step Workflow",
+            Severity.HIGH,
+            "AB",
+            path,
+            graph,
+            f"Multi-step workflow of {len(path)} agents includes irreversible actions "
+            f"with no compensating transaction or rollback mechanism.",
+            "Implement saga pattern or checkpoint/restore for multi-step workflows.",
+            subgraph_type="path",
+            chain=path,
+        ))
+
+    return findings[:2]
+
+
+def _ab007_external_concentration(graph: RiskGraph) -> list[Finding]:
+    """STRAT-AB-007: Concentration of External Dependencies.
+
+    3+ agents all depend on the same external service (via calls edges from
+    their capabilities) with no fallback_configured=True.
+    """
+    # Build external service -> dependent agents map
+    service_dependents: dict[str, set[str]] = defaultdict(set)
+
+    for edge in graph.edges:
+        if edge.edge_type in (EdgeType.CALLS, EdgeType.SENDS_TO):
+            tgt = graph.nodes.get(edge.target)
+            if tgt and tgt.node_type in (NodeType.EXTERNAL_SERVICE, NodeType.MCP_SERVER):
+                src = graph.nodes.get(edge.source)
+                if src and src.node_type == NodeType.CAPABILITY:
+                    # Find owning agent
+                    for tool_edge in graph.edges:
+                        if (tool_edge.edge_type == EdgeType.TOOL_OF
+                                and tool_edge.source == edge.source):
+                            service_dependents[edge.target].add(tool_edge.target)
+                elif src and src.node_type == NodeType.AGENT:
+                    service_dependents[edge.target].add(edge.source)
+
+    findings: list[Finding] = []
+
+    for service_id, agents in service_dependents.items():
+        if len(agents) < 3:
+            continue
+
+        service = graph.nodes.get(service_id)
+        if not service:
+            continue
+
+        agent_labels = [
+            graph.nodes[a].label for a in list(agents)[:4] if a in graph.nodes
+        ]
+        findings.append(_make_finding(
+            "STRAT-AB-007",
+            "Concentration of External Dependencies",
+            Severity.MEDIUM,
+            "AB",
+            list(agents)[:4] + [service_id],
+            graph,
+            f"{len(agents)} agents depend on {service.label} with no fallback. "
+            f"Dependent agents: {', '.join(agent_labels)}.",
+            "Add fallback mechanisms or circuit breakers for shared dependencies.",
             subgraph_type="node",
         ))
 

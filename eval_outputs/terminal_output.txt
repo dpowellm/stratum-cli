@@ -1,0 +1,36 @@
+============================================================
+STRATUM SCAN — simple_crew fixture
+============================================================
+
+Security Score: 48/100
+Security Findings: 11
+  CRITICAL  STRATUM-002  Destructive action, no human gate
+  HIGH      STRATUM-001  Unguarded data-to-external path (2 paths)
+  HIGH      STRATUM-BR01  Agent sends external messages without human review
+  MEDIUM    STRATUM-008  No error handling on 4 external calls
+  MEDIUM    STRATUM-010  No checkpointing detected
+
+------------------------------------------------------------
+RELIABILITY ANALYSIS
+------------------------------------------------------------
+
+Graph Topology: 1 agents | 5 capabilities | 3 data stores | 9 edges
+Delegation Depth: 0 | Feedback Loops: 0 | Trust Crossings: 5
+
+Reliability Risk Score: 100/100
+
+  CRITICAL  STRAT-DC-002  Irreversible Action Without Approval Gate
+           smtplib
+  CRITICAL  STRAT-DC-002  Irreversible Action Without Approval Gate
+           SerperDevTool
+  CRITICAL  STRAT-DC-002  Irreversible Action Without Approval Gate
+           FileReadTool
+
+  6 structural anomalies detected (advisory)
+
+------------------------------------------------------------
+DUAL-AXIS SUMMARY
+------------------------------------------------------------
+Security Score:    48/100
+Reliability Score: 100/100
+Classification:    Both axes need attention

@@ -1,0 +1,52 @@
+{
+  "global_metrics": {
+    "total_agents": 1,
+    "total_capabilities": 5,
+    "total_data_stores": 3,
+    "total_edges": 9,
+    "total_guardrails": 0,
+    "total_observability_sinks": 0,
+    "max_delegation_depth": 0,
+    "max_data_flow_depth": 0,
+    "graph_density": 0.0818,
+    "strongly_connected_components": 0,
+    "avg_path_length_to_critical": 0.0,
+    "control_coverage_pct": 0.0,
+    "observability_coverage_pct": 0.0,
+    "human_checkpoint_ratio": 0.0,
+    "approval_gate_ratio": 0.0,
+    "trust_boundary_crossings": 5,
+    "unguarded_trust_crossings": 5,
+    "shared_state_conflicts": 0,
+    "irreversible_capabilities": 3,
+    "unguarded_irreversible": 3,
+    "fail_silent_agents_pct": 0.0,
+    "default_on_error_pct": 1.0,
+    "fail_silent_on_critical_path": 0,
+    "error_propagation_paths": 0,
+    "max_betweenness_centrality": 0.0,
+    "single_points_of_failure": 0,
+    "tool_to_agent_ratio": 5.0,
+    "max_tools_per_agent": 0,
+    "feedback_loops_detected": 0,
+    "undampened_feedback_loops": 0,
+    "unvalidated_data_flows": 0,
+    "schema_coverage_pct": 0.0
+  },
+  "per_node_metrics": {
+    "agent_agent": {
+      "betweenness_centrality": 0.0,
+      "closeness_centrality": 0.0,
+      "pagerank": 0.0136,
+      "delegation_depth_downstream": 0,
+      "critical_capabilities_reachable": 0,
+      "implicit_authorities": 0,
+      "guardrail_count": 0,
+      "observability_count": 0,
+      "error_blast_radius": 0
+    }
+  },
+  "security_score": 48,
+  "reliability_score": 100,
+  "gap_classification": "both_poor"
+}

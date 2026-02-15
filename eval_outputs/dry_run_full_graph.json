@@ -1,0 +1,1219 @@
+{
+  "scan_id": "d97d7e80",
+  "graph": {
+    "nodes": [
+      {
+        "id": "cap_psycopg2_data_access",
+        "label": "psycopg2",
+        "node_type": "capability",
+        "source_file": "crew.py",
+        "makes_decisions": false,
+        "error_handling_pattern": "",
+        "betweenness_centrality": 0.0,
+        "reversibility": "conditional"
+      },
+      {
+        "id": "ds_postgresql",
+        "label": "PostgreSQL",
+        "node_type": "data_store",
+        "source_file": "",
+        "makes_decisions": false,
+        "error_handling_pattern": "",
+        "betweenness_centrality": 0.0,
+        "reversibility": ""
+      },
+      {
+        "id": "cap_psycopg2_destructive",
+        "label": "psycopg2",
+        "node_type": "capability",
+        "source_file": "crew.py",
+        "makes_decisions": false,
+        "error_handling_pattern": "",
+        "betweenness_centrality": 0.0,
+        "reversibility": "conditional"
+      },
+      {
+        "id": "ds_psycopg2_write",
+        "label": "PostgreSQL (write)",
+        "node_type": "data_store",
+        "source_file": "",
+        "makes_decisions": false,
+        "error_handling_pattern": "",
+        "betweenness_centrality": 0.0,
+        "reversibility": ""
+      },
+      {
+        "id": "cap_smtplib_outbound",
+        "label": "smtplib",
+        "node_type": "capability",
+        "source_file": "crew.py",
+        "makes_decisions": false,
+        "error_handling_pattern": "",
+        "betweenness_centrality": 0.0,
+        "reversibility": "irreversible"
+      },
+      {
+        "id": "ext_email_smtp",
+        "label": "Email (SMTP)",
+        "node_type": "external",
+        "source_file": "",
+        "makes_decisions": false,
+        "error_handling_pattern": "",
+        "betweenness_centrality": 0.0,
+        "reversibility": ""
+      },
+      {
+        "id": "cap_SerperDevTool_outbound",
+        "label": "SerperDevTool",
+        "node_type": "capability",
+        "source_file": "crew.py",
+        "makes_decisions": false,
+        "error_handling_pattern": "",
+        "betweenness_centrality": 0.0,
+        "reversibility": "irreversible"
+      },
+      {
+        "id": "ext_serper_api",
+        "label": "Serper API",
+        "node_type": "external",
+        "source_file": "",
+        "makes_decisions": false,
+        "error_handling_pattern": "",
+        "betweenness_centrality": 0.0,
+        "reversibility": ""
+      },
+      {
+        "id": "cap_FileReadTool_data_access",
+        "label": "FileReadTool",
+        "node_type": "capability",
+        "source_file": "crew.py",
+        "makes_decisions": false,
+        "error_handling_pattern": "",
+        "betweenness_centrality": 0.0,
+        "reversibility": "irreversible"
+      },
+      {
+        "id": "ds_crewai_tools",
+        "label": "Crewai Tools",
+        "node_type": "data_store",
+        "source_file": "",
+        "makes_decisions": false,
+        "error_handling_pattern": "",
+        "betweenness_centrality": 0.0,
+        "reversibility": ""
+      },
+      {
+        "id": "agent_agent",
+        "label": "Project Manager",
+        "node_type": "agent",
+        "source_file": "crew.py",
+        "makes_decisions": false,
+        "error_handling_pattern": "default_on_error",
+        "betweenness_centrality": 0.0,
+        "reversibility": ""
+      }
+    ],
+    "edges": [
+      {
+        "source": "ds_postgresql",
+        "target": "cap_psycopg2_data_access",
+        "edge_type": "reads_from",
+        "trust_crossing": false,
+        "schema_validated": false
+      },
+      {
+        "source": "cap_psycopg2_destructive",
+        "target": "ds_psycopg2_write",
+        "edge_type": "writes_to",
+        "trust_crossing": false,
+        "schema_validated": false
+      },
+      {
+        "source": "cap_smtplib_outbound",
+        "target": "ext_email_smtp",
+        "edge_type": "sends_to",
+        "trust_crossing": false,
+        "schema_validated": false
+      },
+      {
+        "source": "cap_SerperDevTool_outbound",
+        "target": "ext_serper_api",
+        "edge_type": "sends_to",
+        "trust_crossing": false,
+        "schema_validated": false
+      },
+      {
+        "source": "ds_crewai_tools",
+        "target": "cap_FileReadTool_data_access",
+        "edge_type": "reads_from",
+        "trust_crossing": true,
+        "schema_validated": false
+      },
+      {
+        "source": "cap_psycopg2_data_access",
+        "target": "cap_smtplib_outbound",
+        "edge_type": "shares_with",
+        "trust_crossing": true,
+        "schema_validated": false
+      },
+      {
+        "source": "cap_psycopg2_data_access",
+        "target": "cap_SerperDevTool_outbound",
+        "edge_type": "shares_with",
+        "trust_crossing": true,
+        "schema_validated": false
+      },
+      {
+        "source": "cap_FileReadTool_data_access",
+        "target": "cap_smtplib_outbound",
+        "edge_type": "shares_with",
+        "trust_crossing": true,
+        "schema_validated": false
+      },
+      {
+        "source": "cap_FileReadTool_data_access",
+        "target": "cap_SerperDevTool_outbound",
+        "edge_type": "shares_with",
+        "trust_crossing": true,
+        "schema_validated": false
+      }
+    ]
+  },
+  "structural_metrics": {
+    "global": {
+      "total_agents": 1,
+      "total_capabilities": 5,
+      "total_data_stores": 3,
+      "total_edges": 9,
+      "total_guardrails": 0,
+      "total_observability_sinks": 0,
+      "max_delegation_depth": 0,
+      "max_data_flow_depth": 0,
+      "graph_density": 0.0818,
+      "strongly_connected_components": 0,
+      "avg_path_length_to_critical": 0.0,
+      "control_coverage_pct": 0.0,
+      "observability_coverage_pct": 0.0,
+      "human_checkpoint_ratio": 0.0,
+      "approval_gate_ratio": 0.0,
+      "trust_boundary_crossings": 5,
+      "unguarded_trust_crossings": 5,
+      "shared_state_conflicts": 0,
+      "irreversible_capabilities": 3,
+      "unguarded_irreversible": 3,
+      "fail_silent_agents_pct": 0.0,
+      "default_on_error_pct": 1.0,
+      "fail_silent_on_critical_path": 0,
+      "error_propagation_paths": 0,
+      "max_betweenness_centrality": 0.0,
+      "single_points_of_failure": 0,
+      "tool_to_agent_ratio": 5.0,
+      "max_tools_per_agent": 0,
+      "feedback_loops_detected": 0,
+      "undampened_feedback_loops": 0,
+      "unvalidated_data_flows": 0,
+      "schema_coverage_pct": 0.0
+    },
+    "per_node": {
+      "agent_agent": {
+        "betweenness_centrality": 0.0,
+        "closeness_centrality": 0.0,
+        "pagerank": 0.0136,
+        "delegation_depth_downstream": 0,
+        "critical_capabilities_reachable": 0,
+        "implicit_authorities": 0,
+        "guardrail_count": 0,
+        "observability_count": 0,
+        "error_blast_radius": 0
+      }
+    }
+  },
+  "preconditions": [
+    {
+      "id": "STRAT-DC-002",
+      "severity": "CRITICAL",
+      "title": "Irreversible Action Without Approval Gate",
+      "path": "smtplib",
+      "description": "smtplib is irreversible with no human approval gate.",
+      "evidence": [
+        "crew.py:34"
+      ],
+      "remediation": "Add approval_required guardrail or human_input=True on the Task."
+    },
+    {
+      "id": "STRAT-DC-002",
+      "severity": "CRITICAL",
+      "title": "Irreversible Action Without Approval Gate",
+      "path": "SerperDevTool",
+      "description": "SerperDevTool is irreversible with no human approval gate.",
+      "evidence": [
+        "crew.py"
+      ],
+      "remediation": "Add approval_required guardrail or human_input=True on the Task."
+    },
+    {
+      "id": "STRAT-DC-002",
+      "severity": "CRITICAL",
+      "title": "Irreversible Action Without Approval Gate",
+      "path": "FileReadTool",
+      "description": "FileReadTool is irreversible with no human approval gate.",
+      "evidence": [
+        "crew.py"
+      ],
+      "remediation": "Add approval_required guardrail or human_input=True on the Task."
+    }
+  ],
+  "compositions": [],
+  "structural_anomalies": [
+    {
+      "id": "STRAT-ANOMALY-ZSCORE",
+      "severity": "MEDIUM",
+      "title": "Structural Anomaly: external_service_ratio",
+      "description": "external_service_ratio = 2.00 is 8.3 standard deviations above the reference baseline (mean=0.34, std=0.20)."
+    },
+    {
+      "id": "STRAT-ANOMALY-ZSCORE",
+      "severity": "LOW",
+      "title": "Structural Anomaly: max_chain_depth",
+      "description": "max_chain_depth = 0.00 is 2.0 standard deviations below the reference baseline (mean=3.00, std=1.50)."
+    },
+    {
+      "id": "STRAT-ANOMALY-ORPHAN-CAP",
+      "severity": "LOW",
+      "title": "Orphaned Capability",
+      "description": "psycopg2 has no tool_of edge \u2014 no agent owns it."
+    },
+    {
+      "id": "STRAT-ANOMALY-ORPHAN-CAP",
+      "severity": "LOW",
+      "title": "Orphaned Capability",
+      "description": "psycopg2 has no tool_of edge \u2014 no agent owns it."
+    },
+    {
+      "id": "STRAT-ANOMALY-ORPHAN-CAP",
+      "severity": "LOW",
+      "title": "Orphaned Capability",
+      "description": "smtplib has no tool_of edge \u2014 no agent owns it."
+    },
+    {
+      "id": "STRAT-ANOMALY-EMPTY-AGENT",
+      "severity": "LOW",
+      "title": "Agent With No Capabilities",
+      "description": "Project Manager has no tools \u2014 delegates everything."
+    }
+  ],
+  "graph_motifs": [
+    {
+      "motif_id": "7174ce410a17",
+      "node_types": [
+        "capability",
+        "capability",
+        "data_store"
+      ],
+      "edge_types": [
+        "reads_from",
+        "shares_with"
+      ],
+      "edge_pairs": [
+        [
+          0,
+          1
+        ],
+        [
+          2,
+          0
+        ]
+      ],
+      "instances": 3,
+      "instance_node_ids": [
+        [
+          "cap_psycopg2_data_access",
+          "ds_postgresql",
+          "cap_smtplib_outbound"
+        ],
+        [
+          "cap_smtplib_outbound",
+          "cap_FileReadTool_data_access",
+          "ds_crewai_tools"
+        ],
+        [
+          "cap_SerperDevTool_outbound",
+          "cap_FileReadTool_data_access",
+          "ds_crewai_tools"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": true,
+        "avg_centrality": 0.0,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "3499ff507821",
+      "node_types": [
+        "capability",
+        "capability",
+        "external"
+      ],
+      "edge_types": [
+        "sends_to",
+        "shares_with"
+      ],
+      "edge_pairs": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          2
+        ]
+      ],
+      "instances": 3,
+      "instance_node_ids": [
+        [
+          "cap_psycopg2_data_access",
+          "cap_smtplib_outbound",
+          "ext_email_smtp"
+        ],
+        [
+          "cap_smtplib_outbound",
+          "ext_email_smtp",
+          "cap_FileReadTool_data_access"
+        ],
+        [
+          "cap_SerperDevTool_outbound",
+          "ext_serper_api",
+          "cap_FileReadTool_data_access"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": true,
+        "avg_centrality": 0.0,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "8c7c51688655",
+      "node_types": [
+        "capability",
+        "capability",
+        "data_store",
+        "external"
+      ],
+      "edge_types": [
+        "reads_from",
+        "sends_to",
+        "shares_with"
+      ],
+      "edge_pairs": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          2,
+          0
+        ]
+      ],
+      "instances": 3,
+      "instance_node_ids": [
+        [
+          "cap_psycopg2_data_access",
+          "ds_postgresql",
+          "cap_smtplib_outbound",
+          "ext_email_smtp"
+        ],
+        [
+          "cap_smtplib_outbound",
+          "ext_email_smtp",
+          "cap_FileReadTool_data_access",
+          "ds_crewai_tools"
+        ],
+        [
+          "cap_SerperDevTool_outbound",
+          "ext_serper_api",
+          "cap_FileReadTool_data_access",
+          "ds_crewai_tools"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": true,
+        "avg_centrality": 0.0,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "6dc7fd2fd949",
+      "node_types": [
+        "capability",
+        "capability",
+        "data_store"
+      ],
+      "edge_types": [
+        "reads_from",
+        "shares_with"
+      ],
+      "edge_pairs": [
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          1
+        ]
+      ],
+      "instances": 1,
+      "instance_node_ids": [
+        [
+          "cap_psycopg2_data_access",
+          "ds_postgresql",
+          "cap_SerperDevTool_outbound"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": true,
+        "avg_centrality": 0.0,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "50a0fb30acb6",
+      "node_types": [
+        "capability",
+        "capability",
+        "capability"
+      ],
+      "edge_types": [
+        "shares_with",
+        "shares_with"
+      ],
+      "edge_pairs": [
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          2
+        ]
+      ],
+      "instances": 1,
+      "instance_node_ids": [
+        [
+          "cap_psycopg2_data_access",
+          "cap_smtplib_outbound",
+          "cap_SerperDevTool_outbound"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": true,
+        "avg_centrality": 0.0,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "4158a65e82d4",
+      "node_types": [
+        "capability",
+        "capability",
+        "capability"
+      ],
+      "edge_types": [
+        "shares_with",
+        "shares_with"
+      ],
+      "edge_pairs": [
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          2
+        ]
+      ],
+      "instances": 1,
+      "instance_node_ids": [
+        [
+          "cap_psycopg2_data_access",
+          "cap_smtplib_outbound",
+          "cap_FileReadTool_data_access"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": true,
+        "avg_centrality": 0.0,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "0a339aebec77",
+      "node_types": [
+        "capability",
+        "capability",
+        "external"
+      ],
+      "edge_types": [
+        "sends_to",
+        "shares_with"
+      ],
+      "edge_pairs": [
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "instances": 1,
+      "instance_node_ids": [
+        [
+          "cap_psycopg2_data_access",
+          "cap_SerperDevTool_outbound",
+          "ext_serper_api"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": true,
+        "avg_centrality": 0.0,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "3eea555d26f5",
+      "node_types": [
+        "capability",
+        "capability",
+        "capability"
+      ],
+      "edge_types": [
+        "shares_with",
+        "shares_with"
+      ],
+      "edge_pairs": [
+        [
+          0,
+          1
+        ],
+        [
+          2,
+          1
+        ]
+      ],
+      "instances": 1,
+      "instance_node_ids": [
+        [
+          "cap_psycopg2_data_access",
+          "cap_SerperDevTool_outbound",
+          "cap_FileReadTool_data_access"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": true,
+        "avg_centrality": 0.0,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "7a6238d608ae",
+      "node_types": [
+        "capability",
+        "capability",
+        "capability"
+      ],
+      "edge_types": [
+        "shares_with",
+        "shares_with"
+      ],
+      "edge_pairs": [
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ]
+      ],
+      "instances": 1,
+      "instance_node_ids": [
+        [
+          "cap_smtplib_outbound",
+          "cap_SerperDevTool_outbound",
+          "cap_FileReadTool_data_access"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": true,
+        "avg_centrality": 0.0,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "43143975448c",
+      "node_types": [
+        "capability",
+        "capability",
+        "capability",
+        "data_store"
+      ],
+      "edge_types": [
+        "reads_from",
+        "shares_with",
+        "shares_with"
+      ],
+      "edge_pairs": [
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          3,
+          1
+        ]
+      ],
+      "instances": 1,
+      "instance_node_ids": [
+        [
+          "cap_psycopg2_data_access",
+          "ds_postgresql",
+          "cap_smtplib_outbound",
+          "cap_SerperDevTool_outbound"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": true,
+        "avg_centrality": 0.0,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "5228f7a193a8",
+      "node_types": [
+        "capability",
+        "capability",
+        "capability",
+        "data_store"
+      ],
+      "edge_types": [
+        "reads_from",
+        "shares_with",
+        "shares_with"
+      ],
+      "edge_pairs": [
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          3,
+          1
+        ]
+      ],
+      "instances": 1,
+      "instance_node_ids": [
+        [
+          "cap_psycopg2_data_access",
+          "ds_postgresql",
+          "cap_smtplib_outbound",
+          "cap_FileReadTool_data_access"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": true,
+        "avg_centrality": 0.0,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "1d061c0bb087",
+      "node_types": [
+        "capability",
+        "capability",
+        "data_store",
+        "external"
+      ],
+      "edge_types": [
+        "reads_from",
+        "sends_to",
+        "shares_with"
+      ],
+      "edge_pairs": [
+        [
+          0,
+          3
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          1
+        ]
+      ],
+      "instances": 1,
+      "instance_node_ids": [
+        [
+          "cap_psycopg2_data_access",
+          "ds_postgresql",
+          "cap_SerperDevTool_outbound",
+          "ext_serper_api"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": true,
+        "avg_centrality": 0.0,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "81399fa9b2ac",
+      "node_types": [
+        "capability",
+        "capability",
+        "capability",
+        "data_store"
+      ],
+      "edge_types": [
+        "reads_from",
+        "shares_with",
+        "shares_with"
+      ],
+      "edge_pairs": [
+        [
+          0,
+          1
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          3,
+          2
+        ]
+      ],
+      "instances": 1,
+      "instance_node_ids": [
+        [
+          "cap_psycopg2_data_access",
+          "ds_postgresql",
+          "cap_SerperDevTool_outbound",
+          "cap_FileReadTool_data_access"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": true,
+        "avg_centrality": 0.0,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "dc2723d2ffb9",
+      "node_types": [
+        "capability",
+        "capability",
+        "capability",
+        "external"
+      ],
+      "edge_types": [
+        "sends_to",
+        "shares_with",
+        "shares_with"
+      ],
+      "edge_pairs": [
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          3
+        ]
+      ],
+      "instances": 1,
+      "instance_node_ids": [
+        [
+          "cap_psycopg2_data_access",
+          "cap_smtplib_outbound",
+          "ext_email_smtp",
+          "cap_SerperDevTool_outbound"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": true,
+        "avg_centrality": 0.0,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "6d59da551020",
+      "node_types": [
+        "capability",
+        "capability",
+        "capability",
+        "external"
+      ],
+      "edge_types": [
+        "sends_to",
+        "shares_with",
+        "shares_with"
+      ],
+      "edge_pairs": [
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          3
+        ]
+      ],
+      "instances": 1,
+      "instance_node_ids": [
+        [
+          "cap_psycopg2_data_access",
+          "cap_smtplib_outbound",
+          "ext_email_smtp",
+          "cap_FileReadTool_data_access"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": true,
+        "avg_centrality": 0.0,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "3686aae6a41a",
+      "node_types": [
+        "capability",
+        "capability",
+        "capability",
+        "external"
+      ],
+      "edge_types": [
+        "sends_to",
+        "shares_with",
+        "shares_with"
+      ],
+      "edge_pairs": [
+        [
+          0,
+          3
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          2
+        ]
+      ],
+      "instances": 1,
+      "instance_node_ids": [
+        [
+          "cap_psycopg2_data_access",
+          "cap_smtplib_outbound",
+          "cap_SerperDevTool_outbound",
+          "ext_serper_api"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": true,
+        "avg_centrality": 0.0,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "411b00522695",
+      "node_types": [
+        "capability",
+        "capability",
+        "capability",
+        "capability"
+      ],
+      "edge_types": [
+        "shares_with",
+        "shares_with",
+        "shares_with",
+        "shares_with"
+      ],
+      "edge_pairs": [
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          3
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          2,
+          3
+        ]
+      ],
+      "instances": 1,
+      "instance_node_ids": [
+        [
+          "cap_psycopg2_data_access",
+          "cap_smtplib_outbound",
+          "cap_SerperDevTool_outbound",
+          "cap_FileReadTool_data_access"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": true,
+        "avg_centrality": 0.0,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "de70c02bec54",
+      "node_types": [
+        "capability",
+        "capability",
+        "capability",
+        "data_store"
+      ],
+      "edge_types": [
+        "reads_from",
+        "shares_with",
+        "shares_with"
+      ],
+      "edge_pairs": [
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          3,
+          0
+        ]
+      ],
+      "instances": 1,
+      "instance_node_ids": [
+        [
+          "cap_psycopg2_data_access",
+          "cap_smtplib_outbound",
+          "cap_FileReadTool_data_access",
+          "ds_crewai_tools"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": true,
+        "avg_centrality": 0.0,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "88789fc726e0",
+      "node_types": [
+        "capability",
+        "capability",
+        "capability",
+        "external"
+      ],
+      "edge_types": [
+        "sends_to",
+        "shares_with",
+        "shares_with"
+      ],
+      "edge_pairs": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          2,
+          1
+        ]
+      ],
+      "instances": 1,
+      "instance_node_ids": [
+        [
+          "cap_psycopg2_data_access",
+          "cap_SerperDevTool_outbound",
+          "ext_serper_api",
+          "cap_FileReadTool_data_access"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": true,
+        "avg_centrality": 0.0,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    },
+    {
+      "motif_id": "3d7368f25148",
+      "node_types": [
+        "capability",
+        "capability",
+        "capability",
+        "data_store"
+      ],
+      "edge_types": [
+        "reads_from",
+        "shares_with",
+        "shares_with"
+      ],
+      "edge_pairs": [
+        [
+          0,
+          1
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          3,
+          0
+        ]
+      ],
+      "instances": 1,
+      "instance_node_ids": [
+        [
+          "cap_psycopg2_data_access",
+          "cap_SerperDevTool_outbound",
+          "cap_FileReadTool_data_access",
+          "ds_crewai_tools"
+        ]
+      ],
+      "enrichment_summary": {
+        "has_fail_silent": false,
+        "has_irreversible": true,
+        "avg_centrality": 0.0,
+        "has_trust_crossing": true,
+        "has_guardrail": false
+      }
+    }
+  ],
+  "observation_points": [],
+  "security_risk_score": 48,
+  "reliability_risk_score": 100,
+  "gap_classification": "both_poor",
+  "repo_profile": {
+    "framework": "CrewAI",
+    "agent_count": 1,
+    "tool_count": 5,
+    "data_store_count": 3,
+    "external_service_count": 2,
+    "mcp_server_count": 0,
+    "max_chain_depth": 0,
+    "graph_density": 0.0818,
+    "security_findings": {
+      "CRITICAL": 2,
+      "HIGH": 0,
+      "MEDIUM": 4,
+      "LOW": 1
+    },
+    "security_risk_score": 85,
+    "security_finding_ids": [
+      "ENV-002",
+      "EVAL-002",
+      "STRATUM-001",
+      "STRATUM-002",
+      "STRATUM-008",
+      "STRATUM-010",
+      "TELEMETRY-003"
+    ],
+    "reliability_findings": {
+      "CRITICAL": 3,
+      "HIGH": 0,
+      "MEDIUM": 1,
+      "LOW": 5
+    },
+    "reliability_risk_score": 100.0,
+    "reliability_finding_ids": [
+      "STRAT-ANOMALY-EMPTY-AGENT",
+      "STRAT-ANOMALY-ORPHAN-CAP",
+      "STRAT-ANOMALY-ZSCORE",
+      "STRAT-DC-002"
+    ],
+    "composite_findings": {
+      "CRITICAL": 0,
+      "HIGH": 0,
+      "MEDIUM": 0,
+      "LOW": 0
+    },
+    "composite_finding_ids": [],
+    "gap_classification": "both_poor"
+  }
+}

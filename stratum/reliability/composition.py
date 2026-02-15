@@ -1,12 +1,10 @@
 """Composition engine — compositional severity escalation.
 
-Phase 6: 7 within-reliability compositions (STRAT-COMP) and
-6 cross-dataset compositions (STRAT-XCOMP).
+7 within-reliability compositions (STRAT-COMP) and
+6 cross-dataset compositions (STRAT-XCOMP) per spec Section 10.
 
 Compositions fire when two constituent findings co-occur on the same
 repository AND share at least one affected node (overlapping subgraphs).
-Composite findings are first-class findings with their own severity,
-affected subgraph, and evidence.
 """
 from __future__ import annotations
 
@@ -14,159 +12,148 @@ from stratum.models import Confidence, Finding, RiskCategory, Severity
 
 
 # ---------------------------------------------------------------------------
-# Composition tables
+# Composition tables (spec Section 10)
 # ---------------------------------------------------------------------------
 
 # Within-reliability compositions
 COMP_TABLE: list[dict] = [
     {
         "id": "STRAT-COMP-001",
-        "title": "Unsupervised Chain With Authority Escalation",
+        "title": "Unsupervised Chain With Silent Error Propagation",
         "finding_a": "STRAT-DC-001",
-        "finding_b": "STRAT-EA-001",
+        "finding_b": "STRAT-SI-001",
         "severity": Severity.CRITICAL,
         "description": (
-            "Unsupervised decision chain also has transitive authority escalation — "
-            "agents in the chain can trigger capabilities never directly assigned to them, "
-            "with no human oversight anywhere."
+            "Unsupervised decision chain WITH silent error propagation through "
+            "the same chain. The chain can make bad decisions AND no one sees the errors."
         ),
         "remediation": (
-            "Add human gates (human_input=True or interrupt_before) AND scope "
-            "delegation with explicit tools= parameter on each Task."
+            "Add human checkpoints in the chain AND replace default-on-error "
+            "with explicit error propagation."
         ),
     },
     {
         "id": "STRAT-COMP-002",
-        "title": "Error Laundering in Unsupervised Chain",
-        "finding_a": "STRAT-SI-001",
-        "finding_b": "STRAT-DC-001",
-        "severity": Severity.CRITICAL,
-        "description": (
-            "Silently laundered errors propagate through an unsupervised decision chain — "
-            "default values treated as valid inputs by downstream agents with no human "
-            "to catch the corruption."
-        ),
-        "remediation": (
-            "Replace default-on-error with explicit error types. Add human checkpoints "
-            "at agent boundaries where error handling changes."
-        ),
-    },
-    {
-        "id": "STRAT-COMP-003",
-        "title": "Unmonitored Volume in Regulated Domain",
-        "finding_a": "STRAT-AB-001",
-        "finding_b": "STRAT-AB-003",
-        "severity": Severity.CRITICAL,
-        "description": (
-            "No aggregate volume monitoring combined with regulatory blindness — "
-            "regulated operations can scale unchecked without alerting."
-        ),
-        "remediation": (
-            "Implement volume monitoring with regulatory-aware thresholds. "
-            "Add compliance-specific alerting rules."
-        ),
-    },
-    {
-        "id": "STRAT-COMP-004",
-        "title": "Conflicting Agents With Uncoordinated Writes",
+        "title": "Misaligned Objectives Competing for Shared Resources",
         "finding_a": "STRAT-OC-001",
         "finding_b": "STRAT-OC-002",
         "severity": Severity.CRITICAL,
         "description": (
-            "Agents with conflicting objectives write to the same shared state "
-            "without coordination — their competing writes corrupt shared data."
+            "Agents with misaligned objectives competing for shared resources. "
+            "Conflicting goals amplified by resource contention."
         ),
         "remediation": (
-            "Align agent objectives or add concurrency control (locking, versioning) "
-            "on shared data stores."
+            "Align agent objectives or add arbitration. Implement shared rate "
+            "limiting with priority ordering."
+        ),
+    },
+    {
+        "id": "STRAT-COMP-003",
+        "title": "Unsupervised Chain With Implicit Authority Escalation",
+        "finding_a": "STRAT-DC-001",
+        "finding_b": "STRAT-EA-001",
+        "severity": Severity.CRITICAL,
+        "description": (
+            "Unsupervised chain where agents exercise authority they weren't "
+            "directly granted. Escalation without oversight."
+        ),
+        "remediation": (
+            "Add human gates AND scope delegation with explicit tools= parameter."
+        ),
+    },
+    {
+        "id": "STRAT-COMP-004",
+        "title": "Silent Errors Across Unvalidated Data Boundaries",
+        "finding_a": "STRAT-SI-001",
+        "finding_b": "STRAT-SI-004",
+        "severity": Severity.CRITICAL,
+        "description": (
+            "Errors propagate silently across unvalidated data boundaries. "
+            "No schema contracts AND no error visibility."
+        ),
+        "remediation": (
+            "Add schema validation on data flows AND explicit error propagation."
         ),
     },
     {
         "id": "STRAT-COMP-005",
-        "title": "Stale Context in Regulated Domain",
-        "finding_a": "STRAT-SI-002",
-        "finding_b": "STRAT-AB-003",
+        "title": "Unbounded Delegation in Recursive Loop",
+        "finding_a": "STRAT-EA-003",
+        "finding_b": "STRAT-DC-006",
         "severity": Severity.CRITICAL,
         "description": (
-            "Stale knowledge base context combined with regulatory blindness — "
-            "decisions based on outdated data in a domain requiring current information."
+            "Unbounded delegation in a recursive loop. Unconstrained agents "
+            "delegating recursively without depth bounds."
         ),
         "remediation": (
-            "Add freshness validation (TTL, timestamp checks) on knowledge bases "
-            "and implement regulatory threshold monitoring."
+            "Scope delegation AND set max_iterations on recursive delegation cycles."
         ),
     },
     {
         "id": "STRAT-COMP-006",
-        "title": "Irreversible Actions via Authority Escalation",
-        "finding_a": "STRAT-DC-002",
-        "finding_b": "STRAT-EA-001",
+        "title": "Unbounded Autonomous Execution of Irreversible Actions",
+        "finding_a": "STRAT-AB-001",
+        "finding_b": "STRAT-DC-002",
         "severity": Severity.CRITICAL,
         "description": (
-            "Irreversible capabilities are triggerable through delegation chains "
-            "by agents never intended to have them — authority escalation reaches "
-            "irreversible actions with no checkpoint."
+            "Unbounded autonomous execution of irreversible actions. No rate "
+            "limiting AND no approval gate on destructive capabilities."
         ),
         "remediation": (
-            "Add human approval gates before irreversible actions AND scope "
-            "delegation to prevent transitive access to irreversible tools."
+            "Add rate limiting AND human approval gates before irreversible actions."
         ),
     },
     {
         "id": "STRAT-COMP-007",
-        "title": "Signal Filtering in Unobservable Chain",
-        "finding_a": "STRAT-SI-005",
-        "finding_b": "STRAT-DC-003",
+        "title": "Single Point of Failure That Swallows Errors",
+        "finding_a": "STRAT-DC-005",
+        "finding_b": "STRAT-SI-006",
         "severity": Severity.CRITICAL,
         "description": (
-            "Signal filtering drops information in an agent chain that already "
-            "exceeds observability — filtered data is permanently lost with no "
-            "way to audit."
+            "Single point of failure that also swallows errors. Bottleneck agent "
+            "silently drops errors at trust boundary."
         ),
         "remediation": (
-            "Add per-agent observability before filtering steps. "
-            "Log pre-filter and post-filter signals for audit."
+            "Add redundancy for the bottleneck AND replace fail_silent with "
+            "explicit error propagation."
         ),
     },
 ]
 
-# Mapping from taxonomy STRATUM-SEC-* IDs to potential legacy finding IDs.
-# The composition engine matches on any of these IDs.
+# Mapping from spec STRATUM-NNN IDs to potential finding IDs in the scanner.
 SEC_ID_ALIASES: dict[str, list[str]] = {
-    "STRATUM-SEC-001": ["STRATUM-SEC-001", "STRATUM-001"],
-    "STRATUM-SEC-002": ["STRATUM-SEC-002", "STRATUM-002"],
-    "STRATUM-SEC-003": ["STRATUM-SEC-003", "ENV-001", "ENV-002"],
-    "STRATUM-SEC-004": ["STRATUM-SEC-004", "STRATUM-CR05"],
-    "STRATUM-SEC-005": ["STRATUM-SEC-005", "EVAL-001"],
+    "STRATUM-001": ["STRATUM-001", "STRATUM-SEC-001"],
+    "STRATUM-002": ["STRATUM-002", "STRATUM-SEC-002", "ENV-001", "ENV-002"],
+    "STRATUM-003": ["STRATUM-003", "STRATUM-SEC-003"],
+    "STRATUM-004": ["STRATUM-004", "STRATUM-SEC-004", "STRATUM-CR05"],
+    "STRATUM-005": ["STRATUM-005", "STRATUM-SEC-005", "EVAL-001"],
 }
 
-# Cross-dataset compositions (security x reliability)
+# Cross-dataset compositions (security x reliability) — spec Section 10
 XCOMP_TABLE: list[dict] = [
     {
         "id": "STRAT-XCOMP-001",
         "title": "Unguarded Data Path Through Unsupervised Chain",
-        "security_finding": "STRATUM-SEC-001",
+        "security_finding": "STRATUM-001",
         "reliability_finding": "STRAT-DC-001",
         "severity": Severity.CRITICAL,
         "description": (
-            "Unguarded data flows through an unsupervised decision chain to an "
-            "external service — no validation AND no human oversight on the path."
+            "The chain can exfiltrate data AND no human sees it. "
+            "Unguarded data path through an unsupervised decision chain."
         ),
         "remediation": (
-            "Add input validation/guardrails on the data path AND human checkpoints "
-            "in the decision chain."
+            "Add guardrails on the data path AND human checkpoints in the chain."
         ),
     },
     {
         "id": "STRAT-XCOMP-002",
-        "title": "Unvalidated Input Laundered Through Error Handling",
-        "security_finding": "STRATUM-SEC-002",
+        "title": "Invalid Inputs With Silent Error Propagation",
+        "security_finding": "STRATUM-003",
         "reliability_finding": "STRAT-SI-001",
         "severity": Severity.CRITICAL,
         "description": (
-            "Invalid external input is silently laundered through default-on-error "
-            "handling into downstream agent decisions — input never validated, "
-            "error never surfaced."
+            "Invalid inputs enter AND errors from bad data propagate silently. "
+            "Missing input validation combined with error laundering."
         ),
         "remediation": (
             "Add input validation at system boundaries. Replace default-on-error "
@@ -175,62 +162,58 @@ XCOMP_TABLE: list[dict] = [
     },
     {
         "id": "STRAT-XCOMP-003",
-        "title": "Credentials Exposed via Authority Escalation",
-        "security_finding": "STRATUM-SEC-003",
+        "title": "Credentials Accessible via Unauthorized Delegation",
+        "security_finding": "STRATUM-005",
         "reliability_finding": "STRAT-EA-001",
         "severity": Severity.CRITICAL,
         "description": (
-            "Exposed credentials are accessible through delegation chain by agents "
-            "never intended to have them — the escalation path reaches the credentials."
+            "Credential accessible via delegation chain that wasn't directly "
+            "authorized. Implicit authority reaches sensitive credentials."
         ),
         "remediation": (
-            "Rotate exposed credentials immediately. Scope delegation to prevent "
-            "transitive access to credential-bearing agents."
+            "Rotate credentials. Scope delegation to prevent transitive access."
         ),
     },
     {
         "id": "STRAT-XCOMP-004",
-        "title": "Over-Permissioned Agent With Irreversible Capabilities",
-        "security_finding": "STRATUM-SEC-004",
-        "reliability_finding": "STRAT-DC-002",
+        "title": "Hardcoded Credentials With No Audit Trail",
+        "security_finding": "STRATUM-002",
+        "reliability_finding": "STRAT-AB-003",
         "severity": Severity.CRITICAL,
         "description": (
-            "Over-provisioned agent has irreversible capabilities with no human gate — "
-            "maximum blast radius with no checkpoint."
+            "Hardcoded credentials used by agent with no audit logging. "
+            "Credential usage is invisible."
         ),
         "remediation": (
-            "Reduce agent permissions to minimum required. Add human approval gate "
-            "before irreversible actions."
+            "Move credentials to secure vault AND add audit logging."
         ),
     },
     {
         "id": "STRAT-XCOMP-005",
-        "title": "Unguarded Data Path With No Volume Monitoring",
-        "security_finding": "STRATUM-SEC-001",
-        "reliability_finding": "STRAT-AB-001",
+        "title": "Over-Permissioned Tool via Unsupervised Delegation",
+        "security_finding": "STRATUM-004",
+        "reliability_finding": "STRAT-DC-001",
         "severity": Severity.CRITICAL,
         "description": (
-            "Unguarded outbound data path with no volume monitoring — potential for "
-            "mass data exposure at scale with no detection."
+            "Over-permissioned tool reachable through unsupervised delegation. "
+            "Excessive capability accessible without human oversight."
         ),
         "remediation": (
-            "Add guardrails on outbound data paths AND implement aggregate volume "
-            "monitoring with alerting."
+            "Reduce tool permissions AND add human checkpoints in the chain."
         ),
     },
     {
         "id": "STRAT-XCOMP-006",
-        "title": "Unvalidated Input With Confidence Amplification",
-        "security_finding": "STRATUM-SEC-002",
-        "reliability_finding": "STRAT-SI-003",
+        "title": "Unguarded Data Path With No Schema Validation",
+        "security_finding": "STRATUM-001",
+        "reliability_finding": "STRAT-SI-004",
         "severity": Severity.HIGH,
         "description": (
-            "Unvalidated input enters an agent chain that amplifies confidence at "
-            "each hop — garbage in, high-confidence garbage out."
+            "Unguarded data path with no schema validation at boundaries. "
+            "Data flows unvalidated and uncontrolled."
         ),
         "remediation": (
-            "Validate input at system boundaries. Propagate uncertainty metadata "
-            "through agent chains."
+            "Add guardrails on data paths AND schema validation at boundaries."
         ),
     },
 ]
@@ -243,30 +226,20 @@ XCOMP_TABLE: list[dict] = [
 def _extract_affected_nodes(finding: Finding) -> set[str]:
     """Extract node identifiers from a finding's path and evidence."""
     nodes: set[str] = set()
-    # Path field may contain "label1 → label2 → label3"
     if finding.path:
-        for part in finding.path.split(" → "):
+        for part in finding.path.split(" \u2192 "):
             part = part.strip()
             if part:
                 nodes.add(part)
-    # Evidence may contain "file:line" references — not node IDs, skip
     return nodes
 
 
 def _findings_share_subgraph(finding_a: Finding, finding_b: Finding) -> bool:
-    """Check if two findings share at least one affected node.
-
-    Since findings store labels in path (not raw IDs), we compare labels.
-    For safety, if either finding has no extractable nodes, we still fire
-    (same-repo co-occurrence is sufficient for composition).
-    """
+    """Check if two findings share at least one affected node."""
     nodes_a = _extract_affected_nodes(finding_a)
     nodes_b = _extract_affected_nodes(finding_b)
-
-    # If we can't extract nodes from either, treat co-occurrence as overlap
     if not nodes_a or not nodes_b:
-        return True
-
+        return True  # Co-occurrence is sufficient if nodes can't be extracted
     return bool(nodes_a & nodes_b)
 
 
@@ -298,7 +271,6 @@ def _make_composite(
     evidence.extend(constituent_a.evidence[:2])
     evidence.extend(constituent_b.evidence[:2])
 
-    # Merge paths
     path_parts = []
     if constituent_a.path:
         path_parts.append(constituent_a.path)
@@ -325,11 +297,7 @@ def _make_composite(
 def compose_within_reliability(
     reliability_findings: list[Finding],
 ) -> list[Finding]:
-    """Run within-reliability compositions (STRAT-COMP).
-
-    For each pair in the COMP_TABLE that co-occurs with overlapping subgraphs,
-    generate a composite finding with escalated severity.
-    """
+    """Run within-reliability compositions (STRAT-COMP)."""
     composites: list[Finding] = []
     fired: set[str] = set()
 
@@ -340,7 +308,6 @@ def compose_within_reliability(
         if not matches_a or not matches_b:
             continue
 
-        # Check for overlapping subgraphs
         for fa in matches_a:
             for fb in matches_b:
                 if _findings_share_subgraph(fa, fb):
@@ -366,12 +333,7 @@ def compose_cross_dataset(
     security_findings: list[Finding],
     reliability_findings: list[Finding],
 ) -> list[Finding]:
-    """Run cross-dataset compositions (STRAT-XCOMP).
-
-    Requires both security and reliability findings from the same graph.
-    Fires when a security finding and a reliability finding share at least
-    one affected node.
-    """
+    """Run cross-dataset compositions (STRAT-XCOMP)."""
     composites: list[Finding] = []
     fired: set[str] = set()
 
@@ -414,10 +376,7 @@ def run_compositions(
     security_findings: list[Finding],
     reliability_findings: list[Finding],
 ) -> list[Finding]:
-    """Run all compositions: within-reliability + cross-dataset.
-
-    Returns list of composite findings (STRAT-COMP + STRAT-XCOMP).
-    """
+    """Run all compositions: within-reliability + cross-dataset."""
     composites: list[Finding] = []
     composites.extend(compose_within_reliability(reliability_findings))
     composites.extend(compose_cross_dataset(security_findings, reliability_findings))

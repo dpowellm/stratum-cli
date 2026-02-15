@@ -36,6 +36,11 @@ class EdgeType(str, Enum):
     IMPLICIT_AUTHORITY_OVER = "implicit_authority_over"
     ERROR_PROPAGATION_PATH = "error_propagation_path"
     ERROR_BOUNDARY = "error_boundary"
+    # Spec v2 edge types
+    TASK_SEQUENCE = "task_sequence"
+    APPROVAL_REQUIRED = "approval_required"
+    DAMPENED_BY = "dampened_by"
+    SHARED_STATE_CONFLICT = "shared_state_conflict"
 
 
 @dataclass
@@ -64,9 +69,18 @@ class GraphNode:
 
     # Reliability enrichment fields — capability nodes
     reversibility: str = ""       # "reversible" | "irreversible" | "conditional"
-    subtype: str = ""             # "selection_tool" | "approve" | "reject" | "categorize" | "route" | "recommend" | "general"
+    subtype: str = ""             # "selection_tool" | "approve" | "reject" | "categorize" | "route" | "recommend" | "crud" | "query" | "general"
     regulatory_category: str = "" # "financial" | "personal_data" | "automated_decision" | "communications" | ""
     side_effects: list[str] = field(default_factory=list)
+    idempotent: bool | None = None
+    rate_limited: bool = False
+    timeout_configured: bool = False
+    validation_on_input: bool = False
+    validation_on_output: bool = False
+    cap_error_handling: str = ""  # "fail_loud" | "fail_silent" | "default_on_error" | "retry_then_default" | "unknown"
+    external_service: bool = False
+    data_mutation: bool = False
+    human_visible: bool = False
 
     # Reliability enrichment fields — agent nodes
     error_handling_pattern: str = ""  # "fail_loud" | "fail_silent" | "default_on_error" | "retry_then_default"
@@ -78,11 +92,34 @@ class GraphNode:
     business_priority: str = ""   # "critical" | "high" | "medium" | "low"
     makes_decisions: bool = False
     duty_class: str = ""          # "request" | "approve" | "execute" | "review" | "reconcile"
+    max_iterations: int | None = None
+    memory_enabled: bool = False
+    delegation_enabled: bool = False
+    human_input_enabled: bool = False
+    llm_model: str | None = None
+    temperature: float | None = None
+    output_schema: str | None = None
+    # Computed at graph level
+    betweenness_centrality: float = 0.0
+    closeness_centrality: float = 0.0
+    pagerank: float = 0.0
+    tools_count: int = 0
+    delegation_depth_downstream: int = 0
+    critical_capabilities_reachable: int = 0
+    implicit_authorities: int = 0
+    error_blast_radius: int = 0
 
     # Reliability enrichment fields — data_store nodes
     concurrency_control: str = "" # "none" | "lock" | "version" | "queue"
     freshness_mechanism: str = "" # "none" | "ttl" | "timestamp_check" | "refresh_trigger"
     store_domain: str = ""
+    persistence: str = ""         # "persistent" | "ephemeral" | "session"
+    access_pattern: str = ""      # "read_only" | "write_only" | "read_write"
+    concurrent_writers: int = 0
+    concurrent_readers: int = 0
+    schema_defined: bool = False
+    contains_pii: bool | None = None
+    ttl_configured: bool = False
 
     # For OBSERVABILITY_SINK nodes
     observability_type: str = ""  # "langsmith" | "logging" | "opentelemetry" | "custom"
@@ -177,18 +214,52 @@ class RiskGraph:
                 "data_sensitivity": n.data_sensitivity,
             }
             if enriched:
+                # Capability fields
                 if n.reversibility:
                     nd["reversibility"] = n.reversibility
                 if n.subtype:
                     nd["subtype"] = n.subtype
+                if n.regulatory_category:
+                    nd["regulatory_category"] = n.regulatory_category
+                if n.external_service:
+                    nd["external_service"] = True
+                if n.data_mutation:
+                    nd["data_mutation"] = True
+                if n.validation_on_input:
+                    nd["validation_on_input"] = True
+                if n.validation_on_output:
+                    nd["validation_on_output"] = True
+                # Agent fields
                 if n.error_handling_pattern:
                     nd["error_handling_pattern"] = n.error_handling_pattern
                 if n.timeout_config:
                     nd["timeout_config"] = True
                 if n.objective_tag:
                     nd["objective_tag"] = n.objective_tag
+                if n.agent_domain:
+                    nd["domain"] = n.agent_domain
+                if n.llm_model:
+                    nd["llm_model"] = n.llm_model
+                if n.delegation_enabled:
+                    nd["delegation_enabled"] = True
+                if n.human_input_enabled:
+                    nd["human_input_enabled"] = True
+                if n.memory_enabled:
+                    nd["memory_enabled"] = True
+                if n.makes_decisions:
+                    nd["makes_decisions"] = True
+                if n.betweenness_centrality > 0:
+                    nd["betweenness_centrality"] = round(n.betweenness_centrality, 4)
+                if n.output_schema:
+                    nd["output_schema"] = n.output_schema
+                # Data store fields
                 if n.concurrency_control:
                     nd["concurrency_control"] = n.concurrency_control
+                if n.ttl_configured:
+                    nd["ttl_configured"] = True
+                if n.freshness_mechanism:
+                    nd["freshness_mechanism"] = n.freshness_mechanism
+                # Observability fields
                 if n.observability_type:
                     nd["observability_type"] = n.observability_type
             node_list.append(nd)
@@ -209,6 +280,10 @@ class RiskGraph:
                     ed["schema_validated"] = True
                 if e.scoped:
                     ed["scoped"] = True
+                if e.preserves_uncertainty:
+                    ed["preserves_uncertainty"] = True
+                if e.purpose_limited:
+                    ed["purpose_limited"] = True
             edge_list.append(ed)
 
         return {

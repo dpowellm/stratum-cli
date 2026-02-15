@@ -49,6 +49,7 @@ def enrich_graph(graph: RiskGraph, py_files: list[tuple[str, str]] | None = None
     _enrich_edge_metadata(graph, py_files)
     _compute_implicit_authority(graph)
     _compute_error_boundaries(graph)
+    _compute_shared_state_conflicts(graph)
 
 
 # ---------------------------------------------------------------------------
@@ -97,6 +98,34 @@ def _enrich_capabilities(graph: RiskGraph) -> None:
                 node.regulatory_category = "personal_data"
             elif cap_kind == "outbound":
                 node.regulatory_category = "communications"
+
+        # External service flag
+        if not node.external_service:
+            cap_kind = node.id.rsplit("_", 1)[-1] if "_" in node.id else ""
+            lib = node.framework.lower() if node.framework else ""
+            if cap_kind in ("outbound", "financial") or lib in IRREVERSIBLE_LIBRARIES:
+                node.external_service = True
+
+        # Data mutation flag
+        if not node.data_mutation:
+            cap_kind = node.id.rsplit("_", 1)[-1] if "_" in node.id else ""
+            lib = node.framework.lower() if node.framework else ""
+            if cap_kind in ("destructive", "financial") or lib in CONDITIONAL_LIBRARIES:
+                node.data_mutation = True
+
+        # Human visible (outbound-facing capabilities)
+        if not node.human_visible:
+            label = node.label.lower()
+            if re.search(r"(?i)(email|slack|discord|teams|notify|alert|report|dashboard)", label):
+                node.human_visible = True
+
+        # Idempotent inference
+        if node.idempotent is None:
+            cap_kind = node.id.rsplit("_", 1)[-1] if "_" in node.id else ""
+            if cap_kind in ("data_access", "file_system") and node.subtype in ("query", "general"):
+                node.idempotent = True
+            elif cap_kind in ("destructive", "financial", "outbound"):
+                node.idempotent = False
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +181,52 @@ def _enrich_agents(graph: RiskGraph, py_files: list[tuple[str, str]] | None = No
                 for tid in agent_tools
                 if tid in graph.nodes
             )
+
+        # max_iterations detection
+        if node.max_iterations is None and content:
+            m = re.search(r"max_iter\w*\s*=\s*(\d+)", content)
+            if m:
+                node.max_iterations = int(m.group(1))
+
+        # delegation_enabled detection
+        if not node.delegation_enabled and content:
+            if re.search(r"(?i)(allow_delegation\s*=\s*True|delegation_enabled\s*=\s*True)", content):
+                node.delegation_enabled = True
+
+        # human_input_enabled detection
+        if not node.human_input_enabled and content:
+            if re.search(r"(?i)(human_input\s*=\s*True|interrupt_before|human_in_the_loop)", content):
+                node.human_input_enabled = True
+
+        # LLM model detection
+        if not node.llm_model and content:
+            m = re.search(r'(?:llm|model)\s*=\s*["\']([^"\']+)["\']', content)
+            if m:
+                node.llm_model = m.group(1)
+
+        # Temperature detection
+        if node.temperature is None and content:
+            m = re.search(r'temperature\s*=\s*([0-9.]+)', content)
+            if m:
+                try:
+                    node.temperature = float(m.group(1))
+                except ValueError:
+                    pass
+
+        # Output schema detection
+        if not node.output_schema and content:
+            m = re.search(r'output_pydantic\s*=\s*(\w+)', content)
+            if m:
+                node.output_schema = m.group(1)
+            else:
+                m = re.search(r'output_json\s*=\s*(\w+)', content)
+                if m:
+                    node.output_schema = m.group(1)
+
+        # Memory enabled detection
+        if not node.memory_enabled and content:
+            if re.search(r"(?i)(memory\s*=\s*True|MemorySaver|ConversationBufferMemory)", content):
+                node.memory_enabled = True
 
 
 def _detect_error_pattern(content: str) -> str:
@@ -271,6 +346,72 @@ def _enrich_data_stores(graph: RiskGraph, py_files: list[tuple[str, str]] | None
             else:
                 node.concurrency_control = "none"
 
+        # Persistence
+        if not node.persistence:
+            label = node.label.lower()
+            if any(k in label for k in ("redis", "cache", "memcached")):
+                node.persistence = "ephemeral"
+            elif any(k in label for k in ("postgres", "mysql", "mongo", "sqlite", "s3", "dynamo")):
+                node.persistence = "persistent"
+            elif any(k in label for k in ("session", "context", "state")):
+                node.persistence = "session"
+            else:
+                node.persistence = "persistent"
+
+        # Access pattern
+        if not node.access_pattern:
+            has_read = any(
+                e.edge_type == EdgeType.READS_FROM and e.source == node.id
+                for e in graph.edges
+            )
+            has_write = any(
+                e.edge_type == EdgeType.WRITES_TO and e.target == node.id
+                for e in graph.edges
+            )
+            if has_read and has_write:
+                node.access_pattern = "read_write"
+            elif has_read:
+                node.access_pattern = "read_only"
+            elif has_write:
+                node.access_pattern = "write_only"
+
+        # Schema defined
+        if not node.schema_defined:
+            label = node.label.lower()
+            if any(k in label for k in ("postgres", "mysql", "sqlite", "sql")):
+                node.schema_defined = True
+            elif re.search(r"(?i)(schema|model|pydantic|TypedDict)", all_content):
+                node.schema_defined = True
+
+        # Contains PII
+        if node.contains_pii is None:
+            if node.data_sensitivity in ("personal", "credentials"):
+                node.contains_pii = True
+            else:
+                node.contains_pii = False
+
+        # Freshness mechanism
+        if not node.freshness_mechanism:
+            label = node.label.lower()
+            if "redis" in label or "cache" in label:
+                node.freshness_mechanism = "ttl"
+            elif node.ttl_configured:
+                node.freshness_mechanism = "ttl"
+            else:
+                node.freshness_mechanism = "none"
+
+        # Store domain
+        if not node.store_domain:
+            label = node.label.lower()
+            if any(k in label for k in ("user", "customer", "profile", "account")):
+                node.store_domain = "user_data"
+            elif any(k in label for k in ("order", "payment", "transaction", "invoice")):
+                node.store_domain = "financial"
+            elif any(k in label for k in ("log", "audit", "event", "metric")):
+                node.store_domain = "operational"
+            elif any(k in label for k in ("config", "setting", "preference")):
+                node.store_domain = "configuration"
+
 
 # ---------------------------------------------------------------------------
 # Observability sink detection
@@ -374,6 +515,22 @@ def _enrich_edge_metadata(
             # Check for tools= parameter on Task or conditional tool filtering
             if re.search(r"tools\s*=\s*\[", all_content):
                 edge.scoped = True
+
+        elif edge.edge_type == EdgeType.READS_FROM:
+            # Purpose limited if the read has explicit scoping
+            if re.search(r"(?i)(purpose_limit|data_minimiz|need_to_know)", all_content):
+                edge.purpose_limited = True
+
+    # Preserves uncertainty check on feeds_into edges
+    has_confidence_output = bool(re.search(
+        r"(?i)(confidence|uncertainty|probability|score|likelihood)", all_content
+    ))
+    for edge in graph.edges:
+        if edge.edge_type == EdgeType.FEEDS_INTO and has_confidence_output:
+            src = graph.nodes.get(edge.source)
+            if src and src.output_schema:
+                if re.search(r"(?i)(confidence|uncertainty|score)", src.output_schema):
+                    edge.preserves_uncertainty = True
 
 
 # ---------------------------------------------------------------------------
@@ -479,3 +636,59 @@ def _compute_error_boundaries(graph: RiskGraph) -> None:
                     edge_type=EdgeType.ERROR_BOUNDARY,
                     has_control=False,
                 ))
+
+
+def _compute_shared_state_conflicts(graph: RiskGraph) -> None:
+    """Compute shared_state_conflict edges for agent pairs both writing to same data store.
+
+    For each data_store D:
+      Collect all agents with writes_to edges to D
+      For each pair (A, B) where A != B:
+        If no arbitrated_by edge exists for (A, B):
+          Create edge: shared_state_conflict(A <-> B)
+    """
+    # Build data_store -> writing agents map
+    ds_writers: dict[str, set[str]] = {}
+    for edge in graph.edges:
+        if edge.edge_type == EdgeType.WRITES_TO:
+            tgt = graph.nodes.get(edge.target)
+            src = graph.nodes.get(edge.source)
+            if tgt and tgt.node_type == NodeType.DATA_STORE:
+                # Source could be agent or capability; find the owning agent
+                if src and src.node_type == NodeType.AGENT:
+                    ds_writers.setdefault(edge.target, set()).add(edge.source)
+                elif src and src.node_type == NodeType.CAPABILITY:
+                    # Find agent that owns this capability
+                    for tool_edge in graph.edges:
+                        if (tool_edge.edge_type == EdgeType.TOOL_OF
+                                and tool_edge.source == edge.source):
+                            ds_writers.setdefault(edge.target, set()).add(tool_edge.target)
+
+    # Check for arbitrated_by edges
+    arbitrated_pairs: set[tuple[str, str]] = set()
+    for edge in graph.edges:
+        if edge.edge_type == EdgeType.ARBITRATED_BY:
+            arbitrated_pairs.add((edge.source, edge.target))
+
+    # Create shared_state_conflict edges
+    for ds_id, writers in ds_writers.items():
+        writer_list = sorted(writers)
+        for i, a in enumerate(writer_list):
+            for b in writer_list[i + 1:]:
+                pair = (min(a, b), max(a, b))
+                if pair in arbitrated_pairs or (pair[1], pair[0]) in arbitrated_pairs:
+                    continue
+                # Check if conflict edge already exists
+                conflict_exists = any(
+                    e.edge_type == EdgeType.SHARED_STATE_CONFLICT
+                    and ((e.source == a and e.target == b)
+                         or (e.source == b and e.target == a))
+                    for e in graph.edges
+                )
+                if not conflict_exists:
+                    graph.edges.append(GraphEdge(
+                        source=a,
+                        target=b,
+                        edge_type=EdgeType.SHARED_STATE_CONFLICT,
+                        has_control=False,
+                    ))

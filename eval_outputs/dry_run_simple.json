@@ -1,0 +1,88 @@
+{
+  "scan_id": "d97d7e80",
+  "directory": "C:\\Users\\dpowe\\OneDrive\\Documents\\Coding Projects\\stratum-cli-operational\\stratum-cli\\eval_outputs\\test_fixtures\\simple_crew",
+  "security_score": 48,
+  "reliability_score": 100,
+  "gap_classification": "both_poor",
+  "security_finding_count": 11,
+  "reliability_finding_count": 9,
+  "composite_finding_count": 0,
+  "security_findings": [
+    {
+      "id": "STRATUM-002",
+      "severity": "CRITICAL",
+      "title": "Destructive action, no human gate"
+    },
+    {
+      "id": "STRATUM-001",
+      "severity": "HIGH",
+      "title": "Unguarded data-to-external path (2 paths)"
+    },
+    {
+      "id": "STRATUM-BR01",
+      "severity": "HIGH",
+      "title": "Agent sends external messages without human review"
+    },
+    {
+      "id": "STRATUM-008",
+      "severity": "MEDIUM",
+      "title": "No error handling on 4 external calls"
+    },
+    {
+      "id": "STRATUM-010",
+      "severity": "MEDIUM",
+      "title": "No checkpointing detected"
+    },
+    {
+      "id": "ENV-002",
+      "severity": "MEDIUM",
+      "title": "Hardcoded PostgreSQL connection string with password"
+    },
+    {
+      "id": "STRATUM-CR02",
+      "severity": "MEDIUM",
+      "title": "3-agent chain with no intermediate validation"
+    },
+    {
+      "id": "EVAL-002",
+      "severity": "MEDIUM",
+      "title": "No evaluation framework detected"
+    },
+    {
+      "id": "TELEMETRY-003",
+      "severity": "LOW",
+      "title": "No observability or tracing detected"
+    },
+    {
+      "id": "STRATUM-BR03",
+      "severity": "MEDIUM",
+      "title": "No audit trail for 3 consequential actions"
+    },
+    {
+      "id": "STRATUM-OP02",
+      "severity": "MEDIUM",
+      "title": "No cost controls on agent execution"
+    }
+  ],
+  "reliability_findings": [
+    {
+      "id": "STRAT-DC-002",
+      "severity": "CRITICAL",
+      "title": "Irreversible Action Without Approval Gate",
+      "path": "smtplib"
+    },
+    {
+      "id": "STRAT-DC-002",
+      "severity": "CRITICAL",
+      "title": "Irreversible Action Without Approval Gate",
+      "path": "SerperDevTool"
+    },
+    {
+      "id": "STRAT-DC-002",
+      "severity": "CRITICAL",
+      "title": "Irreversible Action Without Approval Gate",
+      "path": "FileReadTool"
+    }
+  ],
+  "composite_findings": []
+}

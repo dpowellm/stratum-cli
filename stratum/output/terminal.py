@@ -100,7 +100,7 @@ def render(result: ScanResult, verbose: bool = False,
     _comp_findings = getattr(result, "composite_findings", [])
     _rel_score = getattr(result, "reliability_score", 0)
     if _rel_findings:
-        _render_reliability_section(_rel_findings, _comp_findings, _rel_score)
+        _render_reliability_section(_rel_findings, _comp_findings, _rel_score, result=result)
 
     if primary:
         _render_section_header("FIX THESE FIRST")
@@ -111,6 +111,9 @@ def render(result: ScanResult, verbose: bool = False,
         _render_section_header("ALSO WORTH FIXING")
         for group in secondary:
             _render_secondary_action(group)
+
+    # Dual-axis summary (spec Section 14)
+    _render_dual_axis_summary(result)
 
     _render_footer(result, all_findings)
 
@@ -296,8 +299,9 @@ def _render_reliability_section(
     reliability_findings: list,
     composite_findings: list,
     reliability_score: int,
+    result: ScanResult | None = None,
 ) -> None:
-    """Render the RELIABILITY FINDINGS section."""
+    """Render the RELIABILITY ANALYSIS section per spec Section 14."""
     severity_color = {"CRITICAL": "red", "HIGH": "yellow", "MEDIUM": "blue", "LOW": "dim"}
 
     # Filter to non-anomaly reliability findings
@@ -314,7 +318,36 @@ def _render_reliability_section(
     if count == 0:
         return
 
-    _render_section_header(f"RELIABILITY ({count} findings, score {reliability_score}/100)")
+    _render_section_header("RELIABILITY ANALYSIS")
+
+    # Graph topology summary
+    _metrics = {}
+    if result:
+        _metrics = getattr(result, 'reliability_metrics', {})
+    if _metrics:
+        agents = _metrics.get("total_agents", 0)
+        caps = _metrics.get("total_capabilities", 0)
+        stores = _metrics.get("total_data_stores", 0)
+        edges = _metrics.get("total_edges", 0)
+        console.print(
+            f" Graph Topology: {agents} agents \u2502 {caps} capabilities \u2502 "
+            f"{stores} data stores \u2502 {edges} edges"
+        )
+        depth = _metrics.get("max_delegation_depth", 0)
+        loops = _metrics.get("feedback_loops_detected", 0)
+        undampened = _metrics.get("undampened_feedback_loops", 0)
+        crossings = _metrics.get("trust_boundary_crossings", 0)
+        loop_str = f"{loops}" + (f" ({undampened} undampened)" if undampened else "")
+        console.print(
+            f" Delegation Depth: {depth} \u2502 "
+            f"Feedback Loops: {loop_str} \u2502 "
+            f"Trust Crossings: {crossings}"
+        )
+        console.print()
+
+    # Reliability risk score bar
+    _render_reliability_risk_bar(reliability_score)
+    console.print()
 
     # Top findings (up to 5)
     sorted_findings = sorted(
@@ -339,11 +372,11 @@ def _render_reliability_section(
     # Composite findings
     if composite_findings:
         console.print()
-        console.print(f"  [bold]Compounding risks:[/bold]")
+        console.print(f"  [bold]COMPOSITIONS[/bold]")
         for f in composite_findings[:3]:
             sev = f.severity.value if hasattr(f.severity, 'value') else str(f.severity)
             color = severity_color.get(sev, "white")
-            console.print(f"  [{color}]{sev:<8}[/]  {f.id}  {f.title}")
+            console.print(f"  [{color}]{sev}+{'':5}[/]  {f.id}  {f.title}")
 
     # Anomalies (brief)
     if anomaly_findings:
@@ -351,6 +384,75 @@ def _render_reliability_section(
         console.print(f"  [dim]{len(anomaly_findings)} structural anomalies detected (advisory)[/dim]")
 
     console.print()
+
+
+def _render_dual_axis_summary(result: ScanResult) -> None:
+    """Render the DUAL-AXIS SUMMARY section per spec Section 14."""
+    _rel_score = getattr(result, 'reliability_score', 0)
+    _rel_findings = getattr(result, 'reliability_findings', [])
+    if not _rel_findings:
+        return
+
+    sec_score = result.risk_score
+
+    # Classify gap
+    from stratum.reliability.metrics_compute import classify_gap
+    gap = classify_gap(float(sec_score), float(_rel_score))
+
+    _render_section_header("DUAL-AXIS SUMMARY")
+
+    # Score dots (5-dot scale: each dot = 20 points)
+    def _dots(score: int) -> str:
+        filled = min(5, score // 20)
+        return "\u25cf" * filled + "\u25cb" * (5 - filled)
+
+    # Score labels
+    def _score_label(score: int) -> str:
+        if score <= 15:
+            return "clean"
+        elif score <= 30:
+            return "above average"
+        elif score <= 60:
+            return "significant gaps"
+        else:
+            return "critical gaps"
+
+    sec_color = "green" if sec_score <= 30 else ("yellow" if sec_score <= 60 else "red")
+    rel_color = "green" if _rel_score <= 30 else ("yellow" if _rel_score <= 60 else "red")
+
+    console.print(
+        f" Security Score:    [{sec_color}]{sec_score}/100 {_dots(sec_score)}[/]  "
+        f"({_score_label(sec_score)})"
+    )
+    console.print(
+        f" Reliability Score: [{rel_color}]{_rel_score}/100 {_dots(_rel_score)}[/]  "
+        f"({_score_label(_rel_score)})"
+    )
+
+    # Gap classification display
+    gap_labels = {
+        "both_clean": ("green", "Both axes clean"),
+        "security_clean_reliability_poor": ("red bold", "BLIND SPOT \u2014 passes security, fails reliability"),
+        "security_poor_reliability_clean": ("yellow", "Security gaps, reliability OK"),
+        "both_poor": ("red", "Both axes need attention"),
+    }
+    color, label = gap_labels.get(gap, ("white", gap))
+    console.print(f" Classification:    [{color}]{label}[/]")
+    console.print()
+
+
+def _render_reliability_risk_bar(score: int) -> None:
+    """Render a compact reliability risk score bar."""
+    filled = score // 5
+    empty = 20 - filled
+    if score <= 30:
+        color = "green"
+    elif score <= 60:
+        color = "yellow"
+    else:
+        color = "red"
+    bar = "\u2588" * filled + "\u2591" * empty
+    console.print(f" Reliability Risk Score: [{color}]{score}/100[/]  [{color}]{bar}[/]")
 
 
 # ── Section Headers ───────────────────────────────────────────────────────────
