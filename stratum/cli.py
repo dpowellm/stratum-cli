@@ -54,6 +54,10 @@ def cli() -> None:
               help="Upload profile to Stratum dashboard (requires --token)")
 @click.option("--token", "api_token", type=str, default=None,
               help="Stratum API token for --upload")
+@click.option("--repo-name", type=str, default=None,
+              help="Repository full name (e.g. 'owner/repo') for batch pipeline identity")
+@click.option("--repo-url", type=str, default=None,
+              help="Repository URL for batch pipeline identity")
 def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
              no_telemetry: bool, offline: bool, fail_above: int | None,
              security_mode: bool, output_format: str, apply_fix: bool,
@@ -61,7 +65,9 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
              profile_output: str | None,
              export_graph_flag: bool = False,
              quiet: bool = False,
-             upload: bool = False, api_token: str | None = None) -> None:
+             upload: bool = False, api_token: str | None = None,
+             repo_name: str | None = None,
+             repo_url: str | None = None) -> None:
     """Run a security audit on an AI agent project."""
     # --ci implies --security ordering
     if ci:
@@ -229,6 +235,8 @@ def scan_cmd(path: str, verbose: bool, json_output: bool, ci: bool,
         ping = build_v72_ping(
             result, profile, scan_profile,
             scan_duration_ms=scan_duration_ms,
+            repo_full_name=repo_name,
+            repo_url=repo_url,
         )
         click.echo(json.dumps(ping, indent=2))
 

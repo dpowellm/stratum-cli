@@ -106,9 +106,19 @@ def _clone_repo(repo_record, clone_url, dest_dir):
 
 def _run_scan(repo_record, clone_dir):
     """Run stratum scan on a cloned repo. Returns a ping dict."""
+    repo_name = repo_record.get("repo_full_name", "")
+    repo_url = repo_record.get("repo_url", "")
+
     try:
+        cmd = ["stratum", "scan", clone_dir, "--json", "--no-telemetry"]
+        # Pass identity flags so the scanner embeds them in the JSON output
+        if repo_name:
+            cmd.extend(["--repo-name", repo_name])
+        if repo_url:
+            cmd.extend(["--repo-url", repo_url])
+
         result = subprocess.run(
-            ["stratum", "scan", clone_dir, "--json", "--no-telemetry"],
+            cmd,
             capture_output=True,
             text=True,
             timeout=config.SCAN_TIMEOUT_SECONDS,
@@ -127,9 +137,18 @@ def _run_scan(repo_record, clone_dir):
         except json.JSONDecodeError as e:
             return failure_ping(repo_record, "invalid_json", str(e))
 
-        # Enrich with manifest metadata
+        # Belt-and-suspenders: always backfill identity from manifest metadata.
+        # Even if the scanner included these via --repo-name/--repo-url,
+        # ensure they match the manifest (manifest is the source of truth).
         ping["selection_stratum"] = repo_record.get("selection_stratum")
-        ping["repo_full_name"] = repo_record.get("repo_full_name")
+        if repo_name:
+            ping["repo_full_name"] = repo_name
+        elif not ping.get("repo_full_name"):
+            ping["repo_full_name"] = repo_record.get("repo_full_name")
+        if repo_url:
+            ping["repo_url"] = repo_url
+        elif not ping.get("repo_url"):
+            ping["repo_url"] = repo_record.get("repo_url")
 
         return ping
 

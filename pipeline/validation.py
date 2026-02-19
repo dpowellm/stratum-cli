@@ -34,6 +34,7 @@ def failure_ping(repo_record, reason, stderr=None):
         "frameworks": [],
         "selection_stratum": repo_record.get("selection_stratum"),
         "repo_full_name": repo_record.get("repo_full_name"),
+        "repo_url": repo_record.get("repo_url"),
     }
 
 
@@ -65,6 +66,15 @@ def validate_ping(ping):
     agent_dist = ping.get("agent_tool_count_distribution", [])
     if len(agent_dist) != ping.get("agent_count", 0):
         errors.append("agent_tool_count_distribution length != agent_count")
+
+    # --- Repo identity (warn, don't reject) ---
+    if not ping.get("repo_full_name"):
+        import warnings
+        warnings.warn(
+            f"scan_id={ping.get('scan_id', '?')}: repo_full_name is empty — "
+            "downstream joins will fail for this ping",
+            stacklevel=2,
+        )
 
     # --- v7.1 / v7.2 field checks ---
 

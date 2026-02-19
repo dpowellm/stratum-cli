@@ -36,6 +36,8 @@ def build_v72_ping(
     telemetry_profile=None,
     scan_profile=None,
     scan_duration_ms: int | None = None,
+    repo_full_name: str | None = None,
+    repo_url: str | None = None,
 ) -> dict[str, Any]:
     """Build a flat v7.2 schema-compliant ping dict.
 
@@ -44,6 +46,8 @@ def build_v72_ping(
         telemetry_profile: TelemetryProfile from build_profile()
         scan_profile: ScanProfile from build_scan_profile()
         scan_duration_ms: wall-clock scan duration in milliseconds
+        repo_full_name: Repository full name (e.g. 'owner/repo') for identity
+        repo_url: Repository URL for identity
 
     Returns:
         Flat dict with all v7.2 fields. Never raises — uses defaults on failure.
@@ -107,6 +111,12 @@ def build_v72_ping(
         ping.setdefault("repo_hash", "")
         ping.setdefault("schema_id", SCHEMA_ID)
         ping.setdefault("schema_version", SCHEMA_VERSION)
+
+    # ── A2) REPO IDENTITY (from CLI flags) ───────────────────────────
+    if repo_full_name:
+        ping["repo_full_name"] = repo_full_name
+    if repo_url:
+        ping["repo_url"] = repo_url
 
     # ── B) SCAN METADATA ─────────────────────────────────────────────
     try:
