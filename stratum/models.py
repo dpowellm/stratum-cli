@@ -283,7 +283,6 @@ class TelemetryProfile:
     """
     scan_id: str = ""                                    # [scale]
     timestamp: str = ""                                  # [scale]
-    version: str = "0.2.0"                               # [scale]
 
     # === Capability structure ===
     total_capabilities: int = 0                          # [scale]

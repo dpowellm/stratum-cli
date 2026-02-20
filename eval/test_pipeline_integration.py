@@ -100,7 +100,6 @@ SCANNER_OUTPUT_TEMPLATE = {
     "total_finding_instances": 2,
     "env_var_count": 0,
     "telemetry_destination_count": 0,
-    "total_tool_count": 1,
     "crew_size_distribution": [3],
     "agent_tool_count_distribution": [1, 0, 0],
     "finding_coverages": {},

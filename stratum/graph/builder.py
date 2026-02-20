@@ -501,6 +501,10 @@ def _mark_trust_crossings(graph: RiskGraph) -> None:
         if src_level != tgt_level:
             edge.trust_crossing = True
             edge.crossing_direction = "outward" if src_level > tgt_level else "inward"
+            edge.trust_boundary = (
+                f"{src_node.trust_level.value.upper()}\u2192"
+                f"{tgt_node.trust_level.value.upper()}"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -532,16 +536,20 @@ def _connect_guardrail(
 
     For output_filter / input_filter guardrails: mark SENDS_TO edges as controlled.
     For hitl guardrails: mark edges to destructive/financial targets as controlled.
+
+    Edges are always created (so the graph topology is complete), but
+    has_control is only set True when guard.has_usage confirms the
+    guardrail is actually active in code.
     """
-    if not guard.has_usage:
-        return
+    active = guard.has_usage
 
     if guard.kind in ("output_filter", "input_filter"):
         for edge in graph.edges:
             if edge.edge_type in (EdgeType.SENDS_TO, EdgeType.CALLS):
                 if _guard_covers_edge(guard, edge, graph):
-                    edge.has_control = True
-                    edge.control_type = guard.kind
+                    if active:
+                        edge.has_control = True
+                        edge.control_type = guard.kind
                     _add_guardrail_edge(graph, edge.source, guard_node, EdgeType.FILTERED_BY, guard.kind)
 
     elif guard.kind == "hitl":
@@ -549,8 +557,9 @@ def _connect_guardrail(
             src = graph.nodes.get(edge.source)
             if src and src.node_type == NodeType.CAPABILITY:
                 if _guard_covers_edge(guard, edge, graph):
-                    edge.has_control = True
-                    edge.control_type = "hitl"
+                    if active:
+                        edge.has_control = True
+                        edge.control_type = "hitl"
                     _add_guardrail_edge(graph, edge.source, guard_node, EdgeType.GATED_BY, "hitl")
 
     elif guard.kind == "validation":
@@ -567,7 +576,7 @@ def _connect_guardrail(
                     if guard.source_file != src.source_file:
                         continue
                 tgt = graph.nodes.get(edge.target)
-                if tgt and tgt.data_sensitivity == "financial":
+                if active and tgt and tgt.data_sensitivity == "financial":
                     edge.has_control = True
                     edge.control_type = "validation"
                 _add_guardrail_edge(graph, edge.source, guard_node, EdgeType.FILTERED_BY, "validation")

@@ -196,7 +196,6 @@ def build_profile(result: ScanResult) -> TelemetryProfile:
     profile = TelemetryProfile(
         scan_id=result.scan_id,
         timestamp=result.timestamp,
-        version=__version__,
         total_capabilities=result.total_capabilities,
         capability_distribution=cap_dist,
         trust_level_distribution=trust_dist,
@@ -524,12 +523,8 @@ def _validate_profile(profile: TelemetryProfile) -> TelemetryProfile:
     if profile.checkpoint_type not in valid_checkpoints:
         logger.warning("checkpoint_type not in %s: %s", valid_checkpoints, profile.checkpoint_type)
 
-    # Check version
-    if profile.version != __version__:
-        logger.warning("Profile version %s != CLI version %s", profile.version, __version__)
-
     # Check for path fragments in string fields
-    for field_name in ("scan_id", "timestamp", "version", "checkpoint_type",
+    for field_name in ("scan_id", "timestamp", "checkpoint_type",
                        "topology_signature_hash", "archetype_class"):
         value = getattr(profile, field_name)
         if isinstance(value, str) and ("\\" in value or "/" in value):

@@ -239,14 +239,6 @@ def build_v72_ping(
             getattr(result, "telemetry_destinations", []) or []
         )
 
-        # total_tool_count: unique tools across all agents
-        all_tools: set[str] = set()
-        for a in agents:
-            tool_names = _get_attr_or_key(a, "tool_names", [])
-            for t in tool_names:
-                all_tools.add(t)
-        ping["total_tool_count"] = len(all_tools)
-
         # crew_size_distribution: sorted agents-per-crew (descending)
         crew_sizes = sorted(
             [len(_get_attr_or_key(c, "agent_names", [])) for c in crews],
@@ -278,7 +270,6 @@ def build_v72_ping(
         ping.setdefault("total_finding_instances", total_finding_instances)
         ping.setdefault("env_var_count", 0)
         ping.setdefault("telemetry_destination_count", 0)
-        ping.setdefault("total_tool_count", 0)
         ping.setdefault("crew_size_distribution", [])
         ping.setdefault("agent_tool_count_distribution", [])
         ping.setdefault("finding_coverages", {})
@@ -307,7 +298,7 @@ def build_v72_ping(
             "findings_per_agent": round(finding_rule_count / ac, 2),
             "findings_per_crew": round(finding_rule_count / cc, 2),
             "guardrails_per_agent": round(ping.get("guardrail_count", 0) / ac, 2),
-            "tools_per_agent": round(ping.get("total_tool_count", 0) / ac, 2),
+            "tools_per_agent": round(ping.get("total_capabilities", 0) / ac, 2),
             "external_exposure_ratio": round(external_caps / total_caps, 2),
             "guardrail_coverage_ratio": round(
                 ping.get("control_coverage_pct", 0.0) / 100.0, 2

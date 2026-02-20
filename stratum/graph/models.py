@@ -65,6 +65,7 @@ class GraphEdge:
     data_sensitivity: str = "unknown"
     trust_crossing: bool = False
     crossing_direction: str = ""  # "inward" or "outward"
+    trust_boundary: str = ""  # e.g. "INTERNAL→EXTERNAL" or ""
 
 
 @dataclass
@@ -144,6 +145,7 @@ class RiskGraph:
                     "data_sensitivity": e.data_sensitivity,
                     "trust_crossing": e.trust_crossing,
                     "crossing_direction": e.crossing_direction,
+                    "trust_boundary": e.trust_boundary,
                 }
                 for e in self.edges
             ],
