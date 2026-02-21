@@ -137,10 +137,12 @@ def _run_scan(repo_record, clone_dir):
         except json.JSONDecodeError as e:
             return failure_ping(repo_record, "invalid_json", str(e))
 
-        # Belt-and-suspenders: always backfill identity from manifest metadata.
-        # Even if the scanner included these via --repo-name/--repo-url,
-        # ensure they match the manifest (manifest is the source of truth).
-        ping["selection_stratum"] = repo_record.get("selection_stratum")
+        # Belt-and-suspenders: backfill identity from manifest metadata.
+        # For selection_stratum: prefer scanner's computed value (from framework
+        # detection), fall back to manifest if scanner didn't set one.
+        manifest_stratum = repo_record.get("selection_stratum")
+        if not ping.get("selection_stratum") and manifest_stratum:
+            ping["selection_stratum"] = manifest_stratum
         if repo_name:
             ping["repo_full_name"] = repo_name
         elif not ping.get("repo_full_name"):

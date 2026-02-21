@@ -32,7 +32,7 @@ def failure_ping(repo_record, reason, stderr=None):
         "agent_count": 0,
         "crew_count": 0,
         "frameworks": [],
-        "selection_stratum": repo_record.get("selection_stratum"),
+        "selection_stratum": repo_record.get("selection_stratum") or "generic_active",
         "repo_full_name": repo_record.get("repo_full_name"),
         "repo_url": repo_record.get("repo_url"),
     }
