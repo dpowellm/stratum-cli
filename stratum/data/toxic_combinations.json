@@ -45,12 +45,12 @@
           {"var": "pii_source", "type": "data_store", "constraints": {"data_sensitivity": "personal"}},
           {"var": "reader_agent", "type": "agent", "constraints": {}},
           {"var": "writer_agent", "type": "agent", "constraints": {}},
-          {"var": "ext_sink", "type": "external", "constraints": {}}
+          {"var": "ext_sink", "type": "external_service", "constraints": {}}
         ],
         "edges": [
           {"from": "pii_source", "to": "reader_agent", "type": ["reads_from", "tool_of", "calls"], "constraints": {}},
           {"from": "reader_agent", "to": "writer_agent", "type": "delegates_to", "constraints": {"has_control": false}},
-          {"from": "writer_agent", "to": "ext_sink", "type": ["sends_to", "writes_to", "calls"], "constraints": {}}
+          {"from": "writer_agent", "to": "ext_sink", "type": ["calls", "writes_to", "calls"], "constraints": {}}
         ],
         "negative_constraints": [
           {"edge_on_path": ["reader_agent", "writer_agent"], "has_control": true}
@@ -74,12 +74,12 @@
       "owasp_ids": ["LLM04", "LLM02"],
       "pattern": {
         "nodes": [
-          {"var": "ext_input", "type": "external", "constraints": {}},
+          {"var": "ext_input", "type": "external_service", "constraints": {}},
           {"var": "exec_agent", "type": "agent", "constraints": {}},
           {"var": "exec_cap", "type": "capability", "constraints": {}}
         ],
         "edges": [
-          {"from": "ext_input", "to": "exec_agent", "type": ["sends_to", "reads_from", "calls", "feeds_into"], "constraints": {}},
+          {"from": "ext_input", "to": "exec_agent", "type": ["calls", "reads_from", "calls", "delegates_to"], "constraints": {}},
           {"from": "exec_cap", "to": "exec_agent", "type": "tool_of", "constraints": {}}
         ],
         "negative_constraints": [
@@ -107,12 +107,12 @@
           {"var": "ext_agent", "type": "agent", "constraints": {}},
           {"var": "fin_agent", "type": "agent", "constraints": {}},
           {"var": "fin_cap", "type": "capability", "constraints": {}},
-          {"var": "ext_sink", "type": "external", "constraints": {}}
+          {"var": "ext_sink", "type": "external_service", "constraints": {}}
         ],
         "edges": [
-          {"from": "ext_agent", "to": "fin_agent", "type": ["shares_tool", "feeds_into", "delegates_to"], "constraints": {}},
+          {"from": "ext_agent", "to": "fin_agent", "type": ["shares_with", "delegates_to", "delegates_to"], "constraints": {}},
           {"from": "fin_cap", "to": "fin_agent", "type": "tool_of", "constraints": {}},
-          {"from": "fin_agent", "to": "ext_sink", "type": ["sends_to", "calls"], "constraints": {}}
+          {"from": "fin_agent", "to": "ext_sink", "type": ["calls", "calls"], "constraints": {}}
         ],
         "negative_constraints": [
           {"node": "fin_agent", "has_guardrail_type": "hitl"},
@@ -141,13 +141,13 @@
           {"var": "reader_cap", "type": "capability", "constraints": {}},
           {"var": "agent", "type": "agent", "constraints": {}},
           {"var": "outbound_cap", "type": "capability", "constraints": {}},
-          {"var": "ext_sink", "type": "external", "constraints": {}}
+          {"var": "ext_sink", "type": "external_service", "constraints": {}}
         ],
         "edges": [
           {"from": "inbox", "to": "reader_cap", "type": "reads_from", "constraints": {}},
           {"from": "reader_cap", "to": "agent", "type": "tool_of", "constraints": {}},
           {"from": "outbound_cap", "to": "agent", "type": "tool_of", "constraints": {}},
-          {"from": "outbound_cap", "to": "ext_sink", "type": "sends_to", "constraints": {}}
+          {"from": "outbound_cap", "to": "ext_sink", "type": "calls", "constraints": {}}
         ],
         "negative_constraints": [
           {"node": "agent", "has_guardrail_type": "output_filter"}
@@ -237,8 +237,8 @@
           {"var": "agent_3", "type": "agent", "constraints": {}}
         ],
         "edges": [
-          {"from": "agent_1", "to": "agent_2", "type": "feeds_into", "constraints": {}},
-          {"from": "agent_2", "to": "agent_3", "type": "feeds_into", "constraints": {}}
+          {"from": "agent_1", "to": "agent_2", "type": "delegates_to", "constraints": {}},
+          {"from": "agent_2", "to": "agent_3", "type": "delegates_to", "constraints": {}}
         ],
         "negative_constraints": [
           {"node": "agent_3", "has_guardrail_type": "hitl"}
@@ -266,7 +266,7 @@
           {"var": "high_agent", "type": "agent", "constraints": {}}
         ],
         "edges": [
-          {"from": "low_agent", "to": "high_agent", "type": ["feeds_into", "delegates_to", "shares_tool"], "constraints": {"has_control": false}}
+          {"from": "low_agent", "to": "high_agent", "type": ["delegates_to", "delegates_to", "shares_with"], "constraints": {"has_control": false}}
         ],
         "negative_constraints": [
           {"edge_on_path": ["low_agent", "high_agent"], "has_control": true}
@@ -292,12 +292,12 @@
         "nodes": [
           {"var": "loop_agent", "type": "agent", "constraints": {}},
           {"var": "write_cap", "type": "capability", "constraints": {}},
-          {"var": "ext_target", "type": ["external", "data_store"], "constraints": {}}
+          {"var": "ext_target", "type": ["external_service", "data_store"], "constraints": {}}
         ],
         "edges": [
-          {"from": "loop_agent", "to": "loop_agent", "type": ["feeds_into", "delegates_to"], "constraints": {}},
+          {"from": "loop_agent", "to": "loop_agent", "type": ["delegates_to", "delegates_to"], "constraints": {}},
           {"from": "write_cap", "to": "loop_agent", "type": "tool_of", "constraints": {}},
-          {"from": "write_cap", "to": "ext_target", "type": ["sends_to", "writes_to"], "constraints": {}}
+          {"from": "write_cap", "to": "ext_target", "type": ["calls", "writes_to"], "constraints": {}}
         ],
         "negative_constraints": [
           {"node": "loop_agent", "has_guardrail_type": "hitl"},

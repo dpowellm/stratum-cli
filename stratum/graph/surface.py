@@ -54,9 +54,16 @@ def compute_risk_surface(
     )
     surface.edges_needing_controls = len(needs_control)
     surface.edges_with_controls = has_control_count
-    surface.control_coverage_pct = (
-        has_control_count / len(needs_control) * 100
-    ) if needs_control else 100.0
+    # When no edges need controls: 0% if there are no agents (vacuous), else 100%
+    has_agents = any(
+        n.node_type == NodeType.AGENT for n in graph.nodes.values()
+    )
+    if needs_control:
+        surface.control_coverage_pct = has_control_count / len(needs_control) * 100
+    elif has_agents:
+        surface.control_coverage_pct = 100.0
+    else:
+        surface.control_coverage_pct = 0.0
 
     # Regulatory
     all_flags: set[str] = set()
@@ -87,11 +94,11 @@ def compute_risk_surface(
     if crews:
         surface.crew_count = len(crews)
 
-    # max_chain_depth: longest chain of FEEDS_INTO edges
-    feeds_into = [e for e in graph.edges if e.edge_type == EdgeType.FEEDS_INTO]
-    if feeds_into:
+    # max_chain_depth: longest chain of DELEGATES_TO edges
+    delegates_chain = [e for e in graph.edges if e.edge_type == EdgeType.DELEGATES_TO]
+    if delegates_chain:
         adj: dict[str, list[str]] = {}
-        for e in feeds_into:
+        for e in delegates_chain:
             adj.setdefault(e.source, []).append(e.target)
         longest = 0
         for start in adj:

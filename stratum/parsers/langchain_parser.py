@@ -74,7 +74,7 @@ def parse_langchain_agents(
                 all_rels.append(AgentRelationship(
                     source_agent=agents_in_file[i].var_name,
                     target_agent=agents_in_file[i + 1].var_name,
-                    relationship_type="feeds_into",
+                    relationship_type="delegates_to",
                     shared_resource="",
                     source_file=filepath,
                 ))
@@ -117,7 +117,7 @@ def parse_langchain_agents(
                     all_rels.append(AgentRelationship(
                         source_agent=owners[i],
                         target_agent=owners[j],
-                        relationship_type="shares_tool",
+                        relationship_type="shares_with",
                         shared_resource=tool_name,
                         source_file="",
                     ))

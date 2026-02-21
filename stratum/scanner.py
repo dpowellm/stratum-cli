@@ -364,6 +364,14 @@ def scan(path: str) -> ScanResult:
     eval_ctx = governance_context.get("eval", {})
     identity_ctx = governance_context.get("identity", {})
 
+    # Count lines of code (non-empty, non-comment lines across all .py files)
+    total_loc = 0
+    for _, content in py_files:
+        for line in content.splitlines():
+            stripped = line.strip()
+            if stripped and not stripped.startswith("#"):
+                total_loc += 1
+
     # Count files scanned
     n_py = len(py_files)
     n_mcp_configs = len({s.source_file for s in all_mcp_servers})
@@ -384,6 +392,7 @@ def scan(path: str) -> ScanResult:
         files_scanned=n_py,
         mcp_configs_scanned=n_mcp_configs,
         env_files_scanned=n_env,
+        total_loc=total_loc,
         total_capabilities=len(all_capabilities),
         outbound_count=outbound,
         data_access_count=data_access,
@@ -417,6 +426,14 @@ def scan(path: str) -> ScanResult:
 
     # Build risk graph
     result.graph = build_graph(result)
+
+    # Derive guardrail_count from graph nodes (Bug 11: match graph state)
+    if result.graph:
+        result.guardrail_count = sum(
+            1 for n in result.graph.nodes.values()
+            if n.node_type == NodeType.GUARDRAIL
+        )
+        result.has_any_guardrails = result.guardrail_count > 0
 
     # Compute blast radii and control bypasses
     result.blast_radii = find_blast_radii(result.graph, crew_definitions, all_agent_defs)

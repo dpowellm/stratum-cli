@@ -11,7 +11,7 @@ class NodeType(str, Enum):
     CAPABILITY = "capability"
     DATA_STORE = "data_store"
     MCP_SERVER = "mcp_server"
-    EXTERNAL_SERVICE = "external"
+    EXTERNAL_SERVICE = "external_service"
     GUARDRAIL = "guardrail"
     AGENT = "agent"
 
@@ -19,15 +19,13 @@ class NodeType(str, Enum):
 class EdgeType(str, Enum):
     READS_FROM = "reads_from"
     WRITES_TO = "writes_to"
-    SENDS_TO = "sends_to"
     CALLS = "calls"
     SHARES_WITH = "shares_with"
     FILTERED_BY = "filtered_by"
     GATED_BY = "gated_by"
     TOOL_OF = "tool_of"
     DELEGATES_TO = "delegates_to"
-    FEEDS_INTO = "feeds_into"
-    SHARES_TOOL = "shares_tool"
+    CONNECTS_TO = "connects_to"
 
 
 @dataclass

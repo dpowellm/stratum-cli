@@ -256,7 +256,7 @@ def _get_crew_external_sinks(
 
     # Find external services reachable from capabilities
     for edge in graph.edges:
-        if edge.edge_type in (EdgeType.SENDS_TO, EdgeType.CALLS, EdgeType.WRITES_TO):
+        if edge.edge_type in (EdgeType.CALLS, EdgeType.WRITES_TO):
             if edge.source in cap_to_agent:
                 ext_node = graph.nodes.get(edge.target)
                 if ext_node and ext_node.node_type in (

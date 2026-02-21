@@ -224,6 +224,18 @@ def build_v72_ping(
     # ── D) RENAMED FIELDS ─────────────────────────────────────────────
     ping["frameworks"] = frameworks
 
+    # selection_stratum: derived from primary framework
+    _FRAMEWORK_TO_STRATUM = {
+        "CrewAI": "crewai",
+        "LangGraph": "langgraph",
+        "LangChain": "langchain_active",
+        "AutoGen": "autogen",
+    }
+    primary_fw = frameworks[0] if frameworks else None
+    ping["selection_stratum"] = _FRAMEWORK_TO_STRATUM.get(
+        primary_fw, primary_fw.lower() if primary_fw else ""
+    )
+
     # ── E) COMPUTED FIELDS from raw ScanResult ────────────────────────
     try:
         ping["agent_count"] = agent_count
@@ -289,16 +301,16 @@ def build_v72_ping(
 
     # G1: normalized_features
     try:
-        ac = max(ping.get("agent_count", 1), 1)
-        cc = max(ping.get("crew_count", 1), 1)
+        raw_ac = ping.get("agent_count", 0)
+        raw_cc = ping.get("crew_count", 0)
         trust_dist = ping.get("trust_level_distribution", {})
         total_caps = max(sum(trust_dist.values()), 1) if trust_dist else 1
         external_caps = trust_dist.get("external", 0) + trust_dist.get("public", 0)
         ping["normalized_features"] = {
-            "findings_per_agent": round(finding_rule_count / ac, 2),
-            "findings_per_crew": round(finding_rule_count / cc, 2),
-            "guardrails_per_agent": round(ping.get("guardrail_count", 0) / ac, 2),
-            "tools_per_agent": round(ping.get("total_capabilities", 0) / ac, 2),
+            "findings_per_agent": round(finding_rule_count / raw_ac, 2) if raw_ac > 0 else 0.0,
+            "findings_per_crew": round(finding_rule_count / raw_cc, 2) if raw_cc > 0 else 0.0,
+            "guardrails_per_agent": round(ping.get("guardrail_count", 0) / raw_ac, 2) if raw_ac > 0 else 0.0,
+            "tools_per_agent": round(ping.get("total_capabilities", 0) / raw_ac, 2) if raw_ac > 0 else 0.0,
             "external_exposure_ratio": round(external_caps / total_caps, 2),
             "guardrail_coverage_ratio": round(
                 ping.get("control_coverage_pct", 0.0) / 100.0, 2
@@ -402,7 +414,7 @@ def build_v72_ping(
         ping["repo_metadata"] = {
             "python_file_count": ping.get("files_scanned", 0),
             "yaml_config_count": 0,  # placeholder
-            "total_loc": 0,  # placeholder
+            "total_loc": getattr(result, "total_loc", 0),
             "primary_framework": frameworks[0] if frameworks else None,
             "framework_count": len(frameworks),
         }
@@ -433,6 +445,11 @@ def build_v72_ping(
             metrics["max_degree"] = _g(scan_profile, "max_node_degree", 0)
             metrics["longest_chain"] = _g(scan_profile, "max_chain_depth", 0)
             metrics["hub_score"] = _g(scan_profile, "max_node_degree", 0)
+
+        # Compute diameter from graph via BFS
+        graph = getattr(result, "graph", None)
+        if graph is not None and graph.edges:
+            metrics["diameter"] = _compute_diameter(graph)
         ping["graph_topology_metrics"] = metrics
     except Exception:
         ping.setdefault("graph_topology_metrics", {
@@ -515,6 +532,64 @@ def build_v72_ping(
         pass
 
     return ping
+
+
+def _compute_diameter(graph) -> int:
+    """Compute the diameter of the largest connected component via BFS.
+
+    Treats the graph as undirected for diameter calculation.
+    Returns 0 only if the graph has no edges.
+    """
+    # Build undirected adjacency list
+    adj: dict[str, set[str]] = {}
+    for edge in graph.edges:
+        adj.setdefault(edge.source, set()).add(edge.target)
+        adj.setdefault(edge.target, set()).add(edge.source)
+
+    if not adj:
+        return 0
+
+    all_nodes = set(adj.keys())
+
+    def _bfs_eccentricity(start: str) -> int:
+        visited = {start}
+        queue = [(start, 0)]
+        max_dist = 0
+        while queue:
+            node, dist = queue.pop(0)
+            max_dist = max(max_dist, dist)
+            for neighbor in adj.get(node, set()):
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    queue.append((neighbor, dist + 1))
+        return max_dist
+
+    # Find connected components, compute diameter of the largest
+    visited_global: set[str] = set()
+    max_diameter = 0
+    for start in all_nodes:
+        if start in visited_global:
+            continue
+        # BFS to find component
+        component = set()
+        queue = [start]
+        while queue:
+            node = queue.pop(0)
+            if node in component:
+                continue
+            component.add(node)
+            for neighbor in adj.get(node, set()):
+                if neighbor not in component:
+                    queue.append(neighbor)
+        visited_global.update(component)
+
+        # Compute diameter of this component (max eccentricity)
+        # For efficiency, sample up to 20 nodes
+        sample = list(component)[:20]
+        comp_diameter = max(_bfs_eccentricity(n) for n in sample)
+        max_diameter = max(max_diameter, comp_diameter)
+
+    return max_diameter
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────

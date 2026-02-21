@@ -140,7 +140,7 @@ class AgentRelationship:
     """A directed relationship between two agents."""
     source_agent: str
     target_agent: str
-    relationship_type: str  # "delegates_to", "feeds_into", "shares_tool"
+    relationship_type: str  # "delegates_to", "shares_with"
     shared_resource: str = ""
     source_file: str = ""
 
@@ -224,6 +224,7 @@ class ScanResult:
     files_scanned: int = 0
     mcp_configs_scanned: int = 0
     env_files_scanned: int = 0
+    total_loc: int = 0
 
     # Agent relationships
     crew_definitions: list[CrewDefinition] = field(default_factory=list)

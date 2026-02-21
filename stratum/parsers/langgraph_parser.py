@@ -78,7 +78,7 @@ def parse_langgraph(
                 rel = AgentRelationship(
                     source_agent=edge.source,
                     target_agent=edge.target,
-                    relationship_type="feeds_into",
+                    relationship_type="delegates_to",
                     shared_resource="",
                     source_file=filepath,
                 )

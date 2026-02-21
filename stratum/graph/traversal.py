@@ -332,7 +332,7 @@ def find_blast_radii(
         ]
         for tid in agent_tools:
             for e in graph.edges:
-                if e.source == tid and e.edge_type == EdgeType.SENDS_TO:
+                if e.source == tid and e.edge_type == EdgeType.CALLS:
                     externals.add(e.target)
         agent_externals[agent_id] = externals
 

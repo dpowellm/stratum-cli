@@ -62,7 +62,7 @@ def detect_shared_tools(
                     relationships.append(AgentRelationship(
                         source_agent=a,
                         target_agent=b,
-                        relationship_type="shares_tool",
+                        relationship_type="shares_with",
                         shared_resource=tool,
                     ))
     return relationships
@@ -105,7 +105,7 @@ def detect_cross_crew_flows(
                     relationships.append(AgentRelationship(
                         source_agent=source_crew,
                         target_agent=target_crew,
-                        relationship_type="feeds_into",
+                        relationship_type="delegates_to",
                         source_file=file_path,
                     ))
 

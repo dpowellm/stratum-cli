@@ -105,7 +105,7 @@ def match_incidents(result) -> list[IncidentMatch]:
         # Pattern-specific boosts
         if incident["pattern"] == "cross_agent_privilege_escalation":
             if any(
-                r.relationship_type in ("delegates_to", "feeds_into")
+                r.relationship_type == "delegates_to"
                 for r in result.agent_relationships
             ):
                 confidence += 0.25

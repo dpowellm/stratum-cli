@@ -117,7 +117,7 @@ def build_graph(result: ScanResult) -> RiskGraph:
         graph.nodes[cap_node.id] = cap_node
         _infer_connected_nodes(graph, cap, cap_node)
 
-    # Step 2: Create MCP server nodes
+    # Step 2: Create MCP server nodes (edges added after agents in Step 3.7)
     for mcp in result.mcp_servers:
         mcp_node = _mcp_to_node(mcp)
         graph.nodes[mcp_node.id] = mcp_node
@@ -162,8 +162,11 @@ def build_graph(result: ScanResult) -> RiskGraph:
                     has_control=False,
                 ))
 
-    # Step 3.6: Agent relationship edges (FEEDS_INTO, DELEGATES_TO, SHARES_TOOL)
+    # Step 3.6: Agent relationship edges (DELEGATES_TO, SHARES_WITH)
     _add_agent_relationship_edges(graph, result)
+
+    # Step 3.7: CONNECTS_TO edges from agents to MCP servers in same file
+    _connect_agents_to_mcp(graph)
 
     # Step 4: Connect data-reading capabilities to outbound capabilities
     # (implicit: the agent can use any tool, so data flows from reads to sends)
@@ -277,7 +280,7 @@ def _infer_connected_nodes(
         graph.edges.append(GraphEdge(
             source=cap_node.id,
             target=service.id,
-            edge_type=EdgeType.SENDS_TO,
+            edge_type=EdgeType.CALLS,
             has_control=False,
         ))
 
@@ -329,7 +332,7 @@ def _infer_connected_nodes(
         graph.edges.append(GraphEdge(
             source=cap_node.id,
             target=fin_node.id,
-            edge_type=EdgeType.SENDS_TO,
+            edge_type=EdgeType.CALLS,
             has_control=False,
             data_sensitivity="financial",
         ))
@@ -442,8 +445,8 @@ def _same_project_dir(graph: RiskGraph, agent_id_a: str, agent_id_b: str) -> boo
 
 
 def _add_agent_relationship_edges(graph: RiskGraph, result: ScanResult) -> None:
-    """Add FEEDS_INTO, DELEGATES_TO, SHARES_TOOL edges from crew/relationship data."""
-    # FEEDS_INTO edges from sequential crew definitions
+    """Add DELEGATES_TO and SHARES_WITH edges from crew/relationship data."""
+    # DELEGATES_TO edges from sequential crew definitions
     for crew in getattr(result, 'crew_definitions', []):
         if crew.process_type == "sequential" and len(crew.agent_names) > 1:
             for i in range(len(crew.agent_names) - 1):
@@ -453,7 +456,7 @@ def _add_agent_relationship_edges(graph: RiskGraph, result: ScanResult) -> None:
                     if _same_project_dir(graph, src, tgt):
                         graph.edges.append(GraphEdge(
                             source=src, target=tgt,
-                            edge_type=EdgeType.FEEDS_INTO, has_control=False,
+                            edge_type=EdgeType.DELEGATES_TO, has_control=False,
                         ))
 
         # Hierarchical: manager delegates to all agents
@@ -475,18 +478,44 @@ def _add_agent_relationship_edges(graph: RiskGraph, result: ScanResult) -> None:
         if src not in graph.nodes or tgt not in graph.nodes:
             continue
 
-        if rel.relationship_type == "shares_tool":
+        if rel.relationship_type == "shares_with":
             graph.edges.append(GraphEdge(
                 source=src, target=tgt,
-                edge_type=EdgeType.SHARES_TOOL, has_control=False,
+                edge_type=EdgeType.SHARES_WITH, has_control=False,
             ))
-        elif rel.relationship_type in ("delegates_to", "feeds_into"):
-            edge_type = (EdgeType.DELEGATES_TO if rel.relationship_type == "delegates_to"
-                         else EdgeType.FEEDS_INTO)
+        elif rel.relationship_type == "delegates_to":
             graph.edges.append(GraphEdge(
                 source=src, target=tgt,
-                edge_type=edge_type, has_control=False,
+                edge_type=EdgeType.DELEGATES_TO, has_control=False,
             ))
+
+
+def _connect_agents_to_mcp(graph: RiskGraph) -> None:
+    """Create CONNECTS_TO edges from agents to MCP servers in the same file or globally."""
+    mcp_ids = [nid for nid, n in graph.nodes.items() if n.node_type == NodeType.MCP_SERVER]
+    agent_ids = [nid for nid, n in graph.nodes.items() if n.node_type == NodeType.AGENT]
+    if not mcp_ids:
+        return
+    for mcp_id in mcp_ids:
+        mcp_node = graph.nodes[mcp_id]
+        connected = False
+        for aid in agent_ids:
+            agent_node = graph.nodes[aid]
+            # Same-file heuristic
+            if mcp_node.source_file and agent_node.source_file:
+                if mcp_node.source_file == agent_node.source_file:
+                    graph.edges.append(GraphEdge(
+                        source=aid, target=mcp_id,
+                        edge_type=EdgeType.CONNECTS_TO, has_control=False,
+                    ))
+                    connected = True
+        # Fallback: connect to all agents if no file match
+        if not connected:
+            for aid in agent_ids:
+                graph.edges.append(GraphEdge(
+                    source=aid, target=mcp_id,
+                    edge_type=EdgeType.CONNECTS_TO, has_control=False,
+                ))
 
 
 def _mark_trust_crossings(graph: RiskGraph) -> None:
@@ -534,7 +563,7 @@ def _connect_guardrail(
 ) -> None:
     """Connect a guardrail node to relevant edges in the graph.
 
-    For output_filter / input_filter guardrails: mark SENDS_TO edges as controlled.
+    For output_filter / input_filter guardrails: mark CALLS edges as controlled.
     For hitl guardrails: mark edges to destructive/financial targets as controlled.
 
     Edges are always created (so the graph topology is complete), but
@@ -545,7 +574,7 @@ def _connect_guardrail(
 
     if guard.kind in ("output_filter", "input_filter"):
         for edge in graph.edges:
-            if edge.edge_type in (EdgeType.SENDS_TO, EdgeType.CALLS):
+            if edge.edge_type == EdgeType.CALLS:
                 if _guard_covers_edge(guard, edge, graph):
                     if active:
                         edge.has_control = True
@@ -562,9 +591,46 @@ def _connect_guardrail(
                         edge.control_type = "hitl"
                     _add_guardrail_edge(graph, edge.source, guard_node, EdgeType.GATED_BY, "hitl")
 
+    elif guard.kind == "rate_limit":
+        # Rate-limit guardrails gate execution of capabilities.
+        # Scoping: covers_tools > same-file > all agents/capabilities.
+        connected = False
+        for edge in graph.edges:
+            src = graph.nodes.get(edge.source)
+            if not src or src.node_type != NodeType.CAPABILITY:
+                continue
+            if guard.covers_tools:
+                if src.label not in guard.covers_tools:
+                    continue
+            elif guard.source_file and src.source_file:
+                if guard.source_file != src.source_file:
+                    continue
+            if active:
+                edge.has_control = True
+                edge.control_type = "rate_limit"
+            _add_guardrail_edge(graph, edge.source, guard_node, EdgeType.GATED_BY, "rate_limit")
+            connected = True
+
+        # Fallback: if no edges matched (no capabilities yet, or file mismatch),
+        # connect to all agent nodes in the same file, or all agents if no file.
+        if not connected:
+            for nid, node in graph.nodes.items():
+                if node.node_type == NodeType.AGENT:
+                    if guard.source_file and node.source_file:
+                        if guard.source_file != node.source_file:
+                            continue
+                    _add_guardrail_edge(graph, nid, guard_node, EdgeType.GATED_BY, "rate_limit")
+                    connected = True
+
+        # Last resort: connect to every capability node in the graph
+        if not connected:
+            for nid, node in graph.nodes.items():
+                if node.node_type == NodeType.CAPABILITY:
+                    _add_guardrail_edge(graph, nid, guard_node, EdgeType.GATED_BY, "rate_limit")
+
     elif guard.kind == "validation":
         for edge in graph.edges:
-            if edge.edge_type == EdgeType.SENDS_TO:
+            if edge.edge_type == EdgeType.CALLS:
                 src = graph.nodes.get(edge.source)
                 if not src:
                     continue
@@ -580,6 +646,40 @@ def _connect_guardrail(
                     edge.has_control = True
                     edge.control_type = "validation"
                 _add_guardrail_edge(graph, edge.source, guard_node, EdgeType.FILTERED_BY, "validation")
+
+    # Universal fallback: if the guardrail node still has ZERO edges after
+    # all kind-specific logic, connect it to agents in the same file or all
+    # agents/capabilities.  A guardrail with no edges is useless.
+    has_edge = any(
+        e.target == guard_node.id
+        and e.edge_type in (EdgeType.FILTERED_BY, EdgeType.GATED_BY)
+        for e in graph.edges
+    )
+    if not has_edge:
+        edge_type = EdgeType.GATED_BY if guard.kind == "hitl" else EdgeType.FILTERED_BY
+        connected = False
+        # Try same-file agents first
+        for nid, node in graph.nodes.items():
+            if node.node_type == NodeType.AGENT:
+                if guard.source_file and node.source_file:
+                    if guard.source_file != node.source_file:
+                        continue
+                _add_guardrail_edge(graph, nid, guard_node, edge_type, guard.kind)
+                connected = True
+        # Then same-file capabilities
+        if not connected:
+            for nid, node in graph.nodes.items():
+                if node.node_type == NodeType.CAPABILITY:
+                    if guard.source_file and node.source_file:
+                        if guard.source_file != node.source_file:
+                            continue
+                    _add_guardrail_edge(graph, nid, guard_node, edge_type, guard.kind)
+                    connected = True
+        # Last resort: all capabilities
+        if not connected:
+            for nid, node in graph.nodes.items():
+                if node.node_type == NodeType.CAPABILITY:
+                    _add_guardrail_edge(graph, nid, guard_node, edge_type, guard.kind)
 
 
 def _add_guardrail_edge(

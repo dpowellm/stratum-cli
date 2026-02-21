@@ -269,7 +269,7 @@ def build_profile(result: ScanResult) -> TelemetryProfile:
             (br.agent_count for br in getattr(result, 'blast_radii', [])),
             default=0,
         ),
-        external_sink_count=graph_node_type_dist.get("external", 0),
+        external_sink_count=graph_node_type_dist.get("external_service", 0),
         # v4: findings by class
         findings_by_class={
             fc: sum(1 for f in all_findings if getattr(f, 'finding_class', 'security') == fc)
@@ -316,44 +316,72 @@ def build_profile(result: ScanResult) -> TelemetryProfile:
 
 
 def _compute_topology_hash(result: ScanResult) -> str:
-    """Compute a stable hash of the project's capability topology.
+    """Compute a structural hash of the project's graph topology.
 
-    Encodes:
-    1. Sorted set of capability kinds present (non-heuristic only)
-    2. Sorted set of directed trust crossings that exist (presence, not count)
-    3. Boolean: has_financial (any financial capability)
-    4. checkpoint_type string
+    Encodes ALL of:
+    1. Sorted list of node types and their counts
+    2. Sorted list of edge types and their counts
+    3. Total node count and total edge count
+    4. Sorted adjacency signature: for each edge, hash(src_type+edge_type+tgt_type)
+    5. Agent count and capability count
 
     Returns first 16 hex chars of SHA-256. Irreversible.
+    Two graphs should only match if they have genuinely identical structure.
     """
-    confirmed_caps = [
-        c for c in result.capabilities if c.confidence != Confidence.HEURISTIC
-    ]
-    if not confirmed_caps:
-        return ""
+    graph = getattr(result, 'graph', None)
 
-    sorted_kinds = sorted({c.kind for c in confirmed_caps})
+    # Fall back to capability-based hash when no graph is available
+    if graph is None or not graph.nodes:
+        confirmed_caps = [
+            c for c in result.capabilities if c.confidence != Confidence.HEURISTIC
+        ]
+        if not confirmed_caps:
+            return ""
+        canonical = "|".join(sorted(c.kind for c in confirmed_caps))
+        return hashlib.sha256(canonical.encode()).hexdigest()[:16]
 
-    # Directed crossing keys present
-    trust_levels = {c.trust_level for c in confirmed_caps}
-    crossings: set[str] = set()
-    for a in trust_levels:
-        for b in trust_levels:
-            if a != b:
-                crossings.add(f"{a.value}\u2192{b.value}")
-    sorted_crossings = sorted(crossings)
+    parts: list[str] = []
 
-    structure: list[tuple[str, object]] = []
-    for kind in sorted_kinds:
-        structure.append(("kind", kind))
-    for crossing in sorted_crossings:
-        structure.append(("crossing", crossing))
-    structure.append(("has_financial", any(c.kind == "financial" for c in confirmed_caps)))
-    structure.append(("checkpoint_type", result.checkpoint_type))
+    # 1. Node type counts
+    node_type_counts: dict[str, int] = {}
+    agent_count = 0
+    cap_count = 0
+    for node in graph.nodes.values():
+        nt = node.node_type.value
+        node_type_counts[nt] = node_type_counts.get(nt, 0) + 1
+        if nt == "agent":
+            agent_count += 1
+        elif nt == "capability":
+            cap_count += 1
+    for nt in sorted(node_type_counts):
+        parts.append(f"nt:{nt}={node_type_counts[nt]}")
 
-    canonical = "|".join(f"{k}={v}" for k, v in structure)
-    digest = hashlib.sha256(canonical.encode()).hexdigest()
-    return digest[:16]
+    # 2. Edge type counts
+    edge_type_counts: dict[str, int] = {}
+    for edge in graph.edges:
+        et = edge.edge_type.value
+        edge_type_counts[et] = edge_type_counts.get(et, 0) + 1
+    for et in sorted(edge_type_counts):
+        parts.append(f"et:{et}={edge_type_counts[et]}")
+
+    # 3. Totals
+    parts.append(f"nodes={len(graph.nodes)}")
+    parts.append(f"edges={len(graph.edges)}")
+    parts.append(f"agents={agent_count}")
+    parts.append(f"caps={cap_count}")
+
+    # 4. Adjacency signature (sorted triples of src_type+edge_type+tgt_type)
+    adj_sigs: list[str] = []
+    for edge in graph.edges:
+        src = graph.nodes.get(edge.source)
+        tgt = graph.nodes.get(edge.target)
+        if src and tgt:
+            adj_sigs.append(f"{src.node_type.value}>{edge.edge_type.value}>{tgt.node_type.value}")
+    for sig in sorted(adj_sigs):
+        parts.append(f"adj:{sig}")
+
+    canonical = "|".join(parts)
+    return hashlib.sha256(canonical.encode()).hexdigest()[:16]
 
 
 def _compute_trust_crossing_adjacency(capabilities: list[Capability]) -> dict[str, int]:
@@ -765,9 +793,17 @@ def build_scan_profile(
     for g in result.guardrails:
         guard_kind_counts[g.kind] = guard_kind_counts.get(g.kind, 0) + 1
     p.guardrail_types = guard_kind_counts
-    p.guardrail_linked_count = sum(
-        1 for g in result.guardrails if g.covers_tools
-    )
+    # Count guardrails that have at least one GATED_BY or FILTERED_BY edge
+    if graph is not None:
+        guard_node_ids_with_edges: set[str] = set()
+        for e in graph.edges:
+            if e.edge_type.value in ("gated_by", "filtered_by"):
+                guard_node_ids_with_edges.add(e.target)
+        p.guardrail_linked_count = len(guard_node_ids_with_edges)
+    else:
+        p.guardrail_linked_count = sum(
+            1 for g in result.guardrails if g.covers_tools
+        )
     p.guardrail_coverage_ratio = round(
         p.guardrail_linked_count / max(p.guardrail_count, 1), 2
     )
@@ -848,7 +884,7 @@ def build_scan_profile(
                 any(t in graph.nodes.get(e.source, GraphNode_stub).label.lower()
                     for t in _scrape_terms)
                 for e in graph.edges
-                if e.edge_type in (EdgeType.SENDS_TO, EdgeType.TOOL_OF)
+                if e.edge_type in (EdgeType.CALLS, EdgeType.TOOL_OF)
             )
         )
         p.has_db_to_external = (
@@ -897,7 +933,7 @@ def build_scan_profile(
 
         p.agent_to_agent_edges = sum(
             1 for e in graph.edges
-            if e.edge_type in (EdgeType.FEEDS_INTO, EdgeType.DELEGATES_TO)
+            if e.edge_type in (EdgeType.DELEGATES_TO, EdgeType.DELEGATES_TO)
         )
         p.guardrail_edges = sum(
             1 for e in graph.edges
@@ -921,8 +957,8 @@ def build_scan_profile(
             if node.node_type == NodeType.AGENT
         )
         data_flow_types = {
-            EdgeType.FEEDS_INTO, EdgeType.SHARES_TOOL, EdgeType.SHARES_WITH,
-            EdgeType.READS_FROM, EdgeType.SENDS_TO, EdgeType.WRITES_TO,
+            EdgeType.DELEGATES_TO, EdgeType.SHARES_WITH, EdgeType.SHARES_WITH,
+            EdgeType.READS_FROM, EdgeType.CALLS, EdgeType.WRITES_TO,
             EdgeType.GATED_BY, EdgeType.FILTERED_BY, EdgeType.DELEGATES_TO,
         }
         connected_agents: set[str] = set()
@@ -1184,7 +1220,24 @@ def _detect_framework_versions(directory: str) -> dict[str, str]:
         except (OSError, UnicodeDecodeError):
             continue
 
-    return versions
+    # Normalize lowercase pip names to canonical CamelCase framework names
+    # so keys match the detected_frameworks list (e.g. "CrewAI", "LangChain")
+    _PIP_TO_FRAMEWORK = {
+        "crewai": "CrewAI",
+        "langchain": "LangChain",
+        "langchain-core": "LangChain",
+        "langchain-community": "LangChain",
+        "langgraph": "LangGraph",
+        "autogen": "AutoGen",
+    }
+    normalized: dict[str, str] = {}
+    for pkg, ver in versions.items():
+        fw_name = _PIP_TO_FRAMEWORK.get(pkg)
+        if fw_name and fw_name not in normalized:
+            normalized[fw_name] = ver
+        elif not fw_name:
+            normalized[pkg] = ver
+    return normalized
 
 
 class _GraphNodeStub:

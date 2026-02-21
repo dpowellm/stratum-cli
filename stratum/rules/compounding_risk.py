@@ -191,7 +191,7 @@ def _check_cross_boundary_delegation(result: ScanResult) -> list[Finding]:
     findings: list[Finding] = []
 
     for rel in result.agent_relationships:
-        if rel.relationship_type not in ("delegates_to", "feeds_into"):
+        if rel.relationship_type != "delegates_to":
             continue
 
         source = _find_agent(rel.source_agent, result.agent_definitions)

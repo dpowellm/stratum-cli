@@ -48,10 +48,10 @@ def build_tc002_graph():
     G.add_node("pii_db", type="data_store", data_sensitivity="personal")
     G.add_node("reader", type="agent")
     G.add_node("writer", type="agent")
-    G.add_node("api_sink", type="external")
+    G.add_node("api_sink", type="external_service")
     G.add_edge("pii_db", "reader", type="reads_from")
     G.add_edge("reader", "writer", type="delegates_to", has_control=False)
-    G.add_edge("writer", "api_sink", type="sends_to")
+    G.add_edge("writer", "api_sink", type="calls")
     return G
 
 
@@ -66,11 +66,11 @@ def build_tc005_graph():
     G.add_node("read_tool", type="capability")
     G.add_node("agent", type="agent")
     G.add_node("send_tool", type="capability")
-    G.add_node("gmail", type="external")
+    G.add_node("gmail", type="external_service")
     G.add_edge("inbox", "read_tool", type="reads_from")
     G.add_edge("read_tool", "agent", type="tool_of")
     G.add_edge("send_tool", "agent", type="tool_of")
-    G.add_edge("send_tool", "gmail", type="sends_to")
+    G.add_edge("send_tool", "gmail", type="calls")
     return G
 
 
@@ -113,10 +113,10 @@ def build_tc003_graph():
     Negative: agent has guardrail of type "hitl"
     """
     G = nx.DiGraph()
-    G.add_node("ext_input", type="external")
+    G.add_node("ext_input", type="external_service")
     G.add_node("exec_agent", type="agent")
     G.add_node("exec_cap", type="capability")
-    G.add_edge("ext_input", "exec_agent", type="sends_to")
+    G.add_edge("ext_input", "exec_agent", type="calls")
     G.add_edge("exec_cap", "exec_agent", type="tool_of")
     return G
 
@@ -133,10 +133,10 @@ def build_tc004_graph():
     G.add_node("ext_agent", type="agent")
     G.add_node("fin_agent", type="agent")
     G.add_node("fin_cap", type="capability")
-    G.add_node("ext_sink", type="external")
-    G.add_edge("ext_agent", "fin_agent", type="shares_tool")
+    G.add_node("ext_sink", type="external_service")
+    G.add_edge("ext_agent", "fin_agent", type="shares_with")
     G.add_edge("fin_cap", "fin_agent", type="tool_of")
-    G.add_edge("fin_agent", "ext_sink", type="sends_to")
+    G.add_edge("fin_agent", "ext_sink", type="calls")
     return G
 
 
@@ -167,8 +167,8 @@ def build_tc008_graph():
     G.add_node("agent_1", type="agent")
     G.add_node("agent_2", type="agent")
     G.add_node("agent_3", type="agent")
-    G.add_edge("agent_1", "agent_2", type="feeds_into")
-    G.add_edge("agent_2", "agent_3", type="feeds_into")
+    G.add_edge("agent_1", "agent_2", type="delegates_to")
+    G.add_edge("agent_2", "agent_3", type="delegates_to")
     return G
 
 
@@ -182,7 +182,7 @@ def build_tc009_graph():
     G = nx.DiGraph()
     G.add_node("low_agent", type="agent")
     G.add_node("high_agent", type="agent")
-    G.add_edge("low_agent", "high_agent", type="feeds_into", has_control=False)
+    G.add_edge("low_agent", "high_agent", type="delegates_to", has_control=False)
     return G
 
 
@@ -198,10 +198,10 @@ def build_tc010_graph():
     G = nx.DiGraph()
     G.add_node("loop_agent", type="agent")
     G.add_node("write_cap", type="capability")
-    G.add_node("ext_target", type="external")
-    G.add_edge("loop_agent", "loop_agent", type="feeds_into")  # self-loop
+    G.add_node("ext_target", type="external_service")
+    G.add_edge("loop_agent", "loop_agent", type="delegates_to")  # self-loop
     G.add_edge("write_cap", "loop_agent", type="tool_of")
-    G.add_edge("write_cap", "ext_target", type="sends_to")
+    G.add_edge("write_cap", "ext_target", type="calls")
     return G
 
 
