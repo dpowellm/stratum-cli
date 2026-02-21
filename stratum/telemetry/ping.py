@@ -158,9 +158,10 @@ def build_v72_ping(
         ping["graph_edge_type_distribution"] = _g(telemetry_profile, "graph_edge_type_distribution", {})
         ping["edge_density"] = _g(telemetry_profile, "edge_density", 0.0)
 
-        # Guardrails & Controls
-        ping["guardrail_count"] = getattr(result, "guardrail_count", 0)
-        ping["has_any_guardrails"] = getattr(result, "has_any_guardrails", False)
+        # Guardrails & Controls — derive from graph for single source of truth
+        graph_ntd = ping.get("graph_node_type_distribution", {})
+        ping["guardrail_count"] = graph_ntd.get("guardrail", 0) if graph_ntd else getattr(result, "guardrail_count", 0)
+        ping["has_any_guardrails"] = ping["guardrail_count"] > 0
         ping["guardrail_types"] = _g(telemetry_profile, "guardrail_types", [])
         ping["guardrail_linked_count"] = _g(telemetry_profile, "guardrail_linked_count", 0)
         ping["control_bypass_count"] = _g(telemetry_profile, "control_bypass_count", 0)
@@ -224,17 +225,26 @@ def build_v72_ping(
     # ── D) RENAMED FIELDS ─────────────────────────────────────────────
     ping["frameworks"] = frameworks
 
-    # selection_stratum: derived from primary framework
-    _FRAMEWORK_TO_STRATUM = {
-        "CrewAI": "crewai",
-        "LangGraph": "langgraph",
-        "LangChain": "langchain_active",
-        "AutoGen": "autogen",
-    }
-    primary_fw = frameworks[0] if frameworks else None
-    ping["selection_stratum"] = _FRAMEWORK_TO_STRATUM.get(
-        primary_fw, primary_fw.lower() if primary_fw else ""
-    )
+    # selection_stratum: derived from primary framework — NEVER None
+    # Priority-ordered: more specific frameworks win over general ones
+    _STRATUM_PRIORITY = [
+        ("CrewAI", "crewai_active"),
+        ("LangGraph", "langgraph_active"),
+        ("AutoGen", "autogen_active"),
+        ("openai_agents", "openai_agents_active"),
+        ("Semantic Kernel", "semantic_kernel_active"),
+        ("LangChain", "langchain_active"),
+    ]
+    _selected_stratum = "generic_active"
+    for fw_name, stratum_value in _STRATUM_PRIORITY:
+        if fw_name in frameworks:
+            _selected_stratum = stratum_value
+            break
+    else:
+        # No priority match — use first framework with derived name
+        if frameworks:
+            _selected_stratum = frameworks[0].lower().replace(" ", "_") + "_active"
+    ping["selection_stratum"] = _selected_stratum
 
     # ── E) COMPUTED FIELDS from raw ScanResult ────────────────────────
     try:
