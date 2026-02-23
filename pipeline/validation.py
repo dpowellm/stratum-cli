@@ -13,11 +13,12 @@ def generate_scan_id():
 
 def failure_ping(repo_record, reason, stderr=None):
     """Produce a minimal ping for a failed scan so the failure is tracked."""
+    scan_id = generate_scan_id()
     return {
-        "scan_id": generate_scan_id(),
+        "scan_id": scan_id,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "scanner_version": "0.3.1",
-        "repo_hash": None,
+        "repo_hash": repo_record.get("repo_full_name") or scan_id,
         "scan_status": "failed",
         "scan_duration_ms": 0,
         "files_scanned": 0,
@@ -27,7 +28,7 @@ def failure_ping(repo_record, reason, stderr=None):
         "schema_version": "0.3.2",
         "failure_reason": reason,
         "failure_detail": str(stderr)[:500] if stderr else None,
-        "risk_score": None,
+        "risk_score": 0,
         "finding_rule_count": 0,
         "agent_count": 0,
         "crew_count": 0,

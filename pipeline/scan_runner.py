@@ -302,6 +302,18 @@ def run_scan_pipeline(manifest_path, results_path, quarantine_path,
                     run_log["success"] += 1
                     status_tag = "OK"
 
+                # Guard: downstream Pydantic models require these fields
+                # to be non-None (repo_hash: str, risk_score: int).
+                # Also ensure repo_full_name is always a top-level key.
+                if ping.get("repo_hash") is None:
+                    ping["repo_hash"] = (ping.get("repo_full_name")
+                                         or repo_name
+                                         or ping.get("scan_id", "unknown"))
+                if ping.get("risk_score") is None:
+                    ping["risk_score"] = 0
+                if "repo_full_name" not in ping:
+                    ping["repo_full_name"] = repo_name
+
                 # Validate non-failure pings
                 if status not in ("failed", "empty"):
                     errors = validate_ping(ping)

@@ -66,14 +66,15 @@ def test_build_v72_ping_includes_repo_identity():
     assert ping["repo_url"] == "https://github.com/langchain-ai/langchain"
 
 
-def test_build_v72_ping_omits_identity_when_not_passed():
-    """build_v72_ping should not include repo_full_name/repo_url when not passed."""
+def test_build_v72_ping_defaults_identity_when_not_passed():
+    """build_v72_ping should default repo_full_name to '' when not passed."""
     from stratum.telemetry.ping import build_v72_ping
 
     result = _make_stub_result()
     ping = build_v72_ping(result)
 
-    assert "repo_full_name" not in ping
+    # repo_full_name must always be a top-level key (downstream joins need it)
+    assert ping["repo_full_name"] == ""
     assert "repo_url" not in ping
 
 

@@ -113,8 +113,8 @@ def build_v72_ping(
         ping.setdefault("schema_version", SCHEMA_VERSION)
 
     # ── A2) REPO IDENTITY (from CLI flags) ───────────────────────────
-    if repo_full_name:
-        ping["repo_full_name"] = repo_full_name
+    # Always emit repo_full_name at top level (downstream joins require it)
+    ping["repo_full_name"] = repo_full_name or ""
     if repo_url:
         ping["repo_url"] = repo_url
 
